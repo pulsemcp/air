@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/pulsemcp/air/main/schemas/air.schema.json",
+  "title": "AIR Configuration",
+  "description": "Root configuration file for the AIR framework. Points to artifact index files that define skills, MCP servers, plugins, roots, hooks, and references. Each artifact property is an array of paths — files are loaded and merged in order, with later entries overriding earlier ones by ID.",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema reference for validation."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100,
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "description": "Unique identifier for this AIR configuration."
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 500,
+      "description": "Human-readable description of this AIR configuration scope (e.g., 'Acme Corp engineering team agent configs')."
+    },
+    "skills": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Paths to skills index files. Merged in order — later entries override earlier ones by ID."
+    },
+    "references": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Paths to references index files. Merged in order — later entries override earlier ones by ID."
+    },
+    "mcp": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Paths to MCP server configuration files. Merged in order — later entries override earlier ones by ID."
+    },
+    "plugins": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Paths to plugins index files. Merged in order — later entries override earlier ones by ID."
+    },
+    "roots": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Paths to roots index files. Merged in order — later entries override earlier ones by ID."
+    },
+    "hooks": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Paths to hooks index files. Merged in order — later entries override earlier ones by ID."
+    }
+  },
+  "required": ["name"],
+  "additionalProperties": false
+}

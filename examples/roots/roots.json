@@ -1,0 +1,25 @@
+{
+  "web-app": {
+    "name": "web-app",
+    "display_name": "Web Application",
+    "description": "Main web application. Full-stack Rails app with React frontend.",
+    "url": "https://github.com/acme/web-app.git",
+    "default_branch": "main",
+    "default_mcp_servers": ["github", "postgres-prod"],
+    "default_skills": ["deploy-staging", "initial-pr-review"],
+    "default_plugins": ["eslint-autofix"],
+    "user_invocable": true,
+    "default_stop_condition": "open-reviewed-green-pr"
+  },
+  "data-pipeline": {
+    "name": "data-pipeline",
+    "display_name": "Data Pipeline",
+    "description": "ETL pipeline and data warehouse management. Python-based with dbt.",
+    "url": "https://github.com/acme/data-pipeline.git",
+    "default_branch": "main",
+    "subdirectory": "pipeline",
+    "default_mcp_servers": ["github", "analytics"],
+    "default_skills": ["initial-pr-review"],
+    "user_invocable": true
+  }
+}

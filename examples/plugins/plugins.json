@@ -1,0 +1,23 @@
+{
+  "eslint-autofix": {
+    "id": "eslint-autofix",
+    "title": "ESLint Autofix",
+    "description": "Automatically fix linting issues in staged files before commit",
+    "type": "command",
+    "command": "npx",
+    "args": ["eslint", "--fix", "."],
+    "timeout_seconds": 60
+  },
+  "db-migrate": {
+    "id": "db-migrate",
+    "title": "Database Migration Runner",
+    "description": "Run pending database migrations in the development environment",
+    "type": "command",
+    "command": "bin/rails",
+    "args": ["db:migrate"],
+    "env": {
+      "RAILS_ENV": "development"
+    },
+    "timeout_seconds": 120
+  }
+}
