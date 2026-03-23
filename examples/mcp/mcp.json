@@ -1,0 +1,31 @@
+{
+  "github": {
+    "title": "GitHub",
+    "description": "Create and manage issues, PRs, branches, and files in GitHub repos.",
+    "type": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-github@0.6.2"],
+    "env": {
+      "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PERSONAL_ACCESS_TOKEN}"
+    }
+  },
+  "postgres-prod": {
+    "title": "PostgreSQL - Production (Read-Only)",
+    "description": "Read-only access to the production PostgreSQL database.",
+    "type": "stdio",
+    "command": "uvx",
+    "args": ["--from", "postgres-mcp==0.3.0", "postgres-mcp", "--access-mode=restricted"],
+    "env": {
+      "DATABASE_URI": "postgresql://${PG_PROD_USER}:${PG_PROD_PASSWORD}@db.example.com:5432/production?sslmode=require"
+    }
+  },
+  "analytics": {
+    "title": "Analytics Dashboard",
+    "description": "Query analytics data and generate reports from the data warehouse.",
+    "type": "streamable-http",
+    "url": "https://mcp.analytics.example.com/mcp",
+    "headers": {
+      "Authorization": "Bearer ${ANALYTICS_TOKEN}"
+    }
+  }
+}

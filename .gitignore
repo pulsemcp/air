@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Build output
+cli/dist/
+
+# Local overrides
+.air/local/
+
+# Environment
+.env
+.env.local
+
+# OS files
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+
+# Agent session files
+.claude/
+.mcp.json
+
+# Logs
+*.log

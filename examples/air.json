@@ -1,0 +1,22 @@
+{
+  "name": "acme-engineering",
+  "description": "Acme Corp engineering team AI agent configuration",
+  "skills": [
+    "./skills/skills.json"
+  ],
+  "references": [
+    "./references/references.json"
+  ],
+  "mcp": [
+    "./mcp/mcp.json"
+  ],
+  "plugins": [
+    "./plugins/plugins.json"
+  ],
+  "roots": [
+    "./roots/roots.json"
+  ],
+  "hooks": [
+    "./hooks/hooks.json"
+  ]
+}

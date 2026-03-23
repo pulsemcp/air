@@ -1,0 +1,97 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/pulsemcp/air/main/schemas/roots.schema.json",
+  "title": "AIR Roots Index",
+  "description": "Index of agent root configurations. A root is a self-contained agent workspace — a git repository (or subdirectory within one) that contains everything an agent needs to operate in a specific domain.",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema reference for validation."
+    }
+  },
+  "additionalProperties": {
+    "$ref": "#/$defs/Root"
+  },
+  "propertyNames": {
+    "pattern": "^[$a-zA-Z0-9_-]+$",
+    "description": "Root identifier key. Must be alphanumeric with hyphens or underscores."
+  },
+  "$defs": {
+    "Root": {
+      "type": "object",
+      "description": "An agent root — a self-contained workspace for a specific domain.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Unique identifier for this root. Must match the key in the parent object."
+        },
+        "display_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "description": "Human-readable display name."
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "description": "What this agent root is for. Should be clear to anyone in the organization."
+        },
+        "url": {
+          "type": "string",
+          "description": "Git repository URL for this root."
+        },
+        "default_branch": {
+          "type": "string",
+          "description": "Default branch to use when cloning (defaults to 'main')."
+        },
+        "subdirectory": {
+          "type": "string",
+          "description": "Path within the repository to the root directory (for monorepo setups)."
+        },
+        "default_mcp_servers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "IDs of MCP servers to activate by default for sessions using this root."
+        },
+        "default_skills": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "IDs of skills to make available by default for sessions using this root."
+        },
+        "default_plugins": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "IDs of plugins to activate by default for sessions using this root."
+        },
+        "default_hooks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "IDs of hooks to activate by default for sessions using this root."
+        },
+        "user_invocable": {
+          "type": "boolean",
+          "description": "Whether this root can be directly invoked by users to start a session.",
+          "default": true
+        },
+        "default_stop_condition": {
+          "type": "string",
+          "description": "Default condition that signals the agent should hand back control (e.g., 'open-reviewed-green-pr')."
+        }
+      },
+      "required": ["name", "description"],
+      "additionalProperties": false
+    }
+  }
+}

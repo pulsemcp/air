@@ -1,0 +1,107 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/pulsemcp/air/main/schemas/mcp.schema.json",
+  "title": "AIR MCP Servers Configuration",
+  "description": "Configuration file defining MCP (Model Context Protocol) servers. Follows the mcp.json open standard — a flat map of server names to fully-resolved connection configurations.",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema reference for validation."
+    }
+  },
+  "additionalProperties": {
+    "$ref": "#/$defs/ServerConfiguration"
+  },
+  "propertyNames": {
+    "pattern": "^[$a-zA-Z0-9_\\[\\]-]+$",
+    "description": "Server name (identifier key). Must be alphanumeric with hyphens, underscores, or brackets allowed."
+  },
+  "$defs": {
+    "ServerConfiguration": {
+      "type": "object",
+      "description": "Configuration for a single MCP server.",
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "description": "Human-readable display name for the server."
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Human-readable description of what the server provides."
+        },
+        "type": {
+          "type": "string",
+          "enum": ["stdio", "sse", "streamable-http"],
+          "description": "Transport type. 'stdio' for local process servers, 'sse' for Server-Sent Events, 'streamable-http' for HTTP streaming."
+        },
+        "command": {
+          "type": "string",
+          "description": "Executable command to run for stdio servers. Supports ${ENV_VAR} interpolation."
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Command-line arguments for stdio servers. Supports ${ENV_VAR} interpolation."
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Environment variables for the server process. Values support ${ENV_VAR} interpolation."
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Endpoint URL for sse or streamable-http servers. Supports ${ENV_VAR} interpolation."
+        },
+        "headers": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "HTTP headers for remote servers. Values support ${ENV_VAR} interpolation."
+        }
+      },
+      "required": ["type"],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": { "const": "stdio" }
+            },
+            "required": ["type"]
+          },
+          "then": {
+            "required": ["command"],
+            "properties": {
+              "url": false,
+              "headers": false
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": { "enum": ["sse", "streamable-http"] }
+            },
+            "required": ["type"]
+          },
+          "then": {
+            "required": ["url"],
+            "properties": {
+              "command": false,
+              "args": false
+            }
+          }
+        }
+      ]
+    }
+  }
+}
