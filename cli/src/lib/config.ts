@@ -36,6 +36,12 @@ export interface ReferenceEntry {
   file: string;
 }
 
+export interface McpOAuthConfig {
+  clientId?: string;
+  scopes?: string[];
+  redirectUri?: string;
+}
+
 export interface McpServerEntry {
   title?: string;
   description?: string;
@@ -45,6 +51,7 @@ export interface McpServerEntry {
   env?: Record<string, string>;
   url?: string;
   headers?: Record<string, string>;
+  oauth?: McpOAuthConfig;
 }
 
 export interface PluginEntry {

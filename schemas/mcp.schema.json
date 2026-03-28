@@ -18,6 +18,30 @@
     "description": "Server name (identifier key). Must be alphanumeric with hyphens, underscores, or brackets allowed."
   },
   "$defs": {
+    "OAuthConfiguration": {
+      "type": "object",
+      "description": "OAuth configuration for remote servers using OAuth authorization.",
+      "properties": {
+        "clientId": {
+          "type": "string",
+          "description": "OAuth client ID. If omitted, the client uses Dynamic Client Registration (DCR) or discovery."
+        },
+        "scopes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "OAuth scopes to request in the authorization request. Passed as the scope parameter (RFC 6749 §3.3)."
+        },
+        "redirectUri": {
+          "type": "string",
+          "format": "uri",
+          "description": "Redirect URI for the OAuth callback. For CLI/desktop clients this is typically http://localhost:{port}/callback (RFC 8252)."
+        }
+      },
+      "additionalProperties": false
+    },
     "ServerConfiguration": {
       "type": "object",
       "description": "Configuration for a single MCP server.",
@@ -67,6 +91,9 @@
             "type": "string"
           },
           "description": "HTTP headers for remote servers. Values support ${ENV_VAR} interpolation."
+        },
+        "oauth": {
+          "$ref": "#/$defs/OAuthConfiguration"
         }
       },
       "required": ["type"],
@@ -82,7 +109,8 @@
             "required": ["command"],
             "properties": {
               "url": false,
-              "headers": false
+              "headers": false,
+              "oauth": false
             }
           }
         },

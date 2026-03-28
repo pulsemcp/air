@@ -33,6 +33,7 @@ MCP servers are configured in `mcp.json` as a flat map of server names to connec
 | `env` | object | No (stdio) | Environment variables for the server process. |
 | `url` | string | Yes (remote) | Endpoint URL for remote servers. |
 | `headers` | object | No (remote) | HTTP headers for remote servers. |
+| `oauth` | object | No (remote) | OAuth configuration (see below). |
 
 ## Transport Types
 
@@ -98,6 +99,56 @@ For remote servers using HTTP streaming (newer transport):
 **Required fields**: `type`, `url`
 **Forbidden fields**: `command`, `args`
 
+## OAuth Configuration
+
+Remote servers can use OAuth for authorization. The optional `oauth` object configures the OAuth flow:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `clientId` | string | OAuth client ID. Omit if the server supports Dynamic Client Registration. |
+| `scopes` | string[] | OAuth scopes to request in the authorization request. |
+| `redirectUri` | string | Redirect URI for the OAuth callback. |
+
+All fields are optional. Servers with full auto-discovery need no `oauth` config at all:
+
+```json
+{
+  "linear": {
+    "title": "Linear",
+    "type": "streamable-http",
+    "url": "https://mcp.linear.app/mcp"
+  }
+}
+```
+
+Use `scopes` to create entries with different access levels for the same server. Each entry gets its own OAuth session:
+
+```json
+{
+  "bigquery-readonly": {
+    "title": "BigQuery (Read-Only)",
+    "type": "streamable-http",
+    "url": "https://mcp.bigquery.example.com/mcp",
+    "oauth": {
+      "clientId": "bigquery-mcp-client",
+      "scopes": ["https://www.googleapis.com/auth/bigquery.readonly"]
+    }
+  },
+  "bigquery-readwrite": {
+    "title": "BigQuery (Read-Write)",
+    "type": "streamable-http",
+    "url": "https://mcp.bigquery.example.com/mcp",
+    "oauth": {
+      "clientId": "bigquery-mcp-client",
+      "scopes": [
+        "https://www.googleapis.com/auth/bigquery.readonly",
+        "https://www.googleapis.com/auth/bigquery"
+      ]
+    }
+  }
+}
+```
+
 ## Environment Variable Interpolation
 
 All string values support `${ENV_VAR}` interpolation. The agent's runtime resolves these from the user's environment:
@@ -147,6 +198,8 @@ Claude Code uses `.mcp.json` with servers nested under an `mcpServers` key:
 ```
 
 For remote servers, Claude Code uses `url` and optional `headers` instead of `command`/`args`.
+
+For OAuth servers, AIR translates the `oauth` object to Claude Code's format. The `redirectUri` is converted to Claude Code's `callbackPort` by extracting the port number. The `scopes` field is passed through for forward compatibility.
 
 ## Best Practices
 

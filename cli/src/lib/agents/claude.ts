@@ -8,6 +8,7 @@ import type {
   ResolvedArtifacts,
   RootEntry,
   McpServerEntry,
+  McpOAuthConfig,
   PluginEntry,
 } from "../config.js";
 
@@ -93,11 +94,37 @@ export class ClaudeAdapter implements AgentAdapter {
         mcpServers[name] = {
           url: server.url,
           ...(server.headers && { headers: server.headers }),
+          ...(server.oauth && { oauth: this.translateOAuth(server.oauth) }),
         };
       }
     }
 
     return { mcpServers };
+  }
+
+  /** Translate AIR oauth config to Claude Code oauth format */
+  private translateOAuth(oauth: McpOAuthConfig): Record<string, unknown> {
+    const result: Record<string, unknown> = {};
+    if (oauth.clientId) {
+      result.clientId = oauth.clientId;
+    }
+    if (oauth.redirectUri) {
+      // Claude Code uses callbackPort; extract port from redirectUri
+      try {
+        const url = new URL(oauth.redirectUri);
+        if (url.port) {
+          result.callbackPort = parseInt(url.port, 10);
+        }
+      } catch {
+        // If redirectUri isn't parseable, omit callbackPort
+      }
+    }
+    // Note: Claude Code does not currently support a scopes field in its
+    // oauth config. We pass it through for forward compatibility.
+    if (oauth.scopes) {
+      result.scopes = oauth.scopes;
+    }
+    return result;
   }
 
   /** Translate an AIR plugin to Claude Code plugin format */

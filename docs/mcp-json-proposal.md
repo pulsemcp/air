@@ -47,6 +47,7 @@ Server names must match `^[a-zA-Z0-9_\[\]-]+$` (alphanumeric, hyphens, underscor
 | `env` | object | No (stdio) | Environment variables (string values) |
 | `url` | string (URI) | Yes (remote) | Endpoint URL for sse/streamable-http servers |
 | `headers` | object | No (remote) | HTTP headers for remote servers (string values) |
+| `oauth` | object | No (remote) | OAuth configuration for servers using OAuth authorization |
 
 ### Transport-Specific Requirements
 
@@ -57,6 +58,7 @@ Server names must match `^[a-zA-Z0-9_\[\]-]+$` (alphanumeric, hyphens, underscor
 **Remote servers** (`type: "sse"` or `type: "streamable-http"`):
 - `url` is required
 - `command` and `args` are not allowed
+- `oauth` is allowed (see [OAuth Configuration](#oauth-configuration))
 
 ## Transport Types
 
@@ -129,9 +131,17 @@ Interpolation is primarily intended for authentication secrets:
 
 Non-secret values should use literals. The file is meant to be a fully-formed configuration — using interpolation for non-secrets undermines that purpose.
 
-### OAuth-Based Servers
+### OAuth Configuration
 
-Servers using OAuth handle authentication out-of-band via the MCP client. OAuth endpoints are discovered automatically via well-known metadata endpoints (RFC 8414, RFC 9728). No explicit OAuth configuration is needed:
+Remote servers can use OAuth for authorization. The `oauth` object configures how the MCP client initiates the OAuth flow:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `clientId` | string | No | OAuth client ID. If omitted, the client uses Dynamic Client Registration (DCR) or discovery. |
+| `scopes` | string[] | No | OAuth scopes to request in the authorization request. Passed as the `scope` parameter (RFC 6749 §3.3). |
+| `redirectUri` | string (URI) | No | Redirect URI for the OAuth callback. For CLI/desktop clients this is typically `http://localhost:{port}/callback` (RFC 8252). |
+
+All `oauth` fields are optional. Servers that support automatic discovery (RFC 8414, RFC 9728) and Dynamic Client Registration may need no configuration at all — just a `url`:
 
 ```json
 {
@@ -142,6 +152,58 @@ Servers using OAuth handle authentication out-of-band via the MCP client. OAuth 
   }
 }
 ```
+
+Servers that require a pre-registered client ID (no DCR support) specify it explicitly:
+
+```json
+{
+  "slack": {
+    "title": "Slack",
+    "type": "streamable-http",
+    "url": "https://mcp.slack.com/mcp",
+    "oauth": {
+      "clientId": "1601185624273.8899143856786",
+      "redirectUri": "http://localhost:3118/callback"
+    }
+  }
+}
+```
+
+The `scopes` field allows a single server to be configured with different access levels under different names. Each entry gets its own OAuth session and consent grant:
+
+```json
+{
+  "bigquery-readonly": {
+    "title": "BigQuery (Read-Only)",
+    "description": "Read-only analytical queries against BigQuery.",
+    "type": "streamable-http",
+    "url": "https://mcp.bigquery.example.com/mcp",
+    "oauth": {
+      "clientId": "bigquery-mcp-client",
+      "scopes": ["https://www.googleapis.com/auth/bigquery.readonly"]
+    }
+  },
+  "bigquery-readwrite": {
+    "title": "BigQuery (Read-Write)",
+    "description": "Full read-write access to BigQuery.",
+    "type": "streamable-http",
+    "url": "https://mcp.bigquery.example.com/mcp",
+    "oauth": {
+      "clientId": "bigquery-mcp-client",
+      "scopes": [
+        "https://www.googleapis.com/auth/bigquery.readonly",
+        "https://www.googleapis.com/auth/bigquery"
+      ]
+    }
+  }
+}
+```
+
+This enables shareable configurations: a recipient copies the file, authenticates with their own identity, and each entry is scoped correctly via the OAuth consent flow.
+
+**Validation rules:**
+- `oauth` is forbidden for `stdio` entries
+- `oauth` and `headers` with an `Authorization` key should not both be present on the same entry — use one auth mechanism or the other
 
 ## Version Pinning
 
@@ -161,6 +223,7 @@ Claude Code uses a similar but distinct `.mcp.json` format:
 |--------------------------|------------------------|
 | Servers at root level | Servers nested under `mcpServers` key |
 | `type` field required | `type` optional (defaults to stdio) |
+| `oauth` object with `clientId`, `scopes`, `redirectUri` | `oauth` object with `clientId`, `callbackPort` |
 
 **This proposal:**
 ```json
@@ -213,7 +276,7 @@ AIR translates between these formats at session start time. See [MCP Servers](mc
   },
   "internal-api": {
     "title": "Internal API",
-    "description": "Connection to internal services",
+    "description": "Connection to internal services via API key",
     "type": "streamable-http",
     "url": "https://internal.example.com/mcp",
     "headers": {
@@ -222,9 +285,42 @@ AIR translates between these formats at session start time. See [MCP Servers](mc
   },
   "linear": {
     "title": "Linear",
-    "description": "Linear project management (OAuth)",
+    "description": "Linear project management (OAuth with auto-discovery)",
     "type": "streamable-http",
     "url": "https://mcp.linear.app/mcp"
+  },
+  "slack": {
+    "title": "Slack",
+    "description": "Slack workspace access (OAuth with pre-registered client)",
+    "type": "streamable-http",
+    "url": "https://mcp.slack.com/mcp",
+    "oauth": {
+      "clientId": "1601185624273.8899143856786",
+      "redirectUri": "http://localhost:3118/callback"
+    }
+  },
+  "bigquery-readonly": {
+    "title": "BigQuery (Read-Only)",
+    "description": "Read-only analytical queries against BigQuery",
+    "type": "streamable-http",
+    "url": "https://mcp.bigquery.example.com/mcp",
+    "oauth": {
+      "clientId": "bigquery-mcp-client",
+      "scopes": ["https://www.googleapis.com/auth/bigquery.readonly"]
+    }
+  },
+  "bigquery-readwrite": {
+    "title": "BigQuery (Read-Write)",
+    "description": "Full read-write access to BigQuery",
+    "type": "streamable-http",
+    "url": "https://mcp.bigquery.example.com/mcp",
+    "oauth": {
+      "clientId": "bigquery-mcp-client",
+      "scopes": [
+        "https://www.googleapis.com/auth/bigquery.readonly",
+        "https://www.googleapis.com/auth/bigquery"
+      ]
+    }
   }
 }
 ```
