@@ -308,19 +308,68 @@ Schemas are in the [`schemas/`](schemas/) directory. Point your editor's JSON sc
 6. **Build for everyone.** AI agents aren't just for engineers — engineers are the early adopters. Don't build infrastructure only engineers can use.
 7. **Fork and make it your own.** Teams are encouraged to fork this framework and adapt it. The patterns matter more than the specific implementation.
 
-## Project Structure
+## Architecture: Core + Extensions
+
+AIR is structured as a monorepo with a thin core and pluggable extensions:
 
 ```
 air/
-├── schemas/          # JSON Schema files for all artifact types
-├── examples/         # Example configurations
-├── docs/             # Detailed documentation
-└── cli/              # TypeScript CLI (air validate, air start, etc.)
+├── schemas/                          # JSON Schema files for all artifact types
+├── examples/                         # Example configurations
+├── docs/                             # Documentation
+├── packages/
+│   ├── core/                         # @pulsemcp/air-core
+│   │   └── Config resolution, validation, schemas, extension interfaces
+│   ├── cli/                          # @pulsemcp/air-cli
+│   │   └── CLI commands (validate, list, init, start)
+│   └── extensions/
+│       ├── adapter-claude/           # @pulsemcp/air-adapter-claude
+│       │   └── Translates AIR config → Claude Code format
+│       └── provider-github/          # @pulsemcp/air-provider-github
+│           └── Resolves github:// URIs in air.json
 ```
+
+### Extension Points
+
+The core defines four extension interfaces:
+
+| Extension Point | Interface | Built-in | Official Extensions |
+|----------------|-----------|----------|-------------------|
+| **Catalog Providers** | `CatalogProvider` | Local filesystem | `@pulsemcp/air-provider-github` |
+| **Agent Adapters** | `AgentAdapter` | None | `@pulsemcp/air-adapter-claude` |
+| **Secret Resolvers** | `SecretResolver` | `process.env` | None yet |
+| **Transports** | Consume SDK | CLI | None yet |
+
+Community extensions follow the `@pulsemcp/air-adapter-*` and `@pulsemcp/air-provider-*` naming convention.
+
+### Packages
+
+| Package | Description |
+|---------|------------|
+| `@pulsemcp/air-core` | Config resolution, validation, schemas, and extension interfaces. No agent-specific code. |
+| `@pulsemcp/air-cli` | CLI wrapper. Discovers installed adapters for `air start`. |
+| `@pulsemcp/air-adapter-claude` | Claude Code adapter. Translates MCP servers, plugins, skills to Claude format. |
+| `@pulsemcp/air-provider-github` | GitHub catalog provider. Fetches remote artifact indexes via `gh` CLI. |
 
 ## Contributing
 
 This project is in its early experimental phase. We welcome issues, discussions, and pull requests. Please read the documentation thoroughly before contributing.
+
+### Development
+
+```bash
+# Install all dependencies
+npm install
+
+# Build core (required before other packages can type-check)
+npm run build -w packages/core
+
+# Run all tests
+npx vitest run
+
+# Type-check a specific package
+npx tsc --noEmit -p packages/core/tsconfig.json
+```
 
 ## License
 

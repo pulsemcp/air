@@ -1,0 +1,49 @@
+// Artifact types
+export type {
+  AirConfig,
+  ResolvedArtifacts,
+  SkillEntry,
+  ReferenceEntry,
+  McpOAuthConfig,
+  McpServerEntry,
+  PluginEntry,
+  RootEntry,
+  HookEntry,
+} from "./types.js";
+
+// Extension interfaces
+export type {
+  AgentAdapter,
+  CatalogProvider,
+  SecretResolver,
+  AirExtension,
+  AgentSessionConfig,
+  StartCommand,
+} from "./types.js";
+
+// Config resolution
+export {
+  loadAirConfig,
+  getDefaultAirJsonPath,
+  getAirJsonPath,
+  resolveArtifacts,
+  mergeArtifacts,
+  emptyArtifacts,
+} from "./config.js";
+export type { ResolveOptions } from "./config.js";
+
+// Validation
+export { validateJson } from "./validator.js";
+export type { ValidationResult, ValidationError } from "./validator.js";
+
+// Schemas
+export {
+  getSchemasDir,
+  getSchemaPath,
+  loadSchema,
+  detectSchemaType,
+  detectSchemaFromValue,
+  getAllSchemaTypes,
+  isValidSchemaType,
+} from "./schemas.js";
+export type { SchemaType } from "./schemas.js";

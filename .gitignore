@@ -2,7 +2,8 @@
 node_modules/
 
 # Build output
-cli/dist/
+dist/
+packages/core/schemas/
 
 # Local overrides
 .air/local/

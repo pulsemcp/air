@@ -146,6 +146,10 @@ If you're building an orchestration platform on top of AIR, here's a suggested a
 └─────────────────────────────────────────┘
 ```
 
-**AIR SDK** sits between the orchestration platform and the agent runtime. The platform calls AIR to resolve configs and generate agent-specific files, then manages the agent process lifecycle itself.
+**AIR Core** (`@pulsemcp/air-core`) sits between the orchestration platform and the agent runtime. The platform calls AIR to resolve configs, then uses an **agent adapter extension** (e.g., `@pulsemcp/air-adapter-claude`) to translate configs to agent-specific format. The platform manages the agent process lifecycle itself.
+
+An orchestration platform typically depends on just two AIR packages:
+- `@pulsemcp/air-core` — for `resolveArtifacts()`, types, and validation
+- `@pulsemcp/air-adapter-<agent>` — for config translation to the target agent's format
 
 This separation keeps AIR focused on config — a problem with a clean, general solution — and leaves orchestration to platforms that can make opinionated choices about persistence, security, and workflow.

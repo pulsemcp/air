@@ -1,0 +1,17 @@
+{
+  "private": true,
+  "workspaces": [
+    "packages/core",
+    "packages/cli",
+    "packages/extensions/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "npm run lint --workspaces"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.0"
+  }
+}
