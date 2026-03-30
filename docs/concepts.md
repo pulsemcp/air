@@ -124,3 +124,9 @@ When writing artifact descriptions, be explicit about scope:
 - **Project-level**: "API rate limiting configuration" — scoped to a specific project
 
 The description is what agents (and humans) use to decide relevance. Make it count.
+
+## What AIR Is Not
+
+AIR is a configuration layer — it resolves, validates, and translates. It does not orchestrate agent sessions, manage subagents, persist state, or handle secrets.
+
+Teams building multi-agent systems (sequential pipelines, delegated subagents, event-triggered sessions) use AIR as the config layer underneath their orchestration platform. See [Orchestration & Multi-Agent Patterns](orchestration.md) for guidance on what belongs where.

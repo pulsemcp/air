@@ -204,6 +204,21 @@ Hooks are shell commands that fire at agent lifecycle events. Use them for notif
 }
 ```
 
+## Scope
+
+AIR is a **configuration layer** — it resolves, validates, and translates agent configs. It is not an orchestration platform.
+
+| AIR handles | Orchestration platforms handle |
+|-------------|-------------------------------|
+| Config resolution & composition | Session persistence & status tracking |
+| JSON Schema validation | Subagent invocation & coordination |
+| Agent-specific translation | Job queuing, retries, scheduling |
+| Single-session setup via `air start` | Secret management & credential vaults |
+| `${ENV_VAR}` interpolation in configs | Git clone lifecycle & working directories |
+| | Monitoring, cost tracking, dashboards |
+
+Teams building multi-agent systems use AIR as the config layer underneath their orchestration platform. See [Orchestration](docs/orchestration.md) for patterns and guidance.
+
 ## Quickstart
 
 ### 1. Install the CLI
@@ -266,6 +281,7 @@ See [docs/cli.md](docs/cli.md) for the full CLI reference. Key commands:
 | [Hooks](docs/hooks.md) | Lifecycle hooks |
 | [CLI](docs/cli.md) | Full CLI reference |
 | [Configuration](docs/configuration.md) | Configuration loading, composition, and layering |
+| [Orchestration](docs/orchestration.md) | Scope boundaries, multi-agent patterns, and building on top of AIR |
 
 ## Schema Validation
 
