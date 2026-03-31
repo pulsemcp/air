@@ -83,11 +83,8 @@ air start claude --root web-app --dry-run
 air start claude --skip-confirmation
 ```
 
-**Supported agents:**
-- `claude` — Claude Code (fully supported)
-- `opencode` — OpenCode (coming soon)
-- `cursor` — Cursor (coming soon)
-- `pi` — Pi (coming soon)
+**Agents:** `air start <agent>` works for any agent with an installed adapter package. The CLI discovers adapters via `@pulsemcp/air-adapter-<agent>` packages. Currently available:
+- `claude` — via `@pulsemcp/air-adapter-claude` (officially maintained)
 
 **Options:**
 

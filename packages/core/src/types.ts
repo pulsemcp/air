@@ -166,8 +166,9 @@ export interface CatalogProvider {
 /**
  * Secret Resolver — resolves ${VAR} interpolation in config values.
  *
- * Core provides EnvSecretResolver (reads process.env) as a built-in.
- * Extensions can add 1Password, Vault, AWS Secrets Manager, etc.
+ * Adapters accept an array of SecretResolver instances and try them
+ * in order. Extensions can implement resolvers for process.env,
+ * 1Password, Vault, AWS Secrets Manager, etc.
  */
 export interface SecretResolver {
   /** Unique name for this resolver (e.g., "env", "1password") */

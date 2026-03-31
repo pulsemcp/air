@@ -33,14 +33,15 @@ Note: CLI tools are themselves not a standard. While you can shoehorn them insid
 
 ## Coding Agent Support
 
-AIR generates agent-specific configuration at session start time. Current support:
+AIR generates agent-specific configuration at session start time via **adapter extensions**. Install the adapter for your agent:
 
-| Agent | Status | Notes |
-|-------|--------|-------|
-| **Claude Code** | Supported | Full support for MCP, skills, plugins, hooks, and roots. |
-| **OpenCode** | Coming Soon | MCP server translation planned. |
-| **Cursor** | Coming Soon | MCP server and rules translation planned. |
-| **Pi** | Coming Soon | Plugin and MCP translation planned. |
+| Agent | Adapter Package | Status |
+|-------|----------------|--------|
+| **Claude Code** | `@pulsemcp/air-adapter-claude` | Officially maintained |
+| **OpenCode** | `@pulsemcp/air-adapter-opencode` | Community / planned |
+| **Cursor** | `@pulsemcp/air-adapter-cursor` | Community / planned |
+
+To add support for a new agent, publish an adapter package implementing the `AgentAdapter` interface from `@pulsemcp/air-core`.
 
 ## Core Concepts
 
@@ -349,7 +350,7 @@ Community extensions follow the `@pulsemcp/air-adapter-*` and `@pulsemcp/air-pro
 | `@pulsemcp/air-core` | Config resolution, validation, schemas, and extension interfaces. No agent-specific code. |
 | `@pulsemcp/air-cli` | CLI wrapper. Discovers installed adapters for `air start`. |
 | `@pulsemcp/air-adapter-claude` | Claude Code adapter. Translates MCP servers, plugins, skills to Claude format. |
-| `@pulsemcp/air-provider-github` | GitHub catalog provider. Fetches remote artifact indexes via `gh` CLI. |
+| `@pulsemcp/air-provider-github` | GitHub catalog provider. Fetches remote artifact indexes via the GitHub REST API. |
 
 ## Contributing
 
