@@ -19,6 +19,8 @@ export type {
   AirExtension,
   AgentSessionConfig,
   StartCommand,
+  PrepareSessionOptions,
+  PreparedSession,
 } from "./types.js";
 
 // Config resolution

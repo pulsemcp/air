@@ -118,6 +118,34 @@ export interface AgentAdapter {
   ): AgentSessionConfig;
   /** Build the shell command to start the agent */
   buildStartCommand(config: AgentSessionConfig): StartCommand;
+
+  /**
+   * Prepare a working directory for an agent session.
+   * Writes all files the agent needs: MCP config, skills, hooks, plugins.
+   * This is the single entry point for session setup — the adapter owns
+   * the full "make this directory ready for my agent" contract.
+   */
+  prepareSession(
+    artifacts: ResolvedArtifacts,
+    targetDir: string,
+    options?: PrepareSessionOptions
+  ): Promise<PreparedSession>;
+}
+
+export interface PrepareSessionOptions {
+  /** Root to filter artifacts by (uses root's default_* arrays) */
+  root?: RootEntry;
+  /** Secret resolvers for ${VAR} interpolation in MCP configs */
+  secretResolvers?: SecretResolver[];
+}
+
+export interface PreparedSession {
+  /** Paths to config files written (e.g., ".mcp.json") */
+  configFiles: string[];
+  /** Paths to skill directories created */
+  skillPaths: string[];
+  /** The command to start the agent in the prepared directory */
+  startCommand: StartCommand;
 }
 
 /**
