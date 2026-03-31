@@ -73,19 +73,35 @@ describe("getCacheDir", () => {
 });
 
 describe("GitHubCatalogProvider", () => {
-  const provider = new GitHubCatalogProvider();
-
   it("has scheme 'github'", () => {
+    const provider = new GitHubCatalogProvider();
     expect(provider.scheme).toBe("github");
   });
 
-  it("throws a helpful error when gh CLI fails", async () => {
-    // Use a non-existent repo to trigger a failure
+  it("accepts token via constructor options", () => {
+    // Just verify construction doesn't throw
+    const provider = new GitHubCatalogProvider({ token: "ghp_test123" });
+    expect(provider.scheme).toBe("github");
+  });
+
+  it("returns helpful error for non-existent repos", async () => {
+    const provider = new GitHubCatalogProvider();
     await expect(
       provider.resolve(
         "github://nonexistent-owner-abc123/nonexistent-repo-xyz789/file.json",
         "/tmp"
       )
-    ).rejects.toThrow("Failed to fetch");
+    ).rejects.toThrow("GitHub API returned 404");
+  });
+
+  it("fetches a public file without auth", async () => {
+    const provider = new GitHubCatalogProvider();
+    const result = await provider.resolve(
+      "github://pulsemcp/air/examples/skills/skills.json",
+      "/tmp"
+    );
+    expect(Object.keys(result).length).toBeGreaterThan(0);
+    // The example skills.json has known entries
+    expect(result["deploy-staging"]).toBeDefined();
   });
 });

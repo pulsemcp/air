@@ -1,5 +1,4 @@
-import { execSync } from "child_process";
-import { existsSync, mkdirSync, readFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { resolve } from "path";
 import type { CatalogProvider } from "@pulsemcp/air-core";
 
@@ -8,6 +7,17 @@ export interface GitHubUri {
   repo: string;
   path: string;
   ref?: string;
+}
+
+export interface GitHubProviderOptions {
+  /**
+   * GitHub personal access token for authenticating API requests.
+   * Required for private repositories. Optional for public repos
+   * (unauthenticated requests have lower rate limits).
+   *
+   * Can also be set via the AIR_GITHUB_TOKEN environment variable.
+   */
+  token?: string;
 }
 
 /**
@@ -51,10 +61,18 @@ export function getCacheDir(): string {
 
 /**
  * GitHub catalog provider — resolves github:// URIs by fetching
- * file content from GitHub repositories using the gh CLI.
+ * file content from the GitHub REST API.
+ *
+ * Works without authentication for public repositories. Pass a token
+ * (or set AIR_GITHUB_TOKEN) for private repos or higher rate limits.
  */
 export class GitHubCatalogProvider implements CatalogProvider {
   scheme = "github";
+  private token: string | undefined;
+
+  constructor(options?: GitHubProviderOptions) {
+    this.token = options?.token || process.env.AIR_GITHUB_TOKEN;
+  }
 
   async resolve(
     uri: string,
@@ -72,33 +90,64 @@ export class GitHubCatalogProvider implements CatalogProvider {
       return JSON.parse(content);
     }
 
-    // Fetch via gh CLI
-    const repoSlug = `${parsed.owner}/${parsed.repo}`;
-    const ghRef = parsed.ref ? `--ref ${parsed.ref}` : "";
-    const cmd = `gh api repos/${repoSlug}/contents/${parsed.path} ${ghRef} --jq '.content' | base64 -d`;
-
-    let content: string;
-    try {
-      content = execSync(cmd, {
-        stdio: ["pipe", "pipe", "pipe"],
-        encoding: "utf-8",
-      }).trim();
-    } catch (err) {
-      throw new Error(
-        `Failed to fetch ${uri} via GitHub API. ` +
-          `Ensure 'gh' CLI is installed and authenticated.\n` +
-          `  Repository: ${repoSlug}\n` +
-          `  Path: ${parsed.path}\n` +
-          (err instanceof Error ? `  Error: ${err.message}` : "")
-      );
-    }
+    const content = await this.fetchFromGitHub(parsed);
 
     // Write to cache
     const cacheFileDir = resolve(cachePath, "..");
     mkdirSync(cacheFileDir, { recursive: true });
-    const { writeFileSync } = await import("fs");
     writeFileSync(cachePath, content);
 
     return JSON.parse(content);
+  }
+
+  private async fetchFromGitHub(parsed: GitHubUri): Promise<string> {
+    const repoSlug = `${parsed.owner}/${parsed.repo}`;
+    let url = `https://api.github.com/repos/${repoSlug}/contents/${parsed.path}`;
+    if (parsed.ref) {
+      url += `?ref=${encodeURIComponent(parsed.ref)}`;
+    }
+
+    const headers: Record<string, string> = {
+      Accept: "application/vnd.github.v3+json",
+      "User-Agent": "air-provider-github",
+    };
+    if (this.token) {
+      headers["Authorization"] = `Bearer ${this.token}`;
+    }
+
+    let response: Response;
+    try {
+      response = await fetch(url, { headers });
+    } catch (err) {
+      throw new Error(
+        `Network error fetching ${url}.\n` +
+          (err instanceof Error ? `  Error: ${err.message}` : "")
+      );
+    }
+
+    if (!response.ok) {
+      const hint =
+        response.status === 404
+          ? " (repository may be private — set AIR_GITHUB_TOKEN or pass token option)"
+          : response.status === 403
+            ? " (rate limit exceeded — set AIR_GITHUB_TOKEN for higher limits)"
+            : "";
+      throw new Error(
+        `GitHub API returned ${response.status} for ${url}${hint}\n` +
+          `  Repository: ${repoSlug}\n` +
+          `  Path: ${parsed.path}`
+      );
+    }
+
+    const data = (await response.json()) as { content?: string; encoding?: string };
+
+    if (!data.content || data.encoding !== "base64") {
+      throw new Error(
+        `Unexpected response format from GitHub API for ${url}.\n` +
+          `  Expected base64-encoded content, got encoding="${data.encoding}".`
+      );
+    }
+
+    return Buffer.from(data.content, "base64").toString("utf-8");
   }
 }
