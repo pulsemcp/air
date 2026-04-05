@@ -64,6 +64,30 @@ describe("parseGitHubUri", () => {
       "Invalid github:// URI"
     );
   });
+
+  it("rejects path traversal in owner", () => {
+    expect(() => parseGitHubUri("github://../../etc/repo/file.json")).toThrow(
+      "Path traversal"
+    );
+  });
+
+  it("rejects path traversal in ref", () => {
+    expect(() =>
+      parseGitHubUri("github://acme/repo/file.json@../../etc")
+    ).toThrow("Path traversal");
+  });
+
+  it("rejects shell metacharacters in owner", () => {
+    expect(() =>
+      parseGitHubUri("github://$(whoami)/repo/file.json")
+    ).toThrow("Invalid owner");
+  });
+
+  it("rejects shell metacharacters in ref", () => {
+    expect(() =>
+      parseGitHubUri("github://acme/repo/file.json@main;rm -rf /")
+    ).toThrow("Invalid ref");
+  });
 });
 
 describe("getCacheDir", () => {

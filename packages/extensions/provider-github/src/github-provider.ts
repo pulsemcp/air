@@ -1,4 +1,4 @@
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 import { existsSync, readFileSync } from "fs";
 import { resolve, dirname } from "path";
 import type { CatalogProvider } from "@pulsemcp/air-core";
@@ -18,6 +18,26 @@ export interface GitHubProviderOptions {
    * Can also be set via the AIR_GITHUB_TOKEN environment variable.
    */
   token?: string;
+}
+
+/**
+ * Validate that a URI component contains only safe characters.
+ * Prevents path traversal and shell injection via owner/repo/ref values.
+ */
+function validateUriComponent(value: string, label: string): void {
+  // Allow alphanumeric, hyphens, dots, underscores, forward slashes (for paths)
+  if (!/^[a-zA-Z0-9._\-/]+$/.test(value)) {
+    throw new Error(
+      `Invalid ${label} in github:// URI: "${value}". ` +
+        `Only alphanumeric characters, hyphens, dots, underscores, and forward slashes are allowed.`
+    );
+  }
+  // Prevent path traversal
+  if (value.includes("..")) {
+    throw new Error(
+      `Invalid ${label} in github:// URI: "${value}". Path traversal ("..") is not allowed.`
+    );
+  }
 }
 
 /**
@@ -48,6 +68,12 @@ export function parseGitHubUri(uri: string): GitHubUri {
     filePath = filePath.slice(0, atIndex);
   }
 
+  // Validate all components to prevent shell injection and path traversal
+  validateUriComponent(owner, "owner");
+  validateUriComponent(repo, "repo");
+  if (ref) validateUriComponent(ref, "ref");
+  validateUriComponent(filePath, "path");
+
   return { owner, repo, path: filePath, ref };
 }
 
@@ -64,6 +90,14 @@ export function getCacheDir(): string {
  */
 export function getClonePath(owner: string, repo: string, ref: string): string {
   return resolve(getCacheDir(), owner, repo, ref);
+}
+
+/**
+ * Redact tokens from a string to prevent leaking credentials in logs.
+ */
+function redactToken(text: string, token?: string): string {
+  if (!token) return text;
+  return text.replaceAll(token, "***");
 }
 
 /**
@@ -137,21 +171,17 @@ export class GitHubCatalogProvider implements CatalogProvider {
     }
 
     const repoUrl = this.buildCloneUrl(owner, repo);
+    const publicUrl = `https://github.com/${owner}/${repo}.git`;
 
     try {
-      if (ref === "HEAD") {
-        execSync(
-          `git clone --depth 1 ${repoUrl} ${cloneDir}`,
-          { stdio: "pipe", timeout: 60000 }
-        );
-      } else {
-        execSync(
-          `git clone --depth 1 --branch ${ref} ${repoUrl} ${cloneDir}`,
-          { stdio: "pipe", timeout: 60000 }
-        );
-      }
+      const args = ref === "HEAD"
+        ? ["clone", "--depth", "1", repoUrl, cloneDir]
+        : ["clone", "--depth", "1", "--branch", ref, repoUrl, cloneDir];
+
+      execFileSync("git", args, { stdio: "pipe", timeout: 60000 });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const rawMsg = err instanceof Error ? err.message : String(err);
+      const msg = redactToken(rawMsg, this.token);
       const hint = msg.includes("Authentication failed") || msg.includes("could not read Username")
         ? " (repository may be private — set AIR_GITHUB_TOKEN or pass token option)"
         : msg.includes("not found")
@@ -159,7 +189,7 @@ export class GitHubCatalogProvider implements CatalogProvider {
           : "";
       throw new Error(
         `Failed to clone ${owner}/${repo} at ref "${ref}"${hint}\n` +
-          `  URL: ${repoUrl}\n` +
+          `  URL: ${publicUrl}\n` +
           `  Error: ${msg}`
       );
     }
