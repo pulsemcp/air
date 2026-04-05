@@ -1,8 +1,8 @@
-# AIR — Agent Infrastructure Repository
+# AIR — AI Artifact Catalog Framework
 
 > **Experimental** — This framework is under active development and not yet fit for production usage. APIs, schemas, and conventions may change without notice. We welcome early feedback and contributions.
 
-AIR is an open source framework that enables org/team collaboration on AI-related artifacts that empower their autonomous agents. Designed for engineering teams, extensible to any knowledge work.
+AIR is an open source framework based exclusively on open standards (and emerging standards) that enables org/team collaboration on AI-related artifacts that empower their autonomous agents. Designed for engineering teams, extensible to any knowledge work.
 
 ## Why AIR?
 
@@ -10,7 +10,7 @@ As teams adopt agents, they inevitably accumulate configuration: MCP server defi
 
 AIR solves this by:
 
-- **Orienting around open standards** — Agent Skills, MCP, and more to come. The agentic ecosystem will constantly evolve, but agreed-upon standards and interfaces will be the deterministic mainstays that the ecosystem builds on top of. Everything else is just custom glue.
+- **Orienting around open standards** — Agent Skills, MCP, Plugins, and more to come. The agentic ecosystem will constantly evolve, but agreed-upon standards and interfaces will be the deterministic mainstays that the ecosystem builds on top of. Everything else is just custom glue.
 - **Keeping everything in git** — All configuration is version-controlled, reviewable, and composable. No proprietary backends.
 - **Being maximally DRY** — No copy/pasting, drift, or unclear ownership. If someone in your org does the work once and catalogs it properly, nobody ever has to touch it again.
 - **Per-agent-session configs** — Not per-user or per-project (those don't scale). Each session assembles exactly what it needs from composable layers.
