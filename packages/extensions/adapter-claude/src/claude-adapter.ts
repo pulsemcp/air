@@ -95,21 +95,25 @@ export class ClaudeAdapter implements AgentAdapter {
   ): Promise<PreparedSession> {
     const root = options?.root;
     const resolvers = options?.secretResolvers || [];
+    const baseDir = options?.baseDir || dirname(targetDir);
     const configFiles: string[] = [];
     const skillPaths: string[] = [];
 
-    // 1. Resolve which artifacts to activate
-    const mcpServers = root?.default_mcp_servers
-      ? this.filterByIds(artifacts.mcp, root.default_mcp_servers)
+    // 1. Resolve which artifacts to activate (overrides take precedence over root defaults)
+    const mcpServerIds = options?.mcpServerOverrides
+      ?? root?.default_mcp_servers
+      ?? undefined;
+    const mcpServers = mcpServerIds
+      ? this.filterByIds(artifacts.mcp, mcpServerIds)
       : artifacts.mcp;
 
     const plugins = root?.default_plugins
       ? this.filterByIds(artifacts.plugins, root.default_plugins)
       : artifacts.plugins;
 
-    const skillIds = root?.default_skills
-      ? root.default_skills
-      : Object.keys(artifacts.skills);
+    const skillIds = options?.skillOverrides
+      ?? root?.default_skills
+      ?? Object.keys(artifacts.skills);
 
     // 2. Write .mcp.json with resolved secrets
     const resolvedServers = await this.resolveServerSecrets(
@@ -131,11 +135,8 @@ export class ClaudeAdapter implements AgentAdapter {
       // Skip if skill already exists locally (local takes priority)
       if (existsSync(skillTargetDir)) continue;
 
-      // Copy skill directory contents
-      const skillSourceDir = resolve(
-        dirname(targetDir),
-        skill.path
-      );
+      // Copy skill directory contents (resolved relative to baseDir)
+      const skillSourceDir = resolve(baseDir, skill.path);
       if (existsSync(skillSourceDir)) {
         this.copyDirRecursive(skillSourceDir, skillTargetDir);
         skillPaths.push(skillTargetDir);
@@ -147,7 +148,7 @@ export class ClaudeAdapter implements AgentAdapter {
         for (const refId of skill.references) {
           const ref = artifacts.references[refId];
           if (!ref) continue;
-          const refSourcePath = resolve(dirname(targetDir), ref.file);
+          const refSourcePath = resolve(baseDir, ref.file);
           if (existsSync(refSourcePath)) {
             const refTargetPath = join(
               refsTargetDir,
