@@ -4,6 +4,11 @@
   "publishConfig": {
     "access": "public"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pulsemcp/air.git",
+    "directory": "packages/extensions/adapter-claude"
+  },
   "description": "AIR adapter for Claude Code — translates AIR config to Claude Code format",
   "type": "module",
   "main": "./dist/index.js",
