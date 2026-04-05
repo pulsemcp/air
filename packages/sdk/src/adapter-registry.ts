@@ -1,7 +1,7 @@
 import type { AgentAdapter, AirExtension } from "@pulsemcp/air-core";
 
 /**
- * Known adapter packages. The CLI tries to dynamically import each one.
+ * Known adapter packages. The SDK tries to dynamically import each one.
  * If the package is installed, its adapter is available. If not, it's skipped.
  */
 const KNOWN_ADAPTERS: { name: string; packageName: string }[] = [

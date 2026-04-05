@@ -1,26 +1,9 @@
 import { Command } from "commander";
 import {
-  getAirJsonPath,
-  resolveArtifacts,
-  emptyArtifacts,
-} from "@pulsemcp/air-core";
-
-type ListType =
-  | "skills"
-  | "mcp"
-  | "plugins"
-  | "roots"
-  | "hooks"
-  | "references";
-
-const VALID_TYPES: ListType[] = [
-  "skills",
-  "mcp",
-  "plugins",
-  "roots",
-  "hooks",
-  "references",
-];
+  listArtifacts,
+  VALID_ARTIFACT_TYPES,
+  type ArtifactType,
+} from "@pulsemcp/air-sdk";
 
 export function listCommand(): Command {
   const cmd = new Command("list")
@@ -32,19 +15,17 @@ export function listCommand(): Command {
       "Artifact type to list: skills, mcp, plugins, roots, hooks, references"
     )
     .action(async (type: string) => {
-      if (!VALID_TYPES.includes(type as ListType)) {
-        console.error(
-          `Error: Unknown artifact type "${type}". Valid types: ${VALID_TYPES.join(", ")}`
-        );
+      let artifacts;
+      try {
+        artifacts = await listArtifacts(type);
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Unknown error";
+        console.error(`Error: ${message}`);
         process.exit(1);
       }
 
-      const airJsonPath = getAirJsonPath();
-      const artifacts = airJsonPath
-        ? await resolveArtifacts(airJsonPath)
-        : emptyArtifacts();
-
-      const listType = type as ListType;
+      const listType = type as ArtifactType;
 
       switch (listType) {
         case "skills": {

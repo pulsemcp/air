@@ -1,13 +1,5 @@
 import { Command } from "commander";
-import { readFileSync } from "fs";
-import { resolve } from "path";
-import {
-  detectSchemaType,
-  detectSchemaFromValue,
-  isValidSchemaType,
-  validateJson,
-  type SchemaType,
-} from "@pulsemcp/air-core";
+import { validateFile } from "@pulsemcp/air-sdk";
 
 export function validateCommand(): Command {
   const cmd = new Command("validate")
@@ -18,67 +10,25 @@ export function validateCommand(): Command {
       "Override schema detection (air, skills, references, mcp, plugins, roots, hooks)"
     )
     .action((file: string, options: { schema?: string }) => {
-      const filePath = resolve(process.cwd(), file);
-
-      let data: unknown;
       try {
-        const content = readFileSync(filePath, "utf-8");
-        data = JSON.parse(content);
+        const result = validateFile(file, { schema: options.schema });
+
+        if (result.valid) {
+          console.log(`\u2713 ${file} is valid (schema: ${result.schemaType})`);
+          process.exit(0);
+        } else {
+          console.error(
+            `\u2717 ${file} has validation errors (schema: ${result.schemaType}):`
+          );
+          for (const error of result.validation.errors) {
+            console.error(`  ${error.path}: ${error.message}`);
+          }
+          process.exit(1);
+        }
       } catch (err) {
         const message =
           err instanceof Error ? err.message : "Unknown error";
-        console.error(`Error: Could not read or parse "${file}": ${message}`);
-        process.exit(1);
-      }
-
-      // Determine schema type: --schema flag > $schema in JSON > filename substring
-      let schemaType: SchemaType | null = null;
-
-      if (options.schema) {
-        if (!isValidSchemaType(options.schema)) {
-          console.error(
-            `Error: Unknown schema type "${options.schema}". Valid types: air, skills, references, mcp, plugins, roots, hooks`
-          );
-          process.exit(1);
-        }
-        schemaType = options.schema;
-      }
-
-      if (
-        !schemaType &&
-        data &&
-        typeof data === "object" &&
-        !Array.isArray(data)
-      ) {
-        const schemaValue = (data as Record<string, unknown>).$schema;
-        if (typeof schemaValue === "string") {
-          schemaType = detectSchemaFromValue(schemaValue);
-        }
-      }
-
-      if (!schemaType) {
-        schemaType = detectSchemaType(file);
-      }
-
-      if (!schemaType) {
-        console.error(
-          `Error: Could not detect schema type for "${file}". Use --schema to specify.`
-        );
-        process.exit(1);
-      }
-
-      const result = validateJson(data, schemaType);
-
-      if (result.valid) {
-        console.log(`\u2713 ${file} is valid (schema: ${schemaType})`);
-        process.exit(0);
-      } else {
-        console.error(
-          `\u2717 ${file} has validation errors (schema: ${schemaType}):`
-        );
-        for (const error of result.errors) {
-          console.error(`  ${error.path}: ${error.message}`);
-        }
+        console.error(`Error: ${message}`);
         process.exit(1);
       }
     });
