@@ -23,7 +23,7 @@ The index files act as lightweight registries. Agents use the ID and description
 | Skills | `skills/skills.json` | `SKILL.md` files in directories | `schemas/skills.schema.json` |
 | References | `references/references.json` | Markdown documents | `schemas/references.schema.json` |
 | MCP Servers | `mcp/mcp.json` | Inline server configs | `schemas/mcp.schema.json` |
-| Plugins | `plugins/plugins.json` | Groupings of MCP servers and skills | `schemas/plugins.schema.json` |
+| Plugins | `plugins/plugins.json` | Bundled directories of skills, hooks, MCP servers | `schemas/plugins.schema.json` |
 | Roots | `roots/roots.json` | Agent workspaces (repos with AGENTS.md) | `schemas/roots.schema.json` |
 | Hooks | `hooks/hooks.json` | Inline hook definitions | `schemas/hooks.schema.json` |
 

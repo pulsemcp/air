@@ -55,5 +55,5 @@ const session = await adapter.prepareSession(artifacts, "./my-project", {
 | `stdio` servers | `{ command, args, env }` |
 | `sse`/`streamable-http` servers | `{ url, headers, oauth }` |
 | OAuth `redirectUri` | Extracted as `callbackPort` |
-| Plugin `timeout_seconds` | `timeout` |
 | Plugin `id` | `name` |
+| Plugin `path` | `path` |

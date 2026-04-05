@@ -135,6 +135,14 @@ describe("validateJson", () => {
       );
       expect(result.valid).toBe(true);
     });
+
+    it("rejects plugin without required fields", () => {
+      const result = validateJson(
+        { "bad-plugin": { id: "bad-plugin", description: "missing path" } },
+        "plugins"
+      );
+      expect(result.valid).toBe(false);
+    });
   });
 
   describe("hooks.json", () => {
