@@ -129,23 +129,33 @@ Each subagent is a full agent session with its own token budget. Orchestration p
 If you're building an orchestration platform on top of AIR, here's a suggested architecture:
 
 ```
-┌─────────────────────────────────────────┐
-│           Orchestration Platform         │
-│                                          │
-│  Sessions · Jobs · Triggers · Monitoring │
-│  Secret Vault · Clone Management · UI    │
-├─────────────────────────────────────────┤
-│                AIR SDK                   │
-│                                          │
-│  resolveArtifacts() · generateMcpConfig()│
-│  injectSkills() · validateConfig()       │
-├─────────────────────────────────────────┤
-│           Agent Runtime                  │
-│                                          │
-│  claude -p · opencode · cursor           │
-└─────────────────────────────────────────┘
+┌──────────────────────────────────────────┐
+│           Orchestration Platform          │
+│                                           │
+│  Sessions · Jobs · Triggers · Monitoring  │
+│  Secret Vault · Clone Management · UI     │
+├──────────────────────────────────────────┤
+│  @pulsemcp/air-core                       │
+│    resolveArtifacts() · validateJson()    │
+│    mergeArtifacts()                       │
+│                                           │
+│  @pulsemcp/air-adapter-claude (or other)  │
+│    adapter.prepareSession(artifacts, dir) │
+├──────────────────────────────────────────┤
+│           Agent Runtime                   │
+│                                           │
+│  claude -p · opencode · cursor            │
+└──────────────────────────────────────────┘
 ```
 
-**AIR SDK** sits between the orchestration platform and the agent runtime. The platform calls AIR to resolve configs and generate agent-specific files, then manages the agent process lifecycle itself.
+The typical session setup flow:
+
+1. **Resolve config** — call `resolveArtifacts(airJsonPath)` from `@pulsemcp/air-core` to merge all artifact indexes
+2. **Prepare the working directory** — call `adapter.prepareSession(artifacts, cloneDir, { root, secretResolvers })` from the agent adapter. This single call writes everything the agent needs (.mcp.json, skills, references, hooks) into the target directory.
+3. **Spawn the agent** — use `result.startCommand` to start the agent process in the prepared directory
+
+An orchestration platform typically depends on just two AIR packages:
+- `@pulsemcp/air-core` — for `resolveArtifacts()`, types, and validation
+- `@pulsemcp/air-adapter-<agent>` — for `prepareSession()` and agent-specific config translation
 
 This separation keeps AIR focused on config — a problem with a clean, general solution — and leaves orchestration to platforms that can make opinionated choices about persistence, security, and workflow.

@@ -24,16 +24,20 @@ jobs:
           node-version: ${{ matrix.node-version }}
 
       - name: Install dependencies
-        working-directory: cli
         run: npm install
 
-      - name: Type check
-        working-directory: cli
-        run: npx tsc --noEmit
+      - name: Build core
+        run: npm run build -w packages/core
+
+      - name: Type check all packages
+        run: |
+          npx tsc --noEmit -p packages/core/tsconfig.json
+          npx tsc --noEmit -p packages/extensions/adapter-claude/tsconfig.json
+          npx tsc --noEmit -p packages/extensions/provider-github/tsconfig.json
+          npx tsc --noEmit -p packages/cli/tsconfig.json
 
       - name: Run tests
-        working-directory: cli
-        run: npm test
+        run: npx vitest run
 
   validate-schemas:
     runs-on: ubuntu-latest
@@ -48,16 +52,17 @@ jobs:
           node-version: 22
 
       - name: Install dependencies
-        working-directory: cli
         run: npm install
 
+      - name: Build core
+        run: npm run build -w packages/core
+
       - name: Validate example files
-        working-directory: cli
         run: |
-          npx tsx src/index.ts validate ../examples/air.json
-          npx tsx src/index.ts validate ../examples/skills/skills.json
-          npx tsx src/index.ts validate ../examples/references/references.json
-          npx tsx src/index.ts validate ../examples/mcp/mcp.json
-          npx tsx src/index.ts validate ../examples/plugins/plugins.json
-          npx tsx src/index.ts validate ../examples/roots/roots.json
-          npx tsx src/index.ts validate ../examples/hooks/hooks.json
+          npx tsx packages/cli/src/index.ts validate examples/air.json
+          npx tsx packages/cli/src/index.ts validate examples/skills/skills.json
+          npx tsx packages/cli/src/index.ts validate examples/references/references.json
+          npx tsx packages/cli/src/index.ts validate examples/mcp/mcp.json
+          npx tsx packages/cli/src/index.ts validate examples/plugins/plugins.json
+          npx tsx packages/cli/src/index.ts validate examples/roots/roots.json
+          npx tsx packages/cli/src/index.ts validate examples/hooks/hooks.json

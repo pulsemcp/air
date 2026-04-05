@@ -1,0 +1,56 @@
+name: Publish to npm
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build core first
+        run: npm run build -w packages/core
+
+      - name: Build remaining packages
+        run: |
+          npm run build -w packages/extensions/adapter-claude
+          npm run build -w packages/extensions/provider-github
+          npm run build -w packages/cli
+
+      - name: Run tests
+        run: npx vitest run
+
+      - name: Publish packages
+        run: |
+          # Publish core first (others depend on it)
+          npm publish -w packages/core --provenance --access public || true
+
+          # Publish extensions
+          npm publish -w packages/extensions/adapter-claude --provenance --access public || true
+          npm publish -w packages/extensions/provider-github --provenance --access public || true
+
+          # Publish CLI last (depends on core + adapter)
+          npm publish -w packages/cli --provenance --access public || true
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

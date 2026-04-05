@@ -75,13 +75,9 @@ Claude Code plugins are defined in `.claude/plugins/` as individual plugin files
 }
 ```
 
-### OpenCode (Coming Soon)
+### Other Agents
 
-OpenCode plugin translation is planned for a future release.
-
-### Cursor (Coming Soon)
-
-Cursor plugin translation is planned for a future release.
+Plugin translation for other agents is handled by their respective adapter extensions (e.g., `@pulsemcp/air-adapter-opencode`). Each adapter implements its own translation from the AIR plugin format to the agent's native format.
 
 ## Best Practices
 
