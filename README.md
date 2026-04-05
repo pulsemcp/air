@@ -25,9 +25,10 @@ AIR endorses and builds on these standards and patterns. Their maturity reflects
 | **Agent Skills** | High | Reusable, invocable units of work defined as structured Markdown (SKILL.md) and associated files. Skills represent internal (often proprietary) knowledge or processes where foundation models cannot be trained or have been proven to underperform. |
 | **MCP** | High | Open protocol for connecting AI agents to wholly or partially deterministic tools and data sources. Handles auth and access boundaries. |
 | **References** | Medium | Shared knowledge documents attached to skills. Broken out separately to stay DRY — one reference can serve many skills. |
-| **Plugins** | Medium | Groupings of MCP server configurations and Skills. For now, modeled canonically after Claude Code Plugins with translation layers for other agents. |
+| **Plugins** | Medium | Packaging and distribution units that bundle skills, hooks, MCP servers, and other components into a single installable directory. A more tractable layer of abstraction for distribution/sharing — users can always "eject" and work at the more primitive skills/mcp/hooks layer. Modeled after the [Open Plugins spec](https://open-plugins.com/plugin-builders/specification) and Claude Code Plugins with translation layers for other agents. |
 | **Hooks** | Medium | Shell commands triggered at agent lifecycle events (session start, pre-commit, etc.). |
 | **Roots** | Medium | Self-contained agent workspaces — a git repo (or subdirectory) with a file hierarchy (including AGENTS.md files) an agent needs for a specific project. |
+| **Rules** | Emerging | Persistent AI guidance files (`.mdc` — Markdown with YAML frontmatter) that remain in context throughout a session. Optionally scoped by file glob patterns. Distinct from skills (on-demand activation) and CLAUDE.md/AGENTS.md (unstructured, per-root). Originated by Cursor, formalized by the Open Plugins spec. Not yet supported in AIR — planned for a future release. |
 
 Note: CLI tools are themselves not a standard. While you can shoehorn them inside a Skill or MCP server in a pinch, they provide no scalable path to managing auth and access boundaries and no ecosystem investment in future enrichments. 
 
@@ -157,16 +158,21 @@ Three transport types are supported: `stdio` (local processes), `sse` (Server-Se
 
 ### Plugins
 
-Plugins are groupings of MCP server configurations and skills. For now, modeled canonically after Claude Code Plugins with translation layers for other agents:
+Plugins are packaging and distribution units — a directory that bundles skills, hooks, MCP servers, and other components into a single installable unit. They provide a more tractable layer of abstraction for distribution and sharing; users who want finer-grained control can always "eject" and work directly at the more primitive skills/mcp/hooks layer. Both approaches are fully supported.
+
+A plugin entry in `plugins.json` points to a plugin directory and carries its metadata. The actual discovery of skills, hooks, and MCP configs within the plugin directory is a runtime concern handled by the adapter:
 
 ```json
 {
-  "eslint-autofix": {
-    "id": "eslint-autofix",
-    "description": "Auto-fix linting issues in staged files",
-    "type": "command",
-    "command": "npx",
-    "args": ["eslint", "--fix", "."]
+  "code-quality": {
+    "id": "code-quality",
+    "title": "Code Quality Suite",
+    "description": "Linting, formatting, and static analysis tools bundled with coding standards skills",
+    "version": "1.2.0",
+    "path": "plugins/code-quality",
+    "author": { "name": "Acme Engineering" },
+    "license": "MIT",
+    "keywords": ["linting", "formatting", "eslint", "prettier"]
   }
 }
 ```

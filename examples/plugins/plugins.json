@@ -1,23 +1,29 @@
 {
-  "eslint-autofix": {
-    "id": "eslint-autofix",
-    "title": "ESLint Autofix",
-    "description": "Automatically fix linting issues in staged files before commit",
-    "type": "command",
-    "command": "npx",
-    "args": ["eslint", "--fix", "."],
-    "timeout_seconds": 60
-  },
-  "db-migrate": {
-    "id": "db-migrate",
-    "title": "Database Migration Runner",
-    "description": "Run pending database migrations in the development environment",
-    "type": "command",
-    "command": "bin/rails",
-    "args": ["db:migrate"],
-    "env": {
-      "RAILS_ENV": "development"
+  "code-quality": {
+    "id": "code-quality",
+    "title": "Code Quality Suite",
+    "description": "Linting, formatting, and static analysis tools bundled with coding standards skills",
+    "version": "1.2.0",
+    "path": "plugins/code-quality",
+    "author": {
+      "name": "Acme Engineering",
+      "url": "https://github.com/acme"
     },
-    "timeout_seconds": 120
+    "homepage": "https://github.com/acme/air-plugins/tree/main/code-quality",
+    "repository": "https://github.com/acme/air-plugins.git",
+    "license": "MIT",
+    "keywords": ["linting", "formatting", "eslint", "prettier"]
+  },
+  "deploy-toolkit": {
+    "id": "deploy-toolkit",
+    "title": "Deployment Toolkit",
+    "description": "End-to-end deployment skills, hooks, and CI/CD MCP server for staging and production environments",
+    "version": "2.0.1",
+    "path": "plugins/deploy-toolkit",
+    "author": {
+      "name": "Acme Platform Team"
+    },
+    "license": "Apache-2.0",
+    "keywords": ["deploy", "ci-cd", "staging", "production"]
   }
 }

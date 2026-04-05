@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://raw.githubusercontent.com/pulsemcp/air/main/schemas/plugins.schema.json",
   "title": "AIR Plugins Index",
-  "description": "Index of agent plugins available in this AIR configuration. Plugins extend agent capabilities beyond what MCP servers and skills provide. AIR plugins are agent-agnostic and translated to agent-specific formats at session start time.",
+  "description": "Index of agent plugins available in this AIR configuration. A plugin is a packaging and distribution unit — a directory that can contain skills, hooks, MCP servers, and other components. AIR plugins are agent-agnostic and translated to agent-specific formats at session start time.",
   "type": "object",
   "properties": {
     "$schema": {
@@ -20,7 +20,7 @@
   "$defs": {
     "Plugin": {
       "type": "object",
-      "description": "An agent plugin that extends capabilities via external commands.",
+      "description": "A plugin — a packaging and distribution unit that bundles skills, hooks, MCP servers, and other components into a single installable directory.",
       "properties": {
         "id": {
           "type": "string",
@@ -38,38 +38,65 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 500,
-          "description": "Concise description of what this plugin does."
+          "description": "Concise description of what this plugin provides."
         },
-        "type": {
+        "version": {
           "type": "string",
-          "enum": ["command"],
-          "description": "Plugin type. Currently only 'command' is supported."
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+",
+          "description": "Semantic version of the plugin (e.g., '1.0.0')."
         },
-        "command": {
+        "path": {
           "type": "string",
-          "description": "Executable command to run for this plugin."
+          "minLength": 1,
+          "description": "Path to the plugin directory, relative to the AIR config. The directory contains the plugin's components (skills, hooks, MCP servers, etc.)."
         },
-        "args": {
+        "author": {
+          "type": "object",
+          "description": "Plugin author information.",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Author's name."
+            },
+            "email": {
+              "type": "string",
+              "format": "email",
+              "description": "Author's email address."
+            },
+            "url": {
+              "type": "string",
+              "format": "uri",
+              "description": "Author's website or profile URL."
+            }
+          },
+          "additionalProperties": false
+        },
+        "homepage": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to the plugin's homepage or documentation."
+        },
+        "repository": {
+          "type": "string",
+          "description": "URL or identifier for the plugin's source repository."
+        },
+        "license": {
+          "type": "string",
+          "description": "SPDX license identifier (e.g., 'MIT', 'Apache-2.0')."
+        },
+        "logo": {
+          "type": "string",
+          "description": "Path or URL to the plugin's logo image."
+        },
+        "keywords": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "description": "Command-line arguments for the plugin command."
-        },
-        "env": {
-          "type": "object",
-          "additionalProperties": {
-            "type": "string"
-          },
-          "description": "Environment variables for the plugin process. Values support ${ENV_VAR} interpolation."
-        },
-        "timeout_seconds": {
-          "type": "number",
-          "minimum": 1,
-          "description": "Maximum execution time in seconds before the plugin is killed."
+          "description": "Keywords for discovery and categorization."
         }
       },
-      "required": ["id", "description", "type", "command"],
+      "required": ["id", "description", "path"],
       "additionalProperties": false
     }
   }

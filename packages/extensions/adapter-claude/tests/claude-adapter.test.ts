@@ -112,24 +112,37 @@ describe("ClaudeAdapter", () => {
   });
 
   describe("translatePlugin", () => {
-    it("translates plugin format", () => {
+    it("translates plugin bundle format", () => {
       const plugin: PluginEntry = {
-        id: "eslint",
-        description: "Run ESLint",
-        type: "command",
-        command: "npx",
-        args: ["eslint", "--fix", "."],
-        timeout_seconds: 30,
+        id: "code-quality",
+        description: "Linting and formatting tools",
+        path: "plugins/code-quality",
+        version: "1.2.0",
       };
 
       const result = adapter.translatePlugin(plugin);
       expect(result).toEqual({
-        name: "eslint",
-        description: "Run ESLint",
-        command: "npx",
-        args: ["eslint", "--fix", "."],
-        timeout: 30,
+        name: "code-quality",
+        description: "Linting and formatting tools",
+        path: "plugins/code-quality",
+        version: "1.2.0",
       });
+    });
+
+    it("omits optional fields when not present", () => {
+      const plugin: PluginEntry = {
+        id: "minimal",
+        description: "A minimal plugin",
+        path: "plugins/minimal",
+      };
+
+      const result = adapter.translatePlugin(plugin);
+      expect(result).toEqual({
+        name: "minimal",
+        description: "A minimal plugin",
+        path: "plugins/minimal",
+      });
+      expect(result.version).toBeUndefined();
     });
   });
 

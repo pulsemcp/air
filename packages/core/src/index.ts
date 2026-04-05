@@ -6,6 +6,7 @@ export type {
   ReferenceEntry,
   McpOAuthConfig,
   McpServerEntry,
+  PluginAuthor,
   PluginEntry,
   RootEntry,
   HookEntry,
