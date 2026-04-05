@@ -12,7 +12,7 @@ const program = new Command();
 program
   .name("air")
   .description("AIR \u2014 Agent Infrastructure Repository CLI")
-  .version("0.0.2");
+  .version("0.0.3");
 
 program.addCommand(validateCommand());
 program.addCommand(startCommand());

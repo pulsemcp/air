@@ -290,6 +290,151 @@ describe("mergeArtifacts", () => {
   });
 });
 
+describe("absolute path resolution", () => {
+  it("resolves skill path fields to absolute paths", async () => {
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        skills: ["./skills.json"],
+      },
+      "skills.json": {
+        "my-skill": exampleSkill("my-skill"),
+      },
+    });
+    cleanup = c;
+
+    const artifacts = await resolveArtifacts(join(dir, "air.json"));
+
+    // skill.path should be resolved to an absolute path
+    expect(artifacts.skills["my-skill"].path).toBe(join(dir, "skills/my-skill"));
+    expect(artifacts.skills["my-skill"].path.startsWith("/")).toBe(true);
+  });
+
+  it("resolves reference file fields to absolute paths", async () => {
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        references: ["./refs.json"],
+      },
+      "refs.json": {
+        "my-ref": exampleReference("my-ref"),
+      },
+    });
+    cleanup = c;
+
+    const artifacts = await resolveArtifacts(join(dir, "air.json"));
+
+    // ref.file should be resolved to an absolute path
+    expect(artifacts.references["my-ref"].file).toBe(
+      join(dir, "references/my-ref.md")
+    );
+    expect(artifacts.references["my-ref"].file.startsWith("/")).toBe(true);
+  });
+
+  it("preserves already-absolute paths", async () => {
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        skills: ["./skills.json"],
+      },
+      "skills.json": {
+        "abs-skill": exampleSkill("abs-skill", {
+          path: "/absolute/path/to/skill",
+        }),
+      },
+    });
+    cleanup = c;
+
+    const artifacts = await resolveArtifacts(join(dir, "air.json"));
+
+    expect(artifacts.skills["abs-skill"].path).toBe("/absolute/path/to/skill");
+  });
+
+  it("resolves paths relative to the index file directory, not air.json", async () => {
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        skills: ["./subdir/skills.json"],
+      },
+      "subdir/skills.json": {
+        "nested-skill": exampleSkill("nested-skill", {
+          path: "../skills/nested",
+        }),
+      },
+    });
+    cleanup = c;
+
+    const artifacts = await resolveArtifacts(join(dir, "air.json"));
+
+    // Path is relative to subdir/ (where the index file is), not to dir/
+    expect(artifacts.skills["nested-skill"].path).toBe(
+      join(dir, "skills/nested")
+    );
+  });
+
+  it("uses provider resolveSourceDir for remote URIs", async () => {
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        skills: ["mock://org/skills.json"],
+      },
+    });
+    cleanup = c;
+
+    const mockProvider = {
+      scheme: "mock",
+      resolve: async () => ({
+        "remote-skill": {
+          id: "remote-skill",
+          description: "Remote skill",
+          path: "skills/remote",
+        },
+      }),
+      resolveSourceDir: () => "/mock/clone/dir",
+    };
+
+    const artifacts = await resolveArtifacts(join(dir, "air.json"), {
+      providers: [mockProvider],
+    });
+
+    // Path resolved relative to the provider's sourceDir
+    expect(artifacts.skills["remote-skill"].path).toBe(
+      "/mock/clone/dir/skills/remote"
+    );
+  });
+
+  it("falls back to baseDir when provider has no resolveSourceDir", async () => {
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        skills: ["mock://org/skills.json"],
+      },
+    });
+    cleanup = c;
+
+    const mockProvider = {
+      scheme: "mock",
+      resolve: async () => ({
+        "remote-skill": {
+          id: "remote-skill",
+          description: "Remote skill",
+          path: "skills/remote",
+        },
+      }),
+      // No resolveSourceDir
+    };
+
+    const artifacts = await resolveArtifacts(join(dir, "air.json"), {
+      providers: [mockProvider],
+    });
+
+    // Path resolved relative to air.json's directory (the baseDir fallback)
+    expect(artifacts.skills["remote-skill"].path).toBe(
+      join(dir, "skills/remote")
+    );
+  });
+});
+
 describe("emptyArtifacts", () => {
   it("returns all artifact types as empty objects", () => {
     const empty = emptyArtifacts();
