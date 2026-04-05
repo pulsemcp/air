@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://raw.githubusercontent.com/pulsemcp/air/main/schemas/plugins.schema.json",
   "title": "AIR Plugins Index",
-  "description": "Index of agent plugins available in this AIR configuration. A plugin is a packaging and distribution unit — a directory that can contain skills, hooks, MCP servers, and other components. AIR plugins are agent-agnostic and translated to agent-specific formats at session start time.",
+  "description": "Index of agent plugins available in this AIR configuration. A plugin is a named grouping of AIR primitives (skills, MCP servers, hooks) — a compositional unit for bundling and distributing related capabilities. Plugins do not define new artifacts inline; they reference existing artifacts by ID from the corresponding index files.",
   "type": "object",
   "properties": {
     "$schema": {
@@ -20,7 +20,7 @@
   "$defs": {
     "Plugin": {
       "type": "object",
-      "description": "A plugin — a packaging and distribution unit that bundles skills, hooks, MCP servers, and other components into a single installable directory.",
+      "description": "A plugin — a named grouping of AIR primitives (skills, MCP servers, hooks) for bundling and distribution. All referenced artifacts must be defined in their respective index files.",
       "properties": {
         "id": {
           "type": "string",
@@ -45,10 +45,26 @@
           "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+([-+][a-zA-Z0-9._-]+)?$",
           "description": "Semantic version of the plugin (e.g., '1.0.0')."
         },
-        "path": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Path to the plugin directory, relative to the AIR config. The directory contains the plugin's components (skills, hooks, MCP servers, etc.)."
+        "skills": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "IDs of skills bundled by this plugin. Must reference skill IDs defined in skills.json indexes."
+        },
+        "mcp_servers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "IDs of MCP servers bundled by this plugin. Must reference server IDs defined in mcp.json indexes."
+        },
+        "hooks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "IDs of hooks bundled by this plugin. Must reference hook IDs defined in hooks.json indexes."
         },
         "author": {
           "type": "object",
@@ -96,7 +112,7 @@
           "description": "Keywords for discovery and categorization."
         }
       },
-      "required": ["id", "description", "path"],
+      "required": ["id", "description"],
       "additionalProperties": false
     }
   }

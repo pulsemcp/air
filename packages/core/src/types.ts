@@ -66,7 +66,9 @@ export interface PluginEntry {
   title?: string;
   description: string;
   version?: string;
-  path: string;
+  skills?: string[];
+  mcp_servers?: string[];
+  hooks?: string[];
   author?: PluginAuthor;
   homepage?: string;
   repository?: string;

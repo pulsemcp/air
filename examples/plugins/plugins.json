@@ -4,7 +4,9 @@
     "title": "Code Quality Suite",
     "description": "Linting, formatting, and static analysis tools bundled with coding standards skills",
     "version": "1.2.0",
-    "path": "plugins/code-quality",
+    "skills": ["lint-fix", "format-check"],
+    "mcp_servers": ["eslint-server"],
+    "hooks": ["lint-pre-commit"],
     "author": {
       "name": "Acme Engineering",
       "url": "https://github.com/acme"
@@ -19,7 +21,9 @@
     "title": "Deployment Toolkit",
     "description": "End-to-end deployment skills, hooks, and CI/CD MCP server for staging and production environments",
     "version": "2.0.1",
-    "path": "plugins/deploy-toolkit",
+    "skills": ["deploy-staging", "deploy-production"],
+    "mcp_servers": ["ci-cd"],
+    "hooks": ["pre-deploy-check", "post-deploy-notify"],
     "author": {
       "name": "Acme Platform Team"
     },

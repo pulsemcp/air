@@ -56,4 +56,4 @@ const session = await adapter.prepareSession(artifacts, "./my-project", {
 | `sse`/`streamable-http` servers | `{ url, headers, oauth }` |
 | OAuth `redirectUri` | Extracted as `callbackPort` |
 | Plugin `id` | `name` |
-| Plugin `path` | `path` |
+| Plugin `skills`/`mcp_servers`/`hooks` | Stripped (used by CLI for deduplication) |

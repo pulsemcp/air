@@ -112,35 +112,38 @@ describe("ClaudeAdapter", () => {
   });
 
   describe("translatePlugin", () => {
-    it("translates plugin bundle format", () => {
+    it("translates plugin format and strips artifact references", () => {
       const plugin: PluginEntry = {
         id: "code-quality",
         description: "Linting and formatting tools",
-        path: "plugins/code-quality",
         version: "1.2.0",
+        skills: ["lint-fix"],
+        mcp_servers: ["eslint-server"],
+        hooks: ["lint-pre-commit"],
       };
 
       const result = adapter.translatePlugin(plugin);
       expect(result).toEqual({
         name: "code-quality",
         description: "Linting and formatting tools",
-        path: "plugins/code-quality",
         version: "1.2.0",
       });
+      // Artifact references are for CLI deduplication, not passed to agent
+      expect(result.skills).toBeUndefined();
+      expect(result.mcp_servers).toBeUndefined();
+      expect(result.hooks).toBeUndefined();
     });
 
     it("omits optional fields when not present", () => {
       const plugin: PluginEntry = {
         id: "minimal",
         description: "A minimal plugin",
-        path: "plugins/minimal",
       };
 
       const result = adapter.translatePlugin(plugin);
       expect(result).toEqual({
         name: "minimal",
         description: "A minimal plugin",
-        path: "plugins/minimal",
       });
       expect(result.version).toBeUndefined();
     });

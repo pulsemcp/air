@@ -1,31 +1,20 @@
 # Plugins
 
-Plugins are packaging and distribution units — a directory that bundles skills, hooks, MCP servers, and other components into a single installable unit. They provide a more tractable layer of abstraction for distribution and sharing; users who want finer-grained control can always "eject" and work directly at the more primitive skills/mcp/hooks layer.
+Plugins are named groupings of AIR primitives (skills, MCP servers, hooks) — a compositional unit for bundling and distributing related capabilities. They provide a more tractable layer of abstraction for distribution and sharing; users who want finer-grained control can always "eject" and work directly at the more primitive skills/mcp/hooks layer.
 
 ## Why Plugins?
 
-MCP servers provide tools. Skills provide procedures. Hooks provide lifecycle automation. Plugins bundle them together into cohesive packages that are easy to install, share, and version:
+MCP servers provide tools. Skills provide procedures. Hooks provide lifecycle automation. Plugins group them together into cohesive packages that are easy to install, share, and version:
 
 - A **"deployment"** plugin might group a CI/CD MCP server, deployment skills, and pre-deploy hooks
 - A **"code quality"** plugin might combine a linting MCP server, formatting skills, and pre-commit hooks
 - A **"security"** plugin might bundle vulnerability scanning tools with remediation skills
 
-Plugins are modeled after the [Open Plugins spec](https://open-plugins.com/plugin-builders/specification) and Claude Code Plugins. A plugin directory can contain:
-
-- `skills/` — Skill definitions (SKILL.md files)
-- `hooks/hooks.json` — Lifecycle hooks
-- `.mcp.json` — MCP server configurations
-- `commands/` — Custom commands
-- `agents/` — Agent configurations
-- `bin/` — Executable scripts
-- `rules/` — Rule files (.mdc)
-- `settings.json` — Plugin-specific settings
-
-Components within a plugin are namespaced: `plugin-name:component-name`.
+Plugins don't define new artifacts inline — they reference existing artifacts by ID from the corresponding index files (skills.json, mcp.json, hooks.json). This keeps composition explicit and enables the CLI to reason about overlap.
 
 ## Index Format
 
-Plugins are registered in `plugins.json`. Each entry points to a plugin directory and carries its metadata:
+Plugins are registered in `plugins.json`. Each entry declares which AIR artifacts it bundles:
 
 ```json
 {
@@ -34,7 +23,9 @@ Plugins are registered in `plugins.json`. Each entry points to a plugin director
     "title": "Code Quality Suite",
     "description": "Linting, formatting, and static analysis tools bundled with coding standards skills",
     "version": "1.2.0",
-    "path": "plugins/code-quality",
+    "skills": ["lint-fix", "format-check"],
+    "mcp_servers": ["eslint-server"],
+    "hooks": ["lint-pre-commit"],
     "author": { "name": "Acme Engineering" },
     "license": "MIT",
     "keywords": ["linting", "formatting", "eslint", "prettier"]
@@ -42,7 +33,11 @@ Plugins are registered in `plugins.json`. Each entry points to a plugin director
 }
 ```
 
-The actual discovery of skills, hooks, and MCP configs within the plugin directory is a runtime concern handled by the agent adapter — the index just needs to point to the plugin and carry its metadata.
+### Artifact References
+
+Plugins declare which AIR artifacts they bundle via the `skills`, `mcp_servers`, and `hooks` arrays. These reference IDs of artifacts defined in the corresponding AIR index files (skills.json, mcp.json, hooks.json).
+
+This declarative mapping enables the CLI to deduplicate at prepare time — if you request `--skills lint-fix --plugins code-quality` and `code-quality` already bundles `lint-fix`, the CLI knows it only needs to activate the plugin. Without these references, the CLI would have to scan plugin directories at runtime to discover overlap.
 
 ### Fields
 
@@ -52,7 +47,9 @@ The actual discovery of skills, hooks, and MCP configs within the plugin directo
 | `title` | No | Human-readable display name. |
 | `description` | Yes | What this plugin provides. |
 | `version` | No | Semantic version (e.g., `"1.2.0"`). |
-| `path` | Yes | Path to the plugin directory, relative to the AIR config. |
+| `skills` | No | IDs of skills bundled by this plugin. |
+| `mcp_servers` | No | IDs of MCP servers bundled by this plugin. |
+| `hooks` | No | IDs of hooks bundled by this plugin. |
 | `author` | No | Object with `name`, `email`, `url`. |
 | `homepage` | No | URL to the plugin's homepage or docs. |
 | `repository` | No | URL or identifier for the source repository. |
@@ -62,11 +59,11 @@ The actual discovery of skills, hooks, and MCP configs within the plugin directo
 
 ## Translation Layers
 
-AIR plugins are agent-agnostic. At session start, they're translated to agent-specific formats via adapter extensions.
+AIR plugins are agent-agnostic. At session start, they're translated to agent-specific formats via adapter extensions. The adapter receives the plugin metadata (`id`, `description`, `version`) and the resolved artifact references, then determines how to activate them in the target agent.
 
 ### Claude Code
 
-For Claude Code, the adapter resolves plugin paths and translates them into the format Claude Code expects. The plugin directory structure is read at session start, and its components (skills, hooks, MCP configs) are merged into the session configuration.
+For Claude Code, the adapter translates plugin metadata into Claude's format. The referenced skills, MCP servers, and hooks are activated through their respective AIR mechanisms — the plugin acts as a grouping layer, not a separate activation path.
 
 ### Other Agents
 
@@ -90,5 +87,5 @@ You can mix both in the same `air.json`. A common pattern is to start with plugi
 1. **Version your plugins** — use semver to communicate breaking vs. non-breaking changes
 2. **Write clear descriptions** — the description should tell users what capabilities they get
 3. **Keep plugins focused** — one domain, one plugin. Don't bundle unrelated capabilities
-4. **Include a README** — add documentation in the plugin directory explaining setup and usage
+4. **Declare all bundled artifacts** — list every skill, MCP server, and hook so the CLI can deduplicate
 5. **Use keywords** — help users discover your plugin through search

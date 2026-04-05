@@ -84,7 +84,6 @@ export function examplePlugin(
     id,
     title: `${id} Plugin`,
     description: `Description for ${id}`,
-    path: `plugins/${id}`,
     ...overrides,
   };
 }
