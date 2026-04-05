@@ -3,7 +3,6 @@ import { dirname } from "path";
 import {
   getAirJsonPath,
   resolveArtifacts,
-  emptyArtifacts,
   type RootEntry,
 } from "@pulsemcp/air-core";
 import { findAdapter, listAvailableAdapters } from "../adapter-registry.js";
