@@ -49,12 +49,13 @@ describe("listArtifacts", () => {
       },
     });
 
-    const artifacts = await listArtifacts("skills", {
+    const result = await listArtifacts("skills", {
       config: join(catalog, "air.json"),
     });
 
-    expect(Object.keys(artifacts.skills)).toContain("deploy");
-    expect(artifacts.skills.deploy.description).toBe("Deploy to staging");
+    expect(result.type).toBe("skills");
+    expect(Object.keys(result.entries)).toContain("deploy");
+    expect(Object.keys(result.artifacts.skills)).toContain("deploy");
   });
 
   it("resolves mcp servers from air.json", async () => {
@@ -68,12 +69,105 @@ describe("listArtifacts", () => {
       },
     });
 
-    const artifacts = await listArtifacts("mcp", {
+    const result = await listArtifacts("mcp", {
       config: join(catalog, "air.json"),
     });
 
-    expect(artifacts.mcp.github).toBeDefined();
-    expect(artifacts.mcp.github.type).toBe("stdio");
+    expect(result.type).toBe("mcp");
+    expect(result.entries.github).toBeDefined();
+  });
+
+  it("resolves roots from air.json", async () => {
+    const catalog = createTemp({
+      "air.json": {
+        name: "test",
+        roots: ["./roots.json"],
+      },
+      "roots.json": {
+        "web-app": {
+          name: "web-app",
+          description: "Main web app",
+          url: "https://github.com/test/repo.git",
+        },
+      },
+    });
+
+    const result = await listArtifacts("roots", {
+      config: join(catalog, "air.json"),
+    });
+
+    expect(result.type).toBe("roots");
+    expect(result.entries["web-app"]).toBeDefined();
+  });
+
+  it("resolves plugins from air.json", async () => {
+    const catalog = createTemp({
+      "air.json": {
+        name: "test",
+        plugins: ["./plugins.json"],
+      },
+      "plugins.json": {
+        "code-quality": {
+          id: "code-quality",
+          description: "Linting tools",
+          version: "1.0.0",
+        },
+      },
+    });
+
+    const result = await listArtifacts("plugins", {
+      config: join(catalog, "air.json"),
+    });
+
+    expect(result.type).toBe("plugins");
+    expect(result.entries["code-quality"]).toBeDefined();
+  });
+
+  it("resolves hooks from air.json", async () => {
+    const catalog = createTemp({
+      "air.json": {
+        name: "test",
+        hooks: ["./hooks.json"],
+      },
+      "hooks.json": {
+        "pre-commit": {
+          id: "pre-commit",
+          description: "Lint check",
+          event: "pre-commit",
+          command: "npx lint-staged",
+        },
+      },
+    });
+
+    const result = await listArtifacts("hooks", {
+      config: join(catalog, "air.json"),
+    });
+
+    expect(result.type).toBe("hooks");
+    expect(result.entries["pre-commit"]).toBeDefined();
+  });
+
+  it("resolves references from air.json", async () => {
+    const catalog = createTemp({
+      "air.json": {
+        name: "test",
+        references: ["./references.json"],
+      },
+      "references.json": {
+        "git-workflow": {
+          id: "git-workflow",
+          description: "Git workflow guide",
+          file: "./docs/git.md",
+        },
+      },
+    });
+
+    const result = await listArtifacts("references", {
+      config: join(catalog, "air.json"),
+    });
+
+    expect(result.type).toBe("references");
+    expect(result.entries["git-workflow"]).toBeDefined();
   });
 
   it("throws for invalid artifact type", async () => {
@@ -83,8 +177,6 @@ describe("listArtifacts", () => {
   });
 
   it("returns empty artifacts when no config found", async () => {
-    // When no config is provided and AIR_CONFIG is not set and default doesn't exist,
-    // getAirJsonPath returns null, so we get empty artifacts
     const oldEnv = process.env.AIR_CONFIG;
     const oldHome = process.env.HOME;
     const dir = createTemp({});
@@ -92,8 +184,8 @@ describe("listArtifacts", () => {
     delete process.env.AIR_CONFIG;
 
     try {
-      const artifacts = await listArtifacts("skills");
-      expect(Object.keys(artifacts.skills)).toHaveLength(0);
+      const result = await listArtifacts("skills");
+      expect(Object.keys(result.entries)).toHaveLength(0);
     } finally {
       if (oldEnv !== undefined) process.env.AIR_CONFIG = oldEnv;
       else delete process.env.AIR_CONFIG;

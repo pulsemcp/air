@@ -232,6 +232,19 @@ describe("prepareSession", () => {
     expect(mcpJson.mcpServers.github).toBeUndefined();
   });
 
+  it("throws with unknown adapter", async () => {
+    const catalog = createTemp({
+      "air.json": { name: "test" },
+    });
+
+    await expect(
+      prepareSession({
+        config: join(catalog, "air.json"),
+        adapter: "nonexistent",
+      })
+    ).rejects.toThrow("No adapter found");
+  });
+
   it("throws with missing air.json", async () => {
     await expect(
       prepareSession({ config: "/nonexistent/air.json" })

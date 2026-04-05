@@ -56,7 +56,7 @@ export async function prepareSession(
     );
   }
 
-  const airJsonPath = options?.config ?? getAirJsonPath();
+  const airJsonPath = options?.config || getAirJsonPath();
   if (!airJsonPath) {
     throw new Error(
       "No air.json found. Specify a config path or set AIR_CONFIG env var."

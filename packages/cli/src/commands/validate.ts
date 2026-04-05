@@ -26,8 +26,11 @@ export function validateCommand(): Command {
           process.exit(1);
         }
       } catch (err) {
-        const message =
+        let message =
           err instanceof Error ? err.message : "Unknown error";
+        if (message.includes("Could not detect schema type")) {
+          message += " Use --schema to specify.";
+        }
         console.error(`Error: ${message}`);
         process.exit(1);
       }

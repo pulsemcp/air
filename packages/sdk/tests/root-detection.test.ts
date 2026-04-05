@@ -128,6 +128,15 @@ describe("detectRoot", () => {
     expect(result?.name).toBe("air");
   });
 
+  it("matches root by normalized URL (without .git suffix)", () => {
+    const dir = createTempGitRepo("https://github.com/pulsemcp/air.git");
+    const roots = {
+      air: makeRoot("air", "https://github.com/pulsemcp/air"),
+    };
+    const result = detectRoot(roots, dir);
+    expect(result?.name).toBe("air");
+  });
+
   it("prefers exact subdirectory match", () => {
     const dir = createTempGitRepo("https://github.com/pulsemcp/air.git", [
       "packages/cli",

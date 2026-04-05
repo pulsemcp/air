@@ -33,10 +33,10 @@ describe("initConfig", () => {
 
     expect(result.airJsonPath).toBe(airJsonPath);
     expect(result.airDir).toBe(dir);
-    expect(result.createdFiles).toContain("air.json");
-    expect(result.createdFiles).toContain("skills/skills.json");
-    expect(result.createdFiles).toContain("mcp/mcp.json");
-    expect(result.createdFiles).toContain("roots/roots.json");
+    expect(result.files).toContain("air.json");
+    expect(result.files).toContain("skills/skills.json");
+    expect(result.files).toContain("mcp/mcp.json");
+    expect(result.files).toContain("roots/roots.json");
 
     // Verify air.json content
     const airJson = JSON.parse(readFileSync(airJsonPath, "utf-8"));

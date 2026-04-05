@@ -39,7 +39,7 @@ export type {
   AirExtension,
   AgentSessionConfig,
   StartCommand,
-  PrepareSessionOptions as AdapterPrepareSessionOptions,
+  PrepareSessionOptions as CorePrepareSessionOptions,
   PreparedSession,
   // Validation types
   ValidationResult,
@@ -64,7 +64,7 @@ export { initConfig } from "./init.js";
 export type { InitConfigOptions, InitConfigResult } from "./init.js";
 
 export { listArtifacts, VALID_ARTIFACT_TYPES } from "./list.js";
-export type { ArtifactType, ListArtifactsOptions } from "./list.js";
+export type { ArtifactType, ListArtifactsOptions, ListArtifactsResult } from "./list.js";
 
 export { startSession } from "./start.js";
 export type { StartSessionOptions, StartSessionResult } from "./start.js";

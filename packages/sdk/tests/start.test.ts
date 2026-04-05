@@ -87,6 +87,41 @@ describe("startSession", () => {
     expect(result.root?.name).toBe("web-app");
   });
 
+  it("returns empty artifacts when no config exists", async () => {
+    const oldEnv = process.env.AIR_CONFIG;
+    const oldHome = process.env.HOME;
+    const dir = createTemp({});
+    process.env.HOME = dir;
+    delete process.env.AIR_CONFIG;
+
+    try {
+      const result = await startSession("claude", {
+        checkAvailability: false,
+      });
+      expect(result.artifacts.skills).toEqual({});
+      expect(result.artifacts.mcp).toEqual({});
+      expect(result.sessionConfig.agent).toBe("claude");
+    } finally {
+      if (oldEnv !== undefined) process.env.AIR_CONFIG = oldEnv;
+      else delete process.env.AIR_CONFIG;
+      if (oldHome !== undefined) process.env.HOME = oldHome;
+      else delete process.env.HOME;
+    }
+  });
+
+  it("skips availability check when checkAvailability is false", async () => {
+    const catalog = createTemp({
+      "air.json": { name: "test" },
+    });
+
+    const result = await startSession("claude", {
+      config: join(catalog, "air.json"),
+      checkAvailability: false,
+    });
+
+    expect(result.agentAvailable).toBeUndefined();
+  });
+
   it("throws for unknown adapter", async () => {
     await expect(startSession("nonexistent")).rejects.toThrow(
       "No adapter found"

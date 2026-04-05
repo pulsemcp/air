@@ -9,7 +9,7 @@ export function initCommand(): Command {
         const result = initConfig();
 
         console.log(`Initialized AIR configuration at ${result.airDir}/:`);
-        for (const file of result.createdFiles) {
+        for (const file of result.files) {
           console.log(`  ${file}`);
         }
         console.log(

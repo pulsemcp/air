@@ -26,7 +26,10 @@ export function startCommand(): Command {
       ) => {
         let result;
         try {
-          result = await startSession(agent, { root: options.root });
+          result = await startSession(agent, {
+            root: options.root,
+            checkAvailability: !options.dryRun,
+          });
         } catch (err) {
           const message =
             err instanceof Error ? err.message : "Unknown error";

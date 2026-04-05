@@ -12,8 +12,8 @@ export interface InitConfigResult {
   airJsonPath: string;
   /** Absolute path to the AIR config directory. */
   airDir: string;
-  /** List of created files (relative to airDir). */
-  createdFiles: string[];
+  /** List of files in the config directory (relative to airDir). */
+  files: string[];
 }
 
 /**
@@ -49,7 +49,7 @@ export function initConfig(options?: InitConfigOptions): InitConfigResult {
 
   writeFileSync(airJsonPath, JSON.stringify(airJson, null, 2) + "\n");
 
-  const files: [string, string][] = [
+  const indexFiles: [string, string][] = [
     ["skills/skills.json", emptyIndex()],
     ["references/references.json", emptyIndex()],
     ["mcp/mcp.json", emptyIndex()],
@@ -58,16 +58,16 @@ export function initConfig(options?: InitConfigOptions): InitConfigResult {
     ["hooks/hooks.json", emptyIndex()],
   ];
 
-  const createdFiles = ["air.json"];
+  const files = ["air.json"];
 
-  for (const [filename, content] of files) {
+  for (const [filename, content] of indexFiles) {
     const filePath = resolve(airDir, filename);
     mkdirSync(dirname(filePath), { recursive: true });
     if (!existsSync(filePath)) {
       writeFileSync(filePath, content);
     }
-    createdFiles.push(filename);
+    files.push(filename);
   }
 
-  return { airJsonPath, airDir, createdFiles };
+  return { airJsonPath, airDir, files };
 }

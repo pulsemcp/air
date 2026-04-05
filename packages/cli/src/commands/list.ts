@@ -15,9 +15,9 @@ export function listCommand(): Command {
       "Artifact type to list: skills, mcp, plugins, roots, hooks, references"
     )
     .action(async (type: string) => {
-      let artifacts;
+      let result;
       try {
-        artifacts = await listArtifacts(type);
+        result = await listArtifacts(type);
       } catch (err) {
         const message =
           err instanceof Error ? err.message : "Unknown error";
@@ -25,6 +25,7 @@ export function listCommand(): Command {
         process.exit(1);
       }
 
+      const { artifacts } = result;
       const listType = type as ArtifactType;
 
       switch (listType) {

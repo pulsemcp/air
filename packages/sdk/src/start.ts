@@ -14,6 +14,8 @@ export interface StartSessionOptions {
   root?: string;
   /** Path to air.json. Uses AIR_CONFIG env or ~/.air/air.json if not set. */
   config?: string;
+  /** Check whether the agent CLI is installed. Defaults to true. */
+  checkAvailability?: boolean;
 }
 
 export interface StartSessionResult {
@@ -23,8 +25,8 @@ export interface StartSessionResult {
   root?: RootEntry;
   /** The generated session config. */
   sessionConfig: AgentSessionConfig;
-  /** Whether the agent CLI is available on PATH. */
-  agentAvailable: boolean;
+  /** Whether the agent CLI is available on PATH. Undefined if checkAvailability was false. */
+  agentAvailable: boolean | undefined;
   /** The command to start the agent. */
   startCommand: StartCommand;
   /** The agent adapter display name. */
@@ -56,7 +58,7 @@ export async function startSession(
     );
   }
 
-  const airJsonPath = options?.config ?? getAirJsonPath();
+  const airJsonPath = options?.config || getAirJsonPath();
   const artifacts = airJsonPath
     ? await resolveArtifacts(airJsonPath)
     : emptyArtifacts();
@@ -72,7 +74,9 @@ export async function startSession(
   }
 
   const sessionConfig = adapter.generateConfig(artifacts, root);
-  const agentAvailable = await adapter.isAvailable();
+  const agentAvailable = (options?.checkAvailability ?? true)
+    ? await adapter.isAvailable()
+    : undefined;
   const startCommand = adapter.buildStartCommand(sessionConfig);
 
   return {
