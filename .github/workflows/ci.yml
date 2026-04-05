@@ -26,8 +26,12 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Build core
-        run: npm run build -w packages/core
+      - name: Build all packages
+        run: |
+          npm run build -w packages/core
+          npm run build -w packages/extensions/adapter-claude
+          npm run build -w packages/extensions/provider-github
+          npm run build -w packages/cli
 
       - name: Type check all packages
         run: |
