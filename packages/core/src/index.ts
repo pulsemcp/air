@@ -31,6 +31,7 @@ export {
   getAirJsonPath,
   resolveArtifacts,
   mergeArtifacts,
+  expandPlugins,
   emptyArtifacts,
 } from "./config.js";
 export type { ResolveOptions } from "./config.js";

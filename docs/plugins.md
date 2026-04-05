@@ -39,6 +39,48 @@ Plugins declare which AIR artifacts they bundle via the `skills`, `mcp_servers`,
 
 This declarative mapping is designed to enable CLI deduplication — if you request `--skills lint-fix --plugins code-quality` and `code-quality` already bundles `lint-fix`, the CLI can determine that only the plugin needs to be activated.
 
+### Plugin Composition
+
+Plugins can compose other plugins using the `plugins` array. This allows building higher-level plugins from smaller, focused ones without manually flattening all primitive IDs:
+
+```json
+{
+  "code-quality": {
+    "id": "code-quality",
+    "description": "Linting and formatting tools",
+    "skills": ["lint-fix", "format-check"],
+    "mcp_servers": ["eslint-server"],
+    "hooks": ["lint-pre-commit"]
+  },
+  "database-tools": {
+    "id": "database-tools",
+    "description": "Database management tools",
+    "skills": ["db-migrate", "db-seed"],
+    "mcp_servers": ["postgres-server"]
+  },
+  "full-stack-dev": {
+    "id": "full-stack-dev",
+    "description": "Everything for full-stack development",
+    "plugins": ["code-quality", "database-tools"],
+    "skills": ["deploy"],
+    "mcp_servers": ["deploy-server"]
+  }
+}
+```
+
+After resolution, `full-stack-dev` expands to:
+- **skills**: `["lint-fix", "format-check", "db-migrate", "db-seed", "deploy"]`
+- **mcp_servers**: `["eslint-server", "postgres-server", "deploy-server"]`
+- **hooks**: `["lint-pre-commit"]`
+
+**Composition rules:**
+
+- **Recursive expansion**: Child plugins are expanded depth-first. If plugin A includes B, and B includes C, then A gets all primitives from C and B plus its own.
+- **Parent overrides children**: When the same primitive ID appears in both a child plugin and the parent's direct declarations, the parent wins. Direct declarations always take precedence over inherited ones.
+- **Deduplication**: If the same primitive ID is referenced via multiple paths (e.g., two child plugins both include the same skill), it appears only once in the expanded result.
+- **Cycle detection**: Circular references (A includes B, B includes A) are rejected at resolution time with a clear error message.
+- **Flat result**: The end result is always a flat set of primitive IDs. Nesting is author convenience, not a runtime concept.
+
 ### Fields
 
 | Field | Required | Description |
@@ -50,6 +92,7 @@ This declarative mapping is designed to enable CLI deduplication — if you requ
 | `skills` | No | IDs of skills bundled by this plugin. |
 | `mcp_servers` | No | IDs of MCP servers bundled by this plugin. |
 | `hooks` | No | IDs of hooks bundled by this plugin. |
+| `plugins` | No | IDs of other plugins to compose into this one. |
 | `author` | No | Object with `name`, `email`, `url`. |
 | `homepage` | No | URL to the plugin's homepage or docs. |
 | `repository` | No | URL or identifier for the source repository. |

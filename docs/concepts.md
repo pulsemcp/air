@@ -23,7 +23,7 @@ The index files act as lightweight registries. Agents use the ID and description
 | Skills | `skills/skills.json` | `SKILL.md` files in directories | `schemas/skills.schema.json` |
 | References | `references/references.json` | Markdown documents | `schemas/references.schema.json` |
 | MCP Servers | `mcp/mcp.json` | Inline server configs | `schemas/mcp.schema.json` |
-| Plugins | `plugins/plugins.json` | Named groupings of skills, MCP servers, hooks | `schemas/plugins.schema.json` |
+| Plugins | `plugins/plugins.json` | Named groupings of skills, MCP servers, hooks (composable with other plugins) | `schemas/plugins.schema.json` |
 | Roots | `roots/roots.json` | Agent workspaces (repos with AGENTS.md) | `schemas/roots.schema.json` |
 | Hooks | `hooks/hooks.json` | Inline hook definitions | `schemas/hooks.schema.json` |
 
@@ -95,7 +95,7 @@ Every piece of knowledge should have a single canonical location:
 - **MCP server configs** are defined once and referenced by ID from roots
 - **Skills** compose references rather than embedding knowledge inline
 
-If you find yourself duplicating content, that's a signal to extract it into a reusable artifact.
+If you find yourself duplicating content, that's a signal to extract it into a reusable artifact. Plugins can also compose other plugins — a "full-stack" plugin can include "code-quality" and "database-tools" plugins rather than re-listing all their primitives. See [Plugins](plugins.md#plugin-composition) for details.
 
 ### 4. Per-Session Configuration
 

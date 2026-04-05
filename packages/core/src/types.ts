@@ -69,6 +69,7 @@ export interface PluginEntry {
   skills?: string[];
   mcp_servers?: string[];
   hooks?: string[];
+  plugins?: string[];
   author?: PluginAuthor;
   homepage?: string;
   repository?: string;

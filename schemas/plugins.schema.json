@@ -66,6 +66,13 @@
           },
           "description": "IDs of hooks bundled by this plugin. Must reference hook IDs defined in hooks.json indexes."
         },
+        "plugins": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "IDs of other plugins to compose into this plugin. Referenced plugins' primitives (skills, mcp_servers, hooks) are recursively expanded and merged with this plugin's direct declarations. Circular references are rejected at resolution time."
+        },
         "author": {
           "type": "object",
           "description": "Plugin author information.",
