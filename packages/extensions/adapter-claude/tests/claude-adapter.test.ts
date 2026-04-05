@@ -459,5 +459,216 @@ describe("ClaudeAdapter", () => {
       expect(result.startCommand.command).toBe("claude");
       expect(result.startCommand.cwd).toBe(dir);
     });
+
+    describe("subagent root merging", () => {
+      it("merges subagent roots' MCP servers and skills into parent session", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+
+        // Parent's MCP server
+        artifacts.mcp["github"] = { type: "stdio", command: "gh" };
+        // Subagent's MCP servers
+        artifacts.mcp["postgres"] = { type: "stdio", command: "psql" };
+        artifacts.mcp["slack"] = { type: "stdio", command: "slack" };
+
+        // Parent skill source
+        const parentSkillDir = join(dir, "..", "skills", "deploy");
+        mkdirSync(parentSkillDir, { recursive: true });
+        writeFileSync(join(parentSkillDir, "SKILL.md"), "# Deploy");
+
+        // Subagent skill source
+        const subSkillDir = join(dir, "..", "skills", "validate");
+        mkdirSync(subSkillDir, { recursive: true });
+        writeFileSync(join(subSkillDir, "SKILL.md"), "# Validate");
+
+        artifacts.skills["deploy"] = {
+          id: "deploy",
+          description: "Deploy skill",
+          path: resolve(parentSkillDir),
+        };
+        artifacts.skills["validate"] = {
+          id: "validate",
+          description: "Validate skill",
+          path: resolve(subSkillDir),
+        };
+
+        // Define roots
+        artifacts.roots["sub-configs"] = {
+          name: "sub-configs",
+          description: "Config subagent",
+          default_mcp_servers: ["postgres", "slack"],
+          default_skills: ["validate"],
+        };
+
+        const root: RootEntry = {
+          name: "parent",
+          description: "Parent root",
+          default_mcp_servers: ["github"],
+          default_skills: ["deploy"],
+          default_subagent_roots: ["sub-configs"],
+        };
+
+        const result = await adapter.prepareSession(artifacts, dir, { root });
+
+        // MCP config should include parent + subagent servers
+        const mcpJson = JSON.parse(readFileSync(join(dir, ".mcp.json"), "utf-8"));
+        expect(mcpJson.mcpServers["github"]).toBeDefined();
+        expect(mcpJson.mcpServers["postgres"]).toBeDefined();
+        expect(mcpJson.mcpServers["slack"]).toBeDefined();
+
+        // Both skills should be injected
+        expect(existsSync(join(dir, ".claude", "skills", "deploy", "SKILL.md"))).toBe(true);
+        expect(existsSync(join(dir, ".claude", "skills", "validate", "SKILL.md"))).toBe(true);
+      });
+
+      it("generates subagent context system prompt", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+
+        artifacts.roots["research"] = {
+          name: "research",
+          display_name: "Research Agent",
+          description: "Researches server sources",
+          default_mcp_servers: ["web-search"],
+          default_skills: ["find-source"],
+          subdirectory: "agents/research",
+        };
+
+        const root: RootEntry = {
+          name: "onboarding",
+          description: "Server onboarding",
+          default_subagent_roots: ["research"],
+        };
+
+        const result = await adapter.prepareSession(artifacts, dir, { root });
+
+        // subagentContext should be populated
+        expect(result.subagentContext).toBeDefined();
+        expect(result.subagentContext).toContain("Subagent Root Dependencies");
+        expect(result.subagentContext).toContain("Research Agent");
+        expect(result.subagentContext).toContain("Researches server sources");
+        expect(result.subagentContext).toContain("web-search");
+        expect(result.subagentContext).toContain("find-source");
+        expect(result.subagentContext).toContain("agents/research");
+
+        // No file written — context is ephemeral
+        expect(existsSync(join(dir, ".claude", "subagent-roots-context.md"))).toBe(false);
+
+        // Start command should include --append-system-prompt
+        expect(result.startCommand.args).toContain("--append-system-prompt");
+      });
+
+      it("skips subagent merge when skipSubagentMerge is true", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+
+        artifacts.mcp["github"] = { type: "stdio", command: "gh" };
+        artifacts.mcp["postgres"] = { type: "stdio", command: "psql" };
+
+        artifacts.roots["sub-db"] = {
+          name: "sub-db",
+          description: "DB subagent",
+          default_mcp_servers: ["postgres"],
+        };
+
+        const root: RootEntry = {
+          name: "parent",
+          description: "Parent root",
+          default_mcp_servers: ["github"],
+          default_subagent_roots: ["sub-db"],
+        };
+
+        const result = await adapter.prepareSession(artifacts, dir, {
+          root,
+          skipSubagentMerge: true,
+        });
+
+        // Only parent's MCP server should be present
+        const mcpJson = JSON.parse(readFileSync(join(dir, ".mcp.json"), "utf-8"));
+        expect(mcpJson.mcpServers["github"]).toBeDefined();
+        expect(mcpJson.mcpServers["postgres"]).toBeUndefined();
+
+        // No subagent context
+        expect(result.subagentContext).toBeUndefined();
+        expect(existsSync(join(dir, ".claude", "subagent-roots-context.md"))).toBe(false);
+      });
+
+      it("handles missing subagent root references gracefully", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+
+        artifacts.mcp["github"] = { type: "stdio", command: "gh" };
+
+        const root: RootEntry = {
+          name: "parent",
+          description: "Parent root",
+          default_mcp_servers: ["github"],
+          default_subagent_roots: ["nonexistent-root"],
+        };
+
+        // Should not throw
+        const result = await adapter.prepareSession(artifacts, dir, { root });
+
+        // Only parent's server, no subagent context
+        const mcpJson = JSON.parse(readFileSync(join(dir, ".mcp.json"), "utf-8"));
+        expect(mcpJson.mcpServers["github"]).toBeDefined();
+        expect(result.subagentContext).toBeUndefined();
+      });
+
+      it("merges multiple subagent roots and deduplicates", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+
+        artifacts.mcp["github"] = { type: "stdio", command: "gh" };
+        artifacts.mcp["postgres"] = { type: "stdio", command: "psql" };
+        artifacts.mcp["slack"] = { type: "stdio", command: "slack" };
+
+        artifacts.roots["sub-a"] = {
+          name: "sub-a",
+          description: "Subagent A",
+          default_mcp_servers: ["github", "postgres"],
+        };
+        artifacts.roots["sub-b"] = {
+          name: "sub-b",
+          description: "Subagent B",
+          default_mcp_servers: ["postgres", "slack"],
+        };
+
+        const root: RootEntry = {
+          name: "parent",
+          description: "Parent root",
+          default_mcp_servers: ["github"],
+          default_subagent_roots: ["sub-a", "sub-b"],
+        };
+
+        const result = await adapter.prepareSession(artifacts, dir, { root });
+
+        const mcpJson = JSON.parse(readFileSync(join(dir, ".mcp.json"), "utf-8"));
+        // All three should be present (deduplicated union)
+        expect(Object.keys(mcpJson.mcpServers).sort()).toEqual(["github", "postgres", "slack"]);
+
+        // Context should mention both subagent roots
+        expect(result.subagentContext).toContain("Subagent A");
+        expect(result.subagentContext).toContain("Subagent B");
+      });
+
+      it("does not merge when root has no default_subagent_roots", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+
+        artifacts.mcp["github"] = { type: "stdio", command: "gh" };
+
+        const root: RootEntry = {
+          name: "simple",
+          description: "Simple root",
+          default_mcp_servers: ["github"],
+        };
+
+        const result = await adapter.prepareSession(artifacts, dir, { root });
+
+        expect(result.subagentContext).toBeUndefined();
+        expect(result.startCommand.args).not.toContain("--append-system-prompt");
+      });
+    });
   });
 });

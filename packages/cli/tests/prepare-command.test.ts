@@ -362,6 +362,149 @@ describe("prepare command", () => {
     expect(result.stderr).toContain("not found");
   });
 
+  it("merges subagent roots' artifacts into parent session", () => {
+    const catalog = createTemp({
+      "air.json": {
+        name: "test",
+        mcp: ["./mcp.json"],
+        skills: ["./skills.json"],
+        roots: ["./roots.json"],
+      },
+      "mcp.json": {
+        "ao-mcp": { type: "stdio", command: "npx", args: ["ao-mcp"] },
+        "pg-prod": { type: "stdio", command: "npx", args: ["pg"] },
+        "web-search": { type: "stdio", command: "npx", args: ["search"] },
+        "proctor": { type: "stdio", command: "npx", args: ["proctor"] },
+      },
+      "skills.json": {
+        "onboard-server": {
+          id: "onboard-server",
+          description: "Onboard a server",
+          path: "skills/onboard-server",
+        },
+        "validate-config": {
+          id: "validate-config",
+          description: "Validate config",
+          path: "skills/validate-config",
+        },
+        "find-source": {
+          id: "find-source",
+          description: "Find canonical source",
+          path: "skills/find-source",
+        },
+      },
+      "skills/onboard-server/SKILL.md": "# Onboard Server",
+      "skills/validate-config/SKILL.md": "# Validate Config",
+      "skills/find-source/SKILL.md": "# Find Source",
+      "roots.json": {
+        "server-onboarding": {
+          name: "server-onboarding",
+          display_name: "Server Onboarding",
+          description: "Onboard MCP servers to PulseMCP",
+          default_mcp_servers: ["ao-mcp"],
+          default_skills: ["onboard-server"],
+          default_subagent_roots: ["onboarding-configs", "onboarding-research"],
+        },
+        "onboarding-configs": {
+          name: "onboarding-configs",
+          display_name: "Onboarding: Configs",
+          description: "Prepare server configs",
+          default_mcp_servers: ["pg-prod"],
+          default_skills: ["validate-config"],
+          subdirectory: "subagents/configs",
+          user_invocable: false,
+        },
+        "onboarding-research": {
+          name: "onboarding-research",
+          display_name: "Onboarding: Research",
+          description: "Research server sources",
+          default_mcp_servers: ["web-search"],
+          default_skills: ["find-source"],
+          subdirectory: "subagents/research",
+          user_invocable: false,
+        },
+      },
+    });
+
+    const target = createTemp({});
+
+    const result = tryRun(
+      `prepare --config ${join(catalog, "air.json")} --root server-onboarding --target ${target}`
+    );
+    expect(result.exitCode).toBe(0);
+
+    // Parent + subagent MCP servers should all be present
+    const mcpJson = JSON.parse(
+      readFileSync(join(target, ".mcp.json"), "utf-8")
+    );
+    expect(mcpJson.mcpServers["ao-mcp"]).toBeDefined();
+    expect(mcpJson.mcpServers["pg-prod"]).toBeDefined();
+    expect(mcpJson.mcpServers["web-search"]).toBeDefined();
+    // proctor was not referenced by any root
+    expect(mcpJson.mcpServers["proctor"]).toBeUndefined();
+
+    // All skills should be injected
+    expect(existsSync(join(target, ".claude", "skills", "onboard-server", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(target, ".claude", "skills", "validate-config", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(target, ".claude", "skills", "find-source", "SKILL.md"))).toBe(true);
+
+    // No file written — context is ephemeral
+    expect(existsSync(join(target, ".claude", "subagent-roots-context.md"))).toBe(false);
+
+    // Output should include subagentContext
+    const output = JSON.parse(result.stdout);
+    expect(output.subagentContext).toBeDefined();
+    expect(output.subagentContext).toContain("Subagent Root Dependencies");
+  });
+
+  it("skips subagent merge with --no-subagent-merge flag", () => {
+    const catalog = createTemp({
+      "air.json": {
+        name: "test",
+        mcp: ["./mcp.json"],
+        roots: ["./roots.json"],
+      },
+      "mcp.json": {
+        "ao-mcp": { type: "stdio", command: "npx", args: ["ao-mcp"] },
+        "pg-prod": { type: "stdio", command: "npx", args: ["pg"] },
+      },
+      "roots.json": {
+        "server-onboarding": {
+          name: "server-onboarding",
+          description: "Onboard servers",
+          default_mcp_servers: ["ao-mcp"],
+          default_subagent_roots: ["sub-db"],
+        },
+        "sub-db": {
+          name: "sub-db",
+          description: "DB subagent",
+          default_mcp_servers: ["pg-prod"],
+        },
+      },
+    });
+
+    const target = createTemp({});
+
+    const result = tryRun(
+      `prepare --config ${join(catalog, "air.json")} --root server-onboarding --no-subagent-merge --target ${target}`
+    );
+    expect(result.exitCode).toBe(0);
+
+    // Only parent's MCP server should be present (subagent's was not merged)
+    const mcpJson = JSON.parse(
+      readFileSync(join(target, ".mcp.json"), "utf-8")
+    );
+    expect(mcpJson.mcpServers["ao-mcp"]).toBeDefined();
+    expect(mcpJson.mcpServers["pg-prod"]).toBeUndefined();
+
+    // No subagent context file
+    expect(existsSync(join(target, ".claude", "subagent-roots-context.md"))).toBe(false);
+
+    // No subagentContext in output
+    const output = JSON.parse(result.stdout);
+    expect(output.subagentContext).toBeUndefined();
+  });
+
   it("is idempotent — running prepare twice produces same result", () => {
     const catalog = createTemp({
       "air.json": {

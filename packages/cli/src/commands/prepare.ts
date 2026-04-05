@@ -29,6 +29,10 @@ export function prepareCommand(): Command {
       "--mcp-servers <ids>",
       "Comma-separated MCP server IDs (overrides root defaults)"
     )
+    .option(
+      "--no-subagent-merge",
+      "Skip merging subagent roots' artifacts into the parent session (for orchestrators that manage composition externally)"
+    )
     .action(
       async (options: {
         config?: string;
@@ -37,6 +41,7 @@ export function prepareCommand(): Command {
         adapter: string;
         skills?: string;
         mcpServers?: string;
+        subagentMerge: boolean;
       }) => {
         try {
           const result = await prepareSession({
@@ -50,6 +55,7 @@ export function prepareCommand(): Command {
             mcpServers: options.mcpServers
               ? options.mcpServers.split(",").map((s) => s.trim())
               : undefined,
+            skipSubagentMerge: !options.subagentMerge,
           });
 
           if (result.rootAutoDetected && result.root) {
