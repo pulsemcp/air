@@ -1,6 +1,9 @@
 {
   "name": "@pulsemcp/air-provider-github",
-  "version": "0.1.0",
+  "version": "0.0.1",
+  "publishConfig": {
+    "access": "public"
+  },
   "description": "AIR catalog provider for GitHub — resolves github:// URIs to artifact indexes",
   "type": "module",
   "main": "./dist/index.js",
@@ -21,7 +24,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@pulsemcp/air-core": "0.1.0"
+    "@pulsemcp/air-core": "0.0.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

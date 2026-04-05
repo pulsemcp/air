@@ -1,6 +1,9 @@
 {
   "name": "@pulsemcp/air-core",
-  "version": "0.1.0",
+  "version": "0.0.1",
+  "publishConfig": {
+    "access": "public"
+  },
   "description": "AIR core — config resolution, validation, schemas, and extension interfaces",
   "type": "module",
   "main": "./dist/index.js",
