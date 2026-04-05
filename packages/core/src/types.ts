@@ -137,6 +137,22 @@ export interface PrepareSessionOptions {
   root?: RootEntry;
   /** Secret resolvers for ${VAR} interpolation in MCP configs */
   secretResolvers?: SecretResolver[];
+  /**
+   * Base directory for resolving artifact source paths (skill.path, reference.file).
+   * Defaults to the parent of targetDir. Set this to the directory containing air.json
+   * when air.json lives separately from the target directory (e.g., orchestrator use case).
+   */
+  baseDir?: string;
+  /**
+   * Override the root's default_skills — only activate these specific skills.
+   * When set, this replaces root.default_skills entirely.
+   */
+  skillOverrides?: string[];
+  /**
+   * Override the root's default_mcp_servers — only activate these specific servers.
+   * When set, this replaces root.default_mcp_servers entirely.
+   */
+  mcpServerOverrides?: string[];
 }
 
 export interface PreparedSession {
