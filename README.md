@@ -28,7 +28,7 @@ AIR endorses and builds on these standards and patterns. Their maturity reflects
 | **Plugins** | Medium | Named groupings of AIR primitives (skills, MCP servers, hooks) for bundling and distribution. Plugins reference existing artifacts by ID — a compositional layer, not a separate artifact format. Users can always "eject" and work at the primitive level. Modeled after the [Open Plugins spec](https://open-plugins.com/plugin-builders/specification) and Claude Code Plugins with translation layers for other agents. |
 | **Hooks** | Medium | Shell commands triggered at agent lifecycle events (session start, pre-commit, etc.). |
 | **Roots** | Medium | Self-contained agent workspaces — a git repo (or subdirectory) with a file hierarchy (including AGENTS.md files) an agent needs for a specific project. |
-| **Rules** | Emerging | Persistent AI guidance files (`.mdc` — Markdown with YAML frontmatter) that remain in context throughout a session. Optionally scoped by file glob patterns. Distinct from skills (on-demand activation) and CLAUDE.md/AGENTS.md (unstructured, per-root). Originated by Cursor, formalized by the Open Plugins spec. Not yet supported in AIR — planned for a future release. |
+| **Rules** | Emerging | Persistent AI guidance files (`.mdc`) that remain in context throughout a session. Optionally scoped by file glob patterns. Distinct from skills (on-demand activation) and CLAUDE.md/AGENTS.md (per-root). Originated by Cursor, adopted by the Open Plugins spec. Not yet supported in AIR — planned for a future release. |
 
 Note: CLI tools are themselves not a standard. While you can shoehorn them inside a Skill or MCP server in a pinch, they provide no scalable path to managing auth and access boundaries and no ecosystem investment in future enrichments. 
 
@@ -160,7 +160,7 @@ Three transport types are supported: `stdio` (local processes), `sse` (Server-Se
 
 Plugins are named groupings of AIR primitives (skills, MCP servers, hooks) — a compositional unit for bundling and distributing related capabilities. They provide a more tractable layer of abstraction for distribution and sharing; users who want finer-grained control can always "eject" and work directly at the more primitive skills/mcp/hooks layer. Both approaches are fully supported.
 
-A plugin entry in `plugins.json` declares which AIR artifacts it bundles by referencing their IDs. This lets the CLI deduplicate at prepare time — if you request both a skill and a plugin that already bundles that skill, only the plugin needs to be activated:
+A plugin entry in `plugins.json` declares which AIR artifacts it bundles by referencing their IDs. This enables the CLI to deduplicate — if you request both a skill and a plugin that already bundles that skill, only the plugin needs to be activated:
 
 ```json
 {

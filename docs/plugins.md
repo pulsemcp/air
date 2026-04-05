@@ -37,7 +37,7 @@ Plugins are registered in `plugins.json`. Each entry declares which AIR artifact
 
 Plugins declare which AIR artifacts they bundle via the `skills`, `mcp_servers`, and `hooks` arrays. These reference IDs of artifacts defined in the corresponding AIR index files (skills.json, mcp.json, hooks.json).
 
-This declarative mapping enables the CLI to deduplicate at prepare time — if you request `--skills lint-fix --plugins code-quality` and `code-quality` already bundles `lint-fix`, the CLI knows it only needs to activate the plugin.
+This declarative mapping is designed to enable CLI deduplication — if you request `--skills lint-fix --plugins code-quality` and `code-quality` already bundles `lint-fix`, the CLI can determine that only the plugin needs to be activated.
 
 ### Fields
 
@@ -87,5 +87,5 @@ You can mix both in the same `air.json`. A common pattern is to start with plugi
 1. **Version your plugins** — use semver to communicate breaking vs. non-breaking changes
 2. **Write clear descriptions** — the description should tell users what capabilities they get
 3. **Keep plugins focused** — one domain, one plugin. Don't bundle unrelated capabilities
-4. **Declare all bundled artifacts** — list every skill, MCP server, and hook so the CLI can deduplicate
+4. **Declare all bundled artifacts** — list every skill, MCP server, and hook so the CLI can resolve overlaps
 5. **Use keywords** — help users discover your plugin through search
