@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://raw.githubusercontent.com/pulsemcp/air/main/schemas/plugins.schema.json",
   "title": "AIR Plugins Index",
-  "description": "Index of agent plugins available in this AIR configuration. Plugins extend agent capabilities beyond what MCP servers and skills provide. AIR plugins are agent-agnostic and translated to agent-specific formats at session start time.",
+  "description": "Index of agent plugins available in this AIR configuration. A plugin is a named grouping of AIR primitives (skills, MCP servers, hooks) — a compositional unit for bundling and distributing related capabilities. Plugins do not define new artifacts inline; they reference existing artifacts by ID from the corresponding index files.",
   "type": "object",
   "properties": {
     "$schema": {
@@ -20,7 +20,7 @@
   "$defs": {
     "Plugin": {
       "type": "object",
-      "description": "An agent plugin that extends capabilities via external commands.",
+      "description": "A plugin — a named grouping of AIR primitives (skills, MCP servers, hooks) for bundling and distribution. All referenced artifacts must be defined in their respective index files.",
       "properties": {
         "id": {
           "type": "string",
@@ -38,38 +38,81 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 500,
-          "description": "Concise description of what this plugin does."
+          "description": "Concise description of what this plugin provides."
         },
-        "type": {
+        "version": {
           "type": "string",
-          "enum": ["command"],
-          "description": "Plugin type. Currently only 'command' is supported."
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+([-+][a-zA-Z0-9._-]+)?$",
+          "description": "Semantic version of the plugin (e.g., '1.0.0')."
         },
-        "command": {
-          "type": "string",
-          "description": "Executable command to run for this plugin."
-        },
-        "args": {
+        "skills": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "description": "Command-line arguments for the plugin command."
+          "description": "IDs of skills bundled by this plugin. Must reference skill IDs defined in skills.json indexes."
         },
-        "env": {
-          "type": "object",
-          "additionalProperties": {
+        "mcp_servers": {
+          "type": "array",
+          "items": {
             "type": "string"
           },
-          "description": "Environment variables for the plugin process. Values support ${ENV_VAR} interpolation."
+          "description": "IDs of MCP servers bundled by this plugin. Must reference server IDs defined in mcp.json indexes."
         },
-        "timeout_seconds": {
-          "type": "number",
-          "minimum": 1,
-          "description": "Maximum execution time in seconds before the plugin is killed."
+        "hooks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "IDs of hooks bundled by this plugin. Must reference hook IDs defined in hooks.json indexes."
+        },
+        "author": {
+          "type": "object",
+          "description": "Plugin author information.",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Author's name."
+            },
+            "email": {
+              "type": "string",
+              "format": "email",
+              "description": "Author's email address."
+            },
+            "url": {
+              "type": "string",
+              "format": "uri",
+              "description": "Author's website or profile URL."
+            }
+          },
+          "additionalProperties": false
+        },
+        "homepage": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to the plugin's homepage or documentation."
+        },
+        "repository": {
+          "type": "string",
+          "description": "URL or identifier for the plugin's source repository."
+        },
+        "license": {
+          "type": "string",
+          "description": "SPDX license identifier (e.g., 'MIT', 'Apache-2.0')."
+        },
+        "logo": {
+          "type": "string",
+          "description": "Path or URL to the plugin's logo image."
+        },
+        "keywords": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Keywords for discovery and categorization."
         }
       },
-      "required": ["id", "description", "type", "command"],
+      "required": ["id", "description"],
       "additionalProperties": false
     }
   }

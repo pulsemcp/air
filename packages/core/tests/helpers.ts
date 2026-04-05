@@ -84,9 +84,6 @@ export function examplePlugin(
     id,
     title: `${id} Plugin`,
     description: `Description for ${id}`,
-    type: "command",
-    command: "npx",
-    args: ["test-plugin"],
     ...overrides,
   };
 }

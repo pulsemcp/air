@@ -222,9 +222,7 @@ export class ClaudeAdapter implements AgentAdapter {
     return {
       name: plugin.id,
       description: plugin.description,
-      command: plugin.command,
-      ...(plugin.args && { args: plugin.args }),
-      ...(plugin.timeout_seconds && { timeout: plugin.timeout_seconds }),
+      ...(plugin.version && { version: plugin.version }),
     };
   }
 

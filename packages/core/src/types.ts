@@ -55,15 +55,26 @@ export interface McpServerEntry {
   oauth?: McpOAuthConfig;
 }
 
+export interface PluginAuthor {
+  name?: string;
+  email?: string;
+  url?: string;
+}
+
 export interface PluginEntry {
   id: string;
   title?: string;
   description: string;
-  type: "command";
-  command: string;
-  args?: string[];
-  env?: Record<string, string>;
-  timeout_seconds?: number;
+  version?: string;
+  skills?: string[];
+  mcp_servers?: string[];
+  hooks?: string[];
+  author?: PluginAuthor;
+  homepage?: string;
+  repository?: string;
+  license?: string;
+  logo?: string;
+  keywords?: string[];
 }
 
 export interface RootEntry {

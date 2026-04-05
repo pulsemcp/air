@@ -26,7 +26,7 @@ Roots are registered in `roots.json`:
     "default_branch": "main",
     "default_mcp_servers": ["github", "postgres-prod"],
     "default_skills": ["deploy-staging", "pr-review"],
-    "default_plugins": ["eslint-autofix"],
+    "default_plugins": ["code-quality"],
     "default_hooks": ["lint-pre-commit"],
     "user_invocable": true,
     "default_stop_condition": "open-reviewed-green-pr"

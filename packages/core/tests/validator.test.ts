@@ -135,6 +135,28 @@ describe("validateJson", () => {
       );
       expect(result.valid).toBe(true);
     });
+
+    it("validates a plugin with artifact references", () => {
+      const result = validateJson(
+        {
+          "my-plugin": examplePlugin("my-plugin", {
+            skills: ["lint-fix"],
+            mcp_servers: ["eslint-server"],
+            hooks: ["lint-pre-commit"],
+          }),
+        },
+        "plugins"
+      );
+      expect(result.valid).toBe(true);
+    });
+
+    it("rejects plugin without required fields", () => {
+      const result = validateJson(
+        { "bad-plugin": { id: "bad-plugin" } },
+        "plugins"
+      );
+      expect(result.valid).toBe(false);
+    });
   });
 
   describe("hooks.json", () => {

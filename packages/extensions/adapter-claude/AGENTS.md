@@ -23,7 +23,7 @@ Claude Code expects:
 - Skills as directories under `.claude/skills/{name}/SKILL.md`
 - References copied alongside skills in `.claude/skills/{name}/references/`
 - OAuth `redirectUri` converted to `callbackPort`
-- Plugin `timeout_seconds` converted to `timeout`, `id` to `name`
+- Plugin `id` mapped to `name`; artifact references (skills/mcp_servers/hooks) stripped (used by CLI, not agent)
 
 ## Core Principles
 

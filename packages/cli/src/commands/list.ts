@@ -96,11 +96,20 @@ export function listCommand(): Command {
           console.log(`Plugins (${entries.length}):\n`);
           for (const [id, plugin] of entries) {
             const title = plugin.title ? ` (${plugin.title})` : "";
-            console.log(`  ${id}${title}`);
+            const version = plugin.version ? ` v${plugin.version}` : "";
+            console.log(`  ${id}${title}${version}`);
             console.log(`    ${plugin.description}`);
-            console.log(
-              `    Command: ${plugin.command} ${(plugin.args || []).join(" ")}`
-            );
+            if (plugin.skills?.length) {
+              console.log(`    Skills: ${plugin.skills.join(", ")}`);
+            }
+            if (plugin.mcp_servers?.length) {
+              console.log(
+                `    MCP Servers: ${plugin.mcp_servers.join(", ")}`
+              );
+            }
+            if (plugin.hooks?.length) {
+              console.log(`    Hooks: ${plugin.hooks.join(", ")}`);
+            }
             console.log();
           }
           break;
