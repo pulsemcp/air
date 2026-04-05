@@ -1,12 +1,9 @@
 import { Command } from "commander";
 import {
-  getAirJsonPath,
-  resolveArtifacts,
-  emptyArtifacts,
+  startSession,
   type ResolvedArtifacts,
   type RootEntry,
-} from "@pulsemcp/air-core";
-import { findAdapter, listAvailableAdapters } from "../adapter-registry.js";
+} from "@pulsemcp/air-sdk";
 
 export function startCommand(): Command {
   const cmd = new Command("start")
@@ -27,64 +24,38 @@ export function startCommand(): Command {
           skipConfirmation?: boolean;
         }
       ) => {
-        // Try to find the adapter
-        const adapter = await findAdapter(agent);
-        if (!adapter) {
-          const available = await listAvailableAdapters();
-          const availableMsg =
-            available.length > 0
-              ? `Available: ${available.join(", ")}`
-              : "No adapters installed";
-          console.error(
-            `Error: No adapter found for "${agent}". ${availableMsg}.\n` +
-              `Install an adapter: npm install @pulsemcp/air-adapter-${agent}`
-          );
+        let result;
+        try {
+          result = await startSession(agent, {
+            root: options.root,
+            checkAvailability: !options.dryRun,
+          });
+        } catch (err) {
+          const message =
+            err instanceof Error ? err.message : "Unknown error";
+          console.error(`Error: ${message}`);
           process.exit(1);
         }
 
-        // Load air.json
-        const airJsonPath = getAirJsonPath();
-        const artifacts = airJsonPath
-          ? await resolveArtifacts(airJsonPath)
-          : emptyArtifacts();
-
-        // Resolve root if specified
-        let root: RootEntry | undefined;
-        if (options.root) {
-          root = artifacts.roots[options.root];
-          if (!root) {
-            console.error(
-              `Error: Root "${options.root}" not found. Available roots: ${Object.keys(artifacts.roots).join(", ") || "(none)"}`
-            );
-            process.exit(1);
-          }
-        }
-
-        // Generate config
-        const sessionConfig = adapter.generateConfig(artifacts, root);
-
         // Dry run
         if (options.dryRun) {
-          printDryRun(agent, artifacts, root);
+          printDryRun(agent, result.artifacts, result.root);
           process.exit(0);
         }
 
         // Check if agent is available
-        const available = await adapter.isAvailable();
-        if (!available) {
+        if (!result.agentAvailable) {
           console.error(
-            `Error: ${adapter.displayName} is not installed or not in PATH.`
+            `Error: ${result.adapterDisplayName} is not installed or not in PATH.`
           );
           process.exit(1);
         }
 
-        printDryRun(agent, artifacts, root);
+        printDryRun(agent, result.artifacts, result.root);
 
-        const startCmd = adapter.buildStartCommand(sessionConfig);
-
-        console.log(`\nStarting ${adapter.displayName}...`);
+        console.log(`\nStarting ${result.adapterDisplayName}...`);
         console.log(
-          `Command: ${startCmd.command} ${startCmd.args.join(" ")}`
+          `Command: ${result.startCommand.command} ${result.startCommand.args.join(" ")}`
         );
       }
     );

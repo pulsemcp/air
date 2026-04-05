@@ -1,6 +1,6 @@
 # @pulsemcp/air-cli
 
-The CLI for the AIR framework. A thin wrapper around `@pulsemcp/air-core` that provides `validate`, `list`, `init`, and `start` commands. Agent support comes from adapter extensions discovered at runtime.
+The CLI for the AIR framework. A thin wrapper around `@pulsemcp/air-sdk` that provides `validate`, `list`, `init`, `start`, and `prepare` commands. All business logic is delegated to the SDK.
 
 ## Folder Hierarchy
 
@@ -8,32 +8,33 @@ The CLI for the AIR framework. A thin wrapper around `@pulsemcp/air-core` that p
 packages/cli/
 ├── src/
 │   ├── index.ts              # Entry point — Commander.js program setup
-│   ├── adapter-registry.ts   # Discovers installed adapter packages via dynamic import()
 │   └── commands/
 │       ├── validate.ts       # Validate JSON against AIR schemas
 │       ├── list.ts           # List resolved artifacts
 │       ├── init.ts           # Initialize ~/.air/ with empty config
-│       └── start.ts          # Start an agent session (delegates to adapter)
+│       ├── start.ts          # Start an agent session
+│       └── prepare.ts        # Prepare a directory for an agent session
 ├── tests/                    # CLI command tests (spawn process, check output)
 └── package.json
 ```
 
 ## Domain Context
 
-This is a Node.js CLI tool published as `@pulsemcp/air-cli` with the `air` binary. It depends on `@pulsemcp/air-core` for all config resolution and validation, and on adapter packages (e.g., `@pulsemcp/air-adapter-claude`) for agent-specific behavior.
+This is a Node.js CLI tool published as `@pulsemcp/air-cli` with the `air` binary. It depends on `@pulsemcp/air-sdk` for all business logic — config resolution, validation, adapter discovery, root detection, and session preparation.
 
-The `start` command uses `adapter-registry.ts` to dynamically import adapter packages by convention (`@pulsemcp/air-adapter-<name>`). If the package isn't installed, the agent isn't available.
+Each command is a thin wrapper that parses CLI arguments, calls the corresponding SDK function, formats the output, and handles exit codes.
 
 ## Core Principles
 
 ### Stay thin
-The CLI is glue between the terminal and core/adapters. Business logic belongs in core or extensions, not here.
+The CLI is glue between the terminal and the SDK. Business logic belongs in the SDK or core, not here.
 
-### Discover, don't hard-code
-Agent support comes from installed packages, not from lists in the CLI source. The only hard-coded reference is the known-adapters list in `adapter-registry.ts` for faster lookup.
+### Formatting and exit codes only
+CLI commands should only handle argument parsing, output formatting, and process lifecycle (`process.exit`). All logic flows through SDK functions.
 
 ## What NOT to Do
 
-- Do not add config resolution or validation logic — that belongs in core
+- Do not add config resolution or validation logic — that belongs in core/SDK
 - Do not add agent-specific translation — that belongs in adapter extensions
-- Do not hard-code agent availability checks — use dynamic import discovery
+- Do not add adapter discovery or root detection — that belongs in the SDK
+- Do not hard-code agent availability checks — use the SDK's adapter registry

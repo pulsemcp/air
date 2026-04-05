@@ -11,7 +11,8 @@ air/
 ├── docs/                             # Documentation — concepts, CLI, orchestration, per-artifact guides
 ├── packages/
 │   ├── core/                         # @pulsemcp/air-core — config resolution, validation, extension interfaces
-│   ├── cli/                          # @pulsemcp/air-cli — CLI commands (validate, list, init, start)
+│   ├── sdk/                          # @pulsemcp/air-sdk — programmatic API (adapter discovery, root detection, high-level operations)
+│   ├── cli/                          # @pulsemcp/air-cli — CLI commands (validate, list, init, start, prepare)
 │   └── extensions/
 │       ├── adapter-claude/           # @pulsemcp/air-adapter-claude — Claude Code session setup
 │       └── provider-github/          # @pulsemcp/air-provider-github — github:// URI resolution
@@ -22,10 +23,11 @@ air/
 
 ## Domain Context
 
-AIR is a TypeScript monorepo (npm workspaces, ESM-only, Node 18+). It has four packages:
+AIR is a TypeScript monorepo (npm workspaces, ESM-only, Node 18+). It has five packages:
 
 - **Core** owns config resolution (`resolveArtifacts`), JSON Schema validation, and the extension interfaces (`AgentAdapter`, `CatalogProvider`, `SecretResolver`). No agent-specific code.
-- **CLI** is a thin wrapper (Commander.js) that discovers installed adapter packages at runtime.
+- **SDK** is the programmatic API layer. It re-exports core and adds adapter discovery, root detection, and high-level operations (`validateFile`, `initConfig`, `listArtifacts`, `startSession`, `prepareSession`). This is the primary dependency for TypeScript/JavaScript consumers.
+- **CLI** is a thin wrapper (Commander.js) that delegates all business logic to the SDK.
 - **Adapter extensions** translate AIR artifacts into agent-specific formats. The Claude adapter writes `.mcp.json` and injects skills via `prepareSession()`.
 - **Provider extensions** resolve remote URIs in `air.json` (e.g., `github://org/repo/path`).
 
@@ -36,11 +38,12 @@ Six artifact types: skills, references, MCP servers, plugins, roots, hooks. All 
 ```bash
 npm install                          # Install all workspace dependencies
 npm run build -w packages/core       # Build core (required before other packages type-check)
+npm run build -w packages/sdk        # Build SDK (required before CLI type-checks)
 npx vitest run                       # Run all tests across all packages
 npx tsc --noEmit -p packages/core/tsconfig.json   # Type-check a specific package
 ```
 
-Core must be built before other packages can type-check because they import from `@pulsemcp/air-core` which resolves to core's `dist/`.
+Core must be built before SDK, and SDK before CLI, because they import from workspace packages which resolve to `dist/`.
 
 ## Core Principles
 
@@ -58,7 +61,8 @@ The single entry point for setting up a working directory. Callers should not ne
 
 ## What NOT to Do
 
-- Do not add agent-specific logic to core or CLI — it belongs in adapter extensions
+- Do not add agent-specific logic to core, SDK, or CLI — it belongs in adapter extensions
+- Do not add business logic to the CLI — it belongs in the SDK
 - Do not introduce deep merge semantics anywhere
 - Do not make `resolveArtifacts` synchronous — it must stay async for provider support
 - Do not add external CLI dependencies to provider packages — use Node built-ins (`fetch`, `fs`)

@@ -36,6 +36,7 @@ jobs:
         run: |
           npm run build -w packages/extensions/adapter-claude
           npm run build -w packages/extensions/provider-github
+          npm run build -w packages/sdk
           npm run build -w packages/cli
 
       - name: Run tests
@@ -63,7 +64,10 @@ jobs:
           publish_if_needed packages/extensions/adapter-claude
           publish_if_needed packages/extensions/provider-github
 
-          # Publish CLI last (depends on core + adapter)
+          # Publish SDK (depends on core)
+          publish_if_needed packages/sdk
+
+          # Publish CLI last (depends on SDK)
           publish_if_needed packages/cli
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
