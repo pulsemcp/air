@@ -4,6 +4,11 @@
   "publishConfig": {
     "access": "public"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pulsemcp/air.git",
+    "directory": "packages/cli"
+  },
   "description": "CLI for the AIR (Agent Infrastructure Repository) framework",
   "type": "module",
   "bin": {

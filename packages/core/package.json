@@ -4,6 +4,11 @@
   "publishConfig": {
     "access": "public"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pulsemcp/air.git",
+    "directory": "packages/core"
+  },
   "description": "AIR core — config resolution, validation, schemas, and extension interfaces",
   "type": "module",
   "main": "./dist/index.js",

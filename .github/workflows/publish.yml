@@ -43,14 +43,27 @@ jobs:
 
       - name: Publish packages
         run: |
+          publish_if_needed() {
+            local workspace=$1
+            local pkg_name=$(node -e "console.log(require('./$workspace/package.json').name)")
+            local pkg_version=$(node -e "console.log(require('./$workspace/package.json').version)")
+
+            if npm view "${pkg_name}@${pkg_version}" version > /dev/null 2>&1; then
+              echo "⏭️  ${pkg_name}@${pkg_version} already published, skipping"
+            else
+              echo "📦 Publishing ${pkg_name}@${pkg_version}..."
+              npm publish -w "$workspace" --provenance --access public
+            fi
+          }
+
           # Publish core first (others depend on it)
-          npm publish -w packages/core --provenance --access public || true
+          publish_if_needed packages/core
 
           # Publish extensions
-          npm publish -w packages/extensions/adapter-claude --provenance --access public || true
-          npm publish -w packages/extensions/provider-github --provenance --access public || true
+          publish_if_needed packages/extensions/adapter-claude
+          publish_if_needed packages/extensions/provider-github
 
           # Publish CLI last (depends on core + adapter)
-          npm publish -w packages/cli --provenance --access public || true
+          publish_if_needed packages/cli
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
