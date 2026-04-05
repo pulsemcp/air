@@ -31,6 +31,7 @@ jobs:
           npm run build -w packages/core
           npm run build -w packages/extensions/adapter-claude
           npm run build -w packages/extensions/provider-github
+          npm run build -w packages/sdk
           npm run build -w packages/cli
 
       - name: Type check all packages
@@ -38,6 +39,7 @@ jobs:
           npx tsc --noEmit -p packages/core/tsconfig.json
           npx tsc --noEmit -p packages/extensions/adapter-claude/tsconfig.json
           npx tsc --noEmit -p packages/extensions/provider-github/tsconfig.json
+          npx tsc --noEmit -p packages/sdk/tsconfig.json
           npx tsc --noEmit -p packages/cli/tsconfig.json
 
       - name: Run tests
@@ -58,8 +60,10 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Build core
-        run: npm run build -w packages/core
+      - name: Build core and SDK
+        run: |
+          npm run build -w packages/core
+          npm run build -w packages/sdk
 
       - name: Validate example files
         run: |
