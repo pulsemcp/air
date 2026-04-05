@@ -1,5 +1,6 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
-import { resolve } from "path";
+import { execSync } from "child_process";
+import { existsSync, readFileSync } from "fs";
+import { resolve, dirname } from "path";
 import type { CatalogProvider } from "@pulsemcp/air-core";
 
 export interface GitHubUri {
@@ -11,9 +12,8 @@ export interface GitHubUri {
 
 export interface GitHubProviderOptions {
   /**
-   * GitHub personal access token for authenticating API requests.
-   * Required for private repositories. Optional for public repos
-   * (unauthenticated requests have lower rate limits).
+   * GitHub personal access token for authenticating git clone.
+   * Required for private repositories. Optional for public repos.
    *
    * Can also be set via the AIR_GITHUB_TOKEN environment variable.
    */
@@ -52,7 +52,7 @@ export function parseGitHubUri(uri: string): GitHubUri {
 }
 
 /**
- * Get the local cache directory for GitHub content.
+ * Get the local cache directory for GitHub clones.
  */
 export function getCacheDir(): string {
   const home = process.env.HOME || process.env.USERPROFILE || "~";
@@ -60,11 +60,18 @@ export function getCacheDir(): string {
 }
 
 /**
- * GitHub catalog provider — resolves github:// URIs by fetching
- * file content from the GitHub REST API.
+ * Get the clone path for a specific owner/repo/ref combination.
+ */
+export function getClonePath(owner: string, repo: string, ref: string): string {
+  return resolve(getCacheDir(), owner, repo, ref);
+}
+
+/**
+ * GitHub catalog provider — resolves github:// URIs by cloning the
+ * repository locally (shallow clone) and reading files from the clone.
  *
- * Works without authentication for public repositories. Pass a token
- * (or set AIR_GITHUB_TOKEN) for private repos or higher rate limits.
+ * Clones are cached at ~/.air/cache/github/{owner}/{repo}/{ref}/.
+ * Subsequent resolves for the same repo+ref reuse the existing clone.
  */
 export class GitHubCatalogProvider implements CatalogProvider {
   scheme = "github";
@@ -80,74 +87,93 @@ export class GitHubCatalogProvider implements CatalogProvider {
   ): Promise<Record<string, unknown>> {
     const parsed = parseGitHubUri(uri);
     const ref = parsed.ref || "HEAD";
-    const cacheDir = getCacheDir();
-    const cacheKey = `${parsed.owner}/${parsed.repo}/${ref}/${parsed.path}`;
-    const cachePath = resolve(cacheDir, cacheKey);
+    const cloneDir = this.ensureClone(parsed.owner, parsed.repo, ref);
+    const filePath = resolve(cloneDir, parsed.path);
 
-    // Check cache first
-    if (existsSync(cachePath)) {
-      const content = readFileSync(cachePath, "utf-8");
-      return JSON.parse(content);
+    if (!existsSync(filePath)) {
+      throw new Error(
+        `File not found in cloned repository: ${parsed.path}\n` +
+          `  Repository: ${parsed.owner}/${parsed.repo}\n` +
+          `  Ref: ${ref}\n` +
+          `  Clone path: ${cloneDir}`
+      );
     }
 
-    const content = await this.fetchFromGitHub(parsed);
-
-    // Write to cache
-    const cacheFileDir = resolve(cachePath, "..");
-    mkdirSync(cacheFileDir, { recursive: true });
-    writeFileSync(cachePath, content);
-
+    const content = readFileSync(filePath, "utf-8");
     return JSON.parse(content);
   }
 
-  private async fetchFromGitHub(parsed: GitHubUri): Promise<string> {
-    const repoSlug = `${parsed.owner}/${parsed.repo}`;
-    let url = `https://api.github.com/repos/${repoSlug}/contents/${parsed.path}`;
-    if (parsed.ref) {
-      url += `?ref=${encodeURIComponent(parsed.ref)}`;
+  /**
+   * Return the local clone directory for a given github:// URI.
+   * This allows loadAndMerge to resolve relative path/file fields
+   * in artifact entries to absolute paths within the clone.
+   */
+  resolveSourceDir(uri: string): string | undefined {
+    const parsed = parseGitHubUri(uri);
+    const ref = parsed.ref || "HEAD";
+    const cloneDir = getClonePath(parsed.owner, parsed.repo, ref);
+
+    // Return the directory containing the resolved file within the clone,
+    // so relative paths in the artifact index resolve correctly.
+    const filePath = resolve(cloneDir, parsed.path);
+    const sourceDir = dirname(filePath);
+
+    // Only return if the clone already exists (resolve() should be called first)
+    if (existsSync(cloneDir)) {
+      return sourceDir;
+    }
+    return undefined;
+  }
+
+  /**
+   * Ensure the repository is cloned locally. If the clone already exists,
+   * reuse it. Returns the path to the clone directory.
+   */
+  private ensureClone(owner: string, repo: string, ref: string): string {
+    const cloneDir = getClonePath(owner, repo, ref);
+
+    if (existsSync(resolve(cloneDir, ".git"))) {
+      return cloneDir;
     }
 
-    const headers: Record<string, string> = {
-      Accept: "application/vnd.github.v3+json",
-      "User-Agent": "air-provider-github",
-    };
-    if (this.token) {
-      headers["Authorization"] = `Bearer ${this.token}`;
-    }
+    const repoUrl = this.buildCloneUrl(owner, repo);
 
-    let response: Response;
     try {
-      response = await fetch(url, { headers });
+      if (ref === "HEAD") {
+        execSync(
+          `git clone --depth 1 ${repoUrl} ${cloneDir}`,
+          { stdio: "pipe", timeout: 60000 }
+        );
+      } else {
+        execSync(
+          `git clone --depth 1 --branch ${ref} ${repoUrl} ${cloneDir}`,
+          { stdio: "pipe", timeout: 60000 }
+        );
+      }
     } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const hint = msg.includes("Authentication failed") || msg.includes("could not read Username")
+        ? " (repository may be private — set AIR_GITHUB_TOKEN or pass token option)"
+        : msg.includes("not found")
+          ? " (repository or ref not found)"
+          : "";
       throw new Error(
-        `Network error fetching ${url}.\n` +
-          (err instanceof Error ? `  Error: ${err.message}` : "")
+        `Failed to clone ${owner}/${repo} at ref "${ref}"${hint}\n` +
+          `  URL: ${repoUrl}\n` +
+          `  Error: ${msg}`
       );
     }
 
-    if (!response.ok) {
-      const hint =
-        response.status === 404
-          ? " (repository may be private — set AIR_GITHUB_TOKEN or pass token option)"
-          : response.status === 403
-            ? " (rate limit exceeded — set AIR_GITHUB_TOKEN for higher limits)"
-            : "";
-      throw new Error(
-        `GitHub API returned ${response.status} for ${url}${hint}\n` +
-          `  Repository: ${repoSlug}\n` +
-          `  Path: ${parsed.path}`
-      );
+    return cloneDir;
+  }
+
+  /**
+   * Build the clone URL, injecting token for authentication if available.
+   */
+  private buildCloneUrl(owner: string, repo: string): string {
+    if (this.token) {
+      return `https://${this.token}@github.com/${owner}/${repo}.git`;
     }
-
-    const data = (await response.json()) as { content?: string; encoding?: string };
-
-    if (!data.content || data.encoding !== "base64") {
-      throw new Error(
-        `Unexpected response format from GitHub API for ${url}.\n` +
-          `  Expected base64-encoded content, got encoding="${data.encoding}".`
-      );
-    }
-
-    return Buffer.from(data.content, "base64").toString("utf-8");
+    return `https://github.com/${owner}/${repo}.git`;
   }
 }

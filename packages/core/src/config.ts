@@ -40,9 +40,37 @@ function getScheme(path: string): string | null {
 }
 
 /**
+ * Resolve relative `path` and `file` fields in artifact entries to absolute paths.
+ * sourceDir is the directory containing the index file (local or remote clone).
+ */
+function resolveEntryPaths<T>(
+  entries: Record<string, T>,
+  sourceDir: string
+): Record<string, T> {
+  const resolved: Record<string, T> = {};
+  for (const [key, entry] of Object.entries(entries)) {
+    const e = entry as Record<string, unknown>;
+    const updated = { ...e };
+
+    if (typeof e.path === "string" && !e.path.startsWith("/")) {
+      updated.path = resolve(sourceDir, e.path as string);
+    }
+    if (typeof e.file === "string" && !e.file.startsWith("/")) {
+      updated.file = resolve(sourceDir, e.file as string);
+    }
+
+    resolved[key] = updated as T;
+  }
+  return resolved;
+}
+
+/**
  * Load and merge entries from an array of index file paths.
  * Local paths are resolved relative to baseDir.
  * URI paths (with schemes) are delegated to the matching CatalogProvider.
+ *
+ * After loading, relative `path` and `file` fields in entries are resolved
+ * to absolute paths, so downstream consumers don't need source directory context.
  */
 async function loadAndMerge<T>(
   paths: string[],
@@ -54,6 +82,7 @@ async function loadAndMerge<T>(
   for (const p of paths) {
     const scheme = getScheme(p);
     let data: Record<string, unknown>;
+    let sourceDir: string;
 
     if (scheme) {
       const provider = providers.find((prov) => prov.scheme === scheme);
@@ -64,12 +93,17 @@ async function loadAndMerge<T>(
         );
       }
       data = await provider.resolve(p, baseDir);
+      // Use provider's resolveSourceDir if available, otherwise fall back to baseDir
+      sourceDir = provider.resolveSourceDir?.(p) ?? baseDir;
     } else {
-      data = loadJsonFile(resolve(baseDir, p));
+      const resolvedPath = resolve(baseDir, p);
+      data = loadJsonFile(resolvedPath);
+      sourceDir = dirname(resolvedPath);
     }
 
     const entries = stripSchema(data) as Record<string, T>;
-    merged = { ...merged, ...entries };
+    const resolved = resolveEntryPaths(entries, sourceDir);
+    merged = { ...merged, ...resolved };
   }
 
   return merged;
@@ -109,6 +143,9 @@ export interface ResolveOptions {
  * Resolve all artifacts from an air.json file.
  * Each artifact property is an array of paths; files merge in order.
  * Remote URIs are delegated to the matching CatalogProvider.
+ *
+ * All `path` and `file` fields in resolved entries are absolute paths,
+ * making artifacts self-contained regardless of source location.
  */
 export async function resolveArtifacts(
   airJsonPath: string,

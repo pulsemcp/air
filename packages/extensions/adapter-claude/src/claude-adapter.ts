@@ -7,7 +7,7 @@ import {
   copyFileSync,
   statSync,
 } from "fs";
-import { resolve, join, dirname } from "path";
+import { join, dirname } from "path";
 import type {
   AgentAdapter,
   AgentSessionConfig,
@@ -95,7 +95,6 @@ export class ClaudeAdapter implements AgentAdapter {
   ): Promise<PreparedSession> {
     const root = options?.root;
     const resolvers = options?.secretResolvers || [];
-    const baseDir = options?.baseDir || dirname(targetDir);
     const configFiles: string[] = [];
     const skillPaths: string[] = [];
 
@@ -135,8 +134,8 @@ export class ClaudeAdapter implements AgentAdapter {
       // Skip if skill already exists locally (local takes priority)
       if (existsSync(skillTargetDir)) continue;
 
-      // Copy skill directory contents (resolved relative to baseDir)
-      const skillSourceDir = resolve(baseDir, skill.path);
+      // Copy skill directory contents (paths are absolute from resolveArtifacts)
+      const skillSourceDir = skill.path;
       if (existsSync(skillSourceDir)) {
         this.copyDirRecursive(skillSourceDir, skillTargetDir);
         skillPaths.push(skillTargetDir);
@@ -148,7 +147,7 @@ export class ClaudeAdapter implements AgentAdapter {
         for (const refId of skill.references) {
           const ref = artifacts.references[refId];
           if (!ref) continue;
-          const refSourcePath = resolve(baseDir, ref.file);
+          const refSourcePath = ref.file;
           if (existsSync(refSourcePath)) {
             const refTargetPath = join(
               refsTargetDir,

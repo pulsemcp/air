@@ -138,12 +138,6 @@ export interface PrepareSessionOptions {
   /** Secret resolvers for ${VAR} interpolation in MCP configs */
   secretResolvers?: SecretResolver[];
   /**
-   * Base directory for resolving artifact source paths (skill.path, reference.file).
-   * Defaults to the parent of targetDir. Set this to the directory containing air.json
-   * when air.json lives separately from the target directory (e.g., orchestrator use case).
-   */
-  baseDir?: string;
-  /**
    * Override the root's default_skills — only activate these specific skills.
    * When set, this replaces root.default_skills entirely.
    */
@@ -177,6 +171,13 @@ export interface CatalogProvider {
   scheme: string;
   /** Resolve a URI to parsed JSON content */
   resolve(uri: string, baseDir: string): Promise<Record<string, unknown>>;
+  /**
+   * Return the local directory where files from this URI's source can be found.
+   * For git-based providers, this is the clone directory.
+   * Used by loadAndMerge to resolve relative path/file fields in artifact entries
+   * to absolute paths. Returns undefined if the source isn't locally available.
+   */
+  resolveSourceDir?(uri: string): string | undefined;
 }
 
 /**
