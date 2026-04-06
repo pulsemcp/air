@@ -243,6 +243,8 @@ function deduplicateIds(arr: string[]): string[] {
  * - Plugins without a `plugins` field are returned unchanged
  * - The `plugins` array on each entry is preserved as metadata (e.g., for
  *   UI display of the dependency graph) even though primitives are inlined
+ *
+ * Returns a new ResolvedArtifacts object; the input is not mutated.
  */
 export function expandPlugins(artifacts: ResolvedArtifacts): ResolvedArtifacts {
   const plugins = artifacts.plugins;
