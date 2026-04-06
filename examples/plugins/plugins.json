@@ -29,5 +29,19 @@
     },
     "license": "Apache-2.0",
     "keywords": ["deploy", "ci-cd", "staging", "production"]
+  },
+  "full-stack-dev": {
+    "id": "full-stack-dev",
+    "title": "Full-Stack Developer Suite",
+    "description": "Everything for full-stack development: code quality, deployment, and monitoring",
+    "version": "1.0.0",
+    "plugins": ["code-quality", "deploy-toolkit"],
+    "skills": ["monitor-logs"],
+    "mcp_servers": ["observability-server"],
+    "author": {
+      "name": "Acme Engineering"
+    },
+    "license": "MIT",
+    "keywords": ["full-stack", "all-in-one"]
   }
 }

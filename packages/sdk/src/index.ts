@@ -6,6 +6,7 @@ export {
   getAirJsonPath,
   resolveArtifacts,
   mergeArtifacts,
+  expandPlugins,
   emptyArtifacts,
   // Validation
   validateJson,

@@ -155,7 +155,7 @@ export async function resolveArtifacts(
   const baseDir = dirname(resolve(airJsonPath));
   const providers = options?.providers || [];
 
-  return {
+  const resolved: ResolvedArtifacts = {
     skills: await loadAndMerge<SkillEntry>(
       airConfig.skills || [],
       baseDir,
@@ -187,22 +187,145 @@ export async function resolveArtifacts(
       providers
     ),
   };
+
+  return expandPlugins(resolved);
 }
 
 /**
  * Merge two resolved artifact sets. Override wins for matching IDs.
+ * Composite plugins are re-expanded after merging so that newly
+ * added plugins that reference existing ones are fully resolved.
  */
 export function mergeArtifacts(
   base: ResolvedArtifacts,
   override: ResolvedArtifacts
 ): ResolvedArtifacts {
-  return {
+  return expandPlugins({
     skills: { ...base.skills, ...override.skills },
     references: { ...base.references, ...override.references },
     mcp: { ...base.mcp, ...override.mcp },
     plugins: { ...base.plugins, ...override.plugins },
     roots: { ...base.roots, ...override.roots },
     hooks: { ...base.hooks, ...override.hooks },
+  });
+}
+
+/**
+ * Deduplicate an array of strings, keeping the last occurrence of each value.
+ * This ensures parent declarations take precedence over child plugin declarations
+ * when arrays are concatenated as [...childIds, ...parentIds].
+ */
+function deduplicateIds(arr: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (let i = arr.length - 1; i >= 0; i--) {
+    if (!seen.has(arr[i])) {
+      seen.add(arr[i]);
+      result.unshift(arr[i]);
+    }
+  }
+  return result;
+}
+
+/**
+ * Recursively expand plugin references.
+ *
+ * Each plugin may declare a `plugins` array referencing other plugins by ID.
+ * This function resolves those references recursively, merging child plugins'
+ * primitives (skills, mcp_servers, hooks) into the parent. The result is a
+ * flat set of primitive IDs on each plugin — nesting is author convenience,
+ * not a runtime concept.
+ *
+ * Semantics:
+ * - Child plugins are expanded depth-first in declaration order
+ * - Parent's direct declarations override children (later wins via dedup)
+ * - Circular references are rejected with a clear error message
+ * - Plugins without a `plugins` field are returned unchanged
+ * - The `plugins` array on each entry is preserved as metadata (e.g., for
+ *   UI display of the dependency graph) even though primitives are inlined
+ *
+ * Returns a new ResolvedArtifacts object; the input is not mutated.
+ */
+export function expandPlugins(artifacts: ResolvedArtifacts): ResolvedArtifacts {
+  const plugins = artifacts.plugins;
+  const expanded = new Map<string, PluginEntry>();
+
+  function expand(pluginId: string, ancestors: string[]): PluginEntry {
+    if (expanded.has(pluginId)) {
+      return expanded.get(pluginId)!;
+    }
+
+    const plugin = plugins[pluginId];
+    if (!plugin) {
+      throw new Error(
+        `Plugin "${pluginId}" referenced by "${ancestors[ancestors.length - 1]}" not found in resolved artifacts`
+      );
+    }
+
+    // Cycle detection
+    const cycleIndex = ancestors.indexOf(pluginId);
+    if (cycleIndex !== -1) {
+      const cycle = [...ancestors.slice(cycleIndex), pluginId].join(" → ");
+      throw new Error(`Circular plugin dependency detected: ${cycle}`);
+    }
+
+    // No child plugins — return as-is
+    if (!plugin.plugins || plugin.plugins.length === 0) {
+      expanded.set(pluginId, plugin);
+      return plugin;
+    }
+
+    // Recursively expand child plugins and collect their primitives
+    const childSkills: string[] = [];
+    const childMcpServers: string[] = [];
+    const childHooks: string[] = [];
+
+    for (const childId of plugin.plugins) {
+      const child = expand(childId, [...ancestors, pluginId]);
+      if (child.skills) childSkills.push(...child.skills);
+      if (child.mcp_servers) childMcpServers.push(...child.mcp_servers);
+      if (child.hooks) childHooks.push(...child.hooks);
+    }
+
+    // Merge: children first, then parent's direct declarations (parent wins via dedup)
+    const mergedSkills = deduplicateIds([
+      ...childSkills,
+      ...(plugin.skills || []),
+    ]);
+    const mergedMcpServers = deduplicateIds([
+      ...childMcpServers,
+      ...(plugin.mcp_servers || []),
+    ]);
+    const mergedHooks = deduplicateIds([
+      ...childHooks,
+      ...(plugin.hooks || []),
+    ]);
+
+    const expandedPlugin: PluginEntry = {
+      ...plugin,
+      skills: mergedSkills.length > 0 ? mergedSkills : undefined,
+      mcp_servers: mergedMcpServers.length > 0 ? mergedMcpServers : undefined,
+      hooks: mergedHooks.length > 0 ? mergedHooks : undefined,
+    };
+
+    expanded.set(pluginId, expandedPlugin);
+    return expandedPlugin;
+  }
+
+  // Expand all plugins
+  for (const pluginId of Object.keys(plugins)) {
+    expand(pluginId, []);
+  }
+
+  // Build the new plugins record preserving insertion order
+  const expandedPlugins: Record<string, PluginEntry> = {};
+  for (const pluginId of Object.keys(plugins)) {
+    expandedPlugins[pluginId] = expanded.get(pluginId)!;
+  }
+
+  return {
+    ...artifacts,
+    plugins: expandedPlugins,
   };
 }
 
