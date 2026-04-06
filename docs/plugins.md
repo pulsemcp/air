@@ -89,3 +89,45 @@ You can mix both in the same `air.json`. A common pattern is to start with plugi
 3. **Keep plugins focused** — one domain, one plugin. Don't bundle unrelated capabilities
 4. **Declare all bundled artifacts** — list every skill, MCP server, and hook so the CLI can resolve overlaps
 5. **Use keywords** — help users discover your plugin through search
+
+## Deviations from Standards
+
+AIR's plugin model diverges from the emerging plugin standards in deliberate ways. This section tracks those deviations to inform potential alignment with or contributions back to those standards.
+
+### Open Plugins
+
+The [Open Plugin Specification](https://open-plugins.com/plugin-builders/specification) (maintained by Vercel Labs) defines a directory-based packaging format for AI coding agent extensions, targeting multi-agent compatibility (Claude Code, Cursor, Codex, GitHub Copilot).
+
+| Area | Open Plugins | AIR | Rationale |
+|------|-------------|-----|-----------|
+| **Format** | Directory with `.plugin/plugin.json` manifest | JSON index records in `plugins.json` | AIR treats plugins as metadata entries that reference separately-defined artifacts. This enables multi-layer composition (org > team > project) without copying directories. |
+| **Artifact references** | Components live inline within the plugin directory (skills, hooks, MCP configs are files under the plugin root) | Artifacts are referenced by ID from external index files (skills.json, mcp.json, hooks.json) | Referencing by ID keeps artifacts DRY — the same MCP server or skill can be shared across multiple plugins without duplication. It also enables the CLI to reason about overlap and deduplication. |
+| **Plugin composition** | Not supported — plugins are flat, self-contained directories | Supported — plugins can compose other plugins via a `plugins` array, with recursive expansion and cycle detection | Composition lets authors build higher-level bundles (e.g., "full-stack-dev" = "code-quality" + "database-tools" + extras) without manually flattening primitive IDs. |
+| **Path resolution** | `${PLUGIN_ROOT}` expansion; path traversal outside plugin root is rejected | Paths resolved to absolute at load time relative to the index file's directory | AIR's model supports remote sources (github://, etc.) where a single directory root doesn't apply. |
+| **Custom paths** | Supplement default component directories by default | N/A — all artifacts are explicit index entries, no directory conventions | AIR doesn't use directory-scanning discovery; everything is declared in index files. |
+| **Component types** | Skills, Agents, Rules (.mdc), Hooks, MCP Servers, LSP Servers, Commands, Output Styles | Skills, MCP Servers, Hooks (via plugin references); plus References, Roots as separate artifact types | AIR has fewer plugin-bundleable component types but adds References (shared docs) and Roots (workspace definitions) as first-class artifact types outside the plugin model. |
+
+### Claude Plugins
+
+[Claude Code plugins](https://code.claude.com/docs/en/plugins) are Anthropic's native extension system, with a format that is a superset of Open Plugins with Claude-specific additions.
+
+| Area | Claude Plugins | AIR | Rationale |
+|------|---------------|-----|-----------|
+| **Format** | Directory with `.claude-plugin/plugin.json` manifest | JSON index records in `plugins.json` | Same reasoning as Open Plugins — AIR favors index-based composition over directory-based packaging. |
+| **Artifact references** | Components live inline within the plugin directory | Artifacts referenced by ID from external index files | Same DRY rationale — avoids duplicating MCP configs, skills, and hooks across plugins that share them. |
+| **Plugin composition** | Not supported — plugins are flat directories | Supported with recursive expansion, deduplication, and cycle detection | Same rationale as Open Plugins — composition enables reuse without flattening. |
+| **Custom paths** | Replace default component directories (must explicitly re-include defaults) | N/A — artifacts are explicit index entries | Different philosophy: Claude plugins use directory convention with overrides; AIR uses explicit declaration. |
+| **User config / secrets** | `userConfig` field with keychain integration and `${user_config.KEY}` interpolation | `SecretResolver` extension interface with `${VAR}` interpolation in MCP configs | AIR uses a pluggable resolver model (env, 1Password, Vault, etc.) rather than a built-in keychain. Both support variable interpolation in configs. |
+| **Channels** | `channels` field for message injection (Telegram, Slack, etc.) | Not supported | AIR doesn't have a messaging concept — this is agent-specific. |
+| **Agent scoping** | `user`, `project`, `local`, `managed` scopes | Composition via layered `air.json` (org > team > project > local) | AIR achieves scoping through ordered config layering rather than explicit scope labels. |
+| **Persistent storage** | `${CLAUDE_PLUGIN_DATA}` directory survives updates | Not supported | AIR is stateless configuration; persistent storage is outside its scope. |
+
+### Summary of Key Deviations
+
+The deviations cluster around two fundamental design choices:
+
+1. **Index-based references vs. inline definitions**: Both Open Plugins and Claude Plugins embed components within the plugin directory. AIR references them by ID from separate index files. This enables cross-plugin deduplication and multi-layer composition but means AIR plugins aren't self-contained directories.
+
+2. **Plugin composition**: Neither standard supports plugins-of-plugins. AIR adds this to enable hierarchical bundling without manual flattening. This is a candidate for upstream contribution to both standards.
+
+These deviations are intentional and reflect AIR's design principles (DRY, composable layers, agent-agnostic). Where possible, AIR adapters bridge the gap by translating AIR's model into each agent's native format at session start time.
