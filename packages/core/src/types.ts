@@ -88,6 +88,7 @@ export interface RootEntry {
   default_skills?: string[];
   default_plugins?: string[];
   default_hooks?: string[];
+  default_subagent_roots?: string[];
   user_invocable?: boolean;
   default_stop_condition?: string;
 }
@@ -158,6 +159,13 @@ export interface PrepareSessionOptions {
    * When set, this replaces root.default_mcp_servers entirely.
    */
   mcpServerOverrides?: string[];
+  /**
+   * Skip merging subagent roots' artifacts into the parent session.
+   * When true, default_subagent_roots is ignored during preparation.
+   * Orchestrators that manage subagent composition externally (e.g., via
+   * an MCP server) should set this to true.
+   */
+  skipSubagentMerge?: boolean;
 }
 
 export interface PreparedSession {
@@ -167,6 +175,12 @@ export interface PreparedSession {
   skillPaths: string[];
   /** The command to start the agent in the prepared directory */
   startCommand: StartCommand;
+  /**
+   * System prompt content describing subagent root dependencies.
+   * Present when the root has default_subagent_roots and skipSubagentMerge is false.
+   * Adapters write this to a file and/or include it in the start command.
+   */
+  subagentContext?: string;
 }
 
 /**

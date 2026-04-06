@@ -80,6 +80,13 @@
           },
           "description": "IDs of hooks to activate by default for sessions using this root."
         },
+        "default_subagent_roots": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "IDs of other roots that this root depends on as subagents. The default CLI behavior merges subagent roots' skills and MCP servers into the parent session and appends subagent metadata to the system prompt. Orchestrators that manage subagent composition externally (e.g., via an MCP server) can opt out with --no-subagent-merge."
+        },
         "user_invocable": {
           "type": "boolean",
           "description": "Whether this root can be directly invoked by users to start a session.",
