@@ -3,6 +3,7 @@ import { join } from "path";
 import {
   resolveArtifacts,
   expandPlugins,
+  mergeArtifacts,
   emptyArtifacts,
 } from "../src/config.js";
 import { createTempAirDir, examplePlugin } from "./helpers.js";
@@ -160,16 +161,18 @@ describe("expandPlugins", () => {
 
     const result = expandPlugins(artifacts);
 
-    // common-skill appears only once despite being referenced by shared, child-a, child-b, and parent
-    const skills = result.plugins["parent"].skills!;
-    expect(skills.filter((s) => s === "common-skill")).toHaveLength(1);
-    expect(skills).toContain("common-skill");
-    expect(skills).toContain("skill-a");
-    expect(skills).toContain("skill-b");
+    // Diamond: shared→child-a→parent and shared→child-b→parent
+    // child-a expands to [common-skill, skill-a], child-b to [common-skill, skill-b]
+    // parent collects [...child-a, ...child-b, common-skill (direct)]
+    // Dedup keeps last occurrence: [skill-a, skill-b, common-skill]
+    expect(result.plugins["parent"].skills).toEqual([
+      "skill-a",
+      "skill-b",
+      "common-skill",
+    ]);
 
-    // common-server from shared appears exactly once
-    const servers = result.plugins["parent"].mcp_servers!;
-    expect(servers.filter((s) => s === "common-server")).toHaveLength(1);
+    // common-server from shared via both children, deduped to one
+    expect(result.plugins["parent"].mcp_servers).toEqual(["common-server"]);
   });
 
   it("parent direct declarations take precedence (appear after children)", () => {
@@ -465,5 +468,72 @@ describe("resolveArtifacts with plugin composition", () => {
     await expect(resolveArtifacts(join(dir, "air.json"))).rejects.toThrow(
       /Circular plugin dependency detected/
     );
+  });
+
+  it("expands cross-file plugin references (composite references plugin from another file)", async () => {
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        plugins: ["./base-plugins.json", "./composite-plugins.json"],
+      },
+      "base-plugins.json": {
+        "code-quality": {
+          id: "code-quality",
+          description: "Code quality tools",
+          skills: ["lint", "format"],
+          mcp_servers: ["eslint-server"],
+        },
+      },
+      "composite-plugins.json": {
+        "full-stack": {
+          id: "full-stack",
+          description: "Full stack plugin",
+          plugins: ["code-quality"],
+          skills: ["deploy"],
+        },
+      },
+    });
+    cleanup = c;
+
+    const artifacts = await resolveArtifacts(join(dir, "air.json"));
+
+    // full-stack from composite-plugins.json references code-quality from base-plugins.json
+    expect(artifacts.plugins["full-stack"].skills).toEqual([
+      "lint",
+      "format",
+      "deploy",
+    ]);
+    expect(artifacts.plugins["full-stack"].mcp_servers).toEqual([
+      "eslint-server",
+    ]);
+  });
+});
+
+describe("mergeArtifacts with plugin composition", () => {
+  it("re-expands composite plugins after merging", () => {
+    const base = emptyArtifacts();
+    base.plugins = {
+      "code-quality": {
+        id: "code-quality",
+        description: "Code quality tools",
+        skills: ["lint"],
+      },
+    };
+
+    const override = emptyArtifacts();
+    override.plugins = {
+      "full-stack": {
+        id: "full-stack",
+        description: "Full stack plugin",
+        plugins: ["code-quality"],
+        skills: ["deploy"],
+      },
+    };
+
+    const result = mergeArtifacts(base, override);
+
+    // full-stack should be expanded even though code-quality came from base
+    expect(result.plugins["full-stack"].skills).toEqual(["lint", "deploy"]);
+    expect(result.plugins["code-quality"].skills).toEqual(["lint"]);
   });
 });

@@ -193,19 +193,21 @@ export async function resolveArtifacts(
 
 /**
  * Merge two resolved artifact sets. Override wins for matching IDs.
+ * Composite plugins are re-expanded after merging so that newly
+ * added plugins that reference existing ones are fully resolved.
  */
 export function mergeArtifacts(
   base: ResolvedArtifacts,
   override: ResolvedArtifacts
 ): ResolvedArtifacts {
-  return {
+  return expandPlugins({
     skills: { ...base.skills, ...override.skills },
     references: { ...base.references, ...override.references },
     mcp: { ...base.mcp, ...override.mcp },
     plugins: { ...base.plugins, ...override.plugins },
     roots: { ...base.roots, ...override.roots },
     hooks: { ...base.hooks, ...override.hooks },
-  };
+  });
 }
 
 /**
@@ -239,6 +241,8 @@ function deduplicateIds(arr: string[]): string[] {
  * - Parent's direct declarations override children (later wins via dedup)
  * - Circular references are rejected with a clear error message
  * - Plugins without a `plugins` field are returned unchanged
+ * - The `plugins` array on each entry is preserved as metadata (e.g., for
+ *   UI display of the dependency graph) even though primitives are inlined
  */
 export function expandPlugins(artifacts: ResolvedArtifacts): ResolvedArtifacts {
   const plugins = artifacts.plugins;
