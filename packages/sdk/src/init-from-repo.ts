@@ -186,7 +186,7 @@ export function discoverArtifacts(
     discovered.push({
       type: schemaType,
       repoPath: file,
-      uri: `github://${owner}/${repoName}/${file}@${branch}`,
+      uri: `github://${owner}/${repoName}@${branch}/${file}`,
     });
   }
 

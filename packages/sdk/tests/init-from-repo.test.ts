@@ -139,7 +139,7 @@ describe("discoverArtifacts", () => {
     expect(artifacts[0].type).toBe("skills");
     expect(artifacts[0].repoPath).toBe("skills/skills.json");
     expect(artifacts[0].uri).toBe(
-      "github://acme/config/skills/skills.json@main"
+      "github://acme/config@main/skills/skills.json"
     );
   });
 
@@ -292,10 +292,10 @@ describe("initFromRepo", () => {
     expect(airJson.name).toBe("air-config");
     expect(airJson.extensions).toEqual(["@pulsemcp/air-provider-github"]);
     expect(airJson.skills).toEqual([
-      "github://acme/air-config/skills/skills.json@main",
+      "github://acme/air-config@main/skills/skills.json",
     ]);
     expect(airJson.mcp).toEqual([
-      "github://acme/air-config/mcp/mcp.json@main",
+      "github://acme/air-config@main/mcp/mcp.json",
     ]);
     // Should not include empty artifact types
     expect(airJson.references).toBeUndefined();
@@ -442,7 +442,7 @@ describe("initFromRepo", () => {
 
     expect(result.repo).toBe("myorg/my-repo");
     const airJson = JSON.parse(readFileSync(airJsonPath, "utf-8"));
-    expect(airJson.mcp[0]).toContain("github://myorg/my-repo/");
+    expect(airJson.mcp[0]).toContain("github://myorg/my-repo@main/");
   });
 
   it("includes multiple same-type artifacts as separate URIs", () => {
@@ -469,10 +469,10 @@ describe("initFromRepo", () => {
     const airJson = JSON.parse(readFileSync(airJsonPath, "utf-8"));
     expect(airJson.skills).toHaveLength(2);
     expect(airJson.skills).toContain(
-      "github://acme/config/backend/skills.json@main"
+      "github://acme/config@main/backend/skills.json"
     );
     expect(airJson.skills).toContain(
-      "github://acme/config/frontend/skills.json@main"
+      "github://acme/config@main/frontend/skills.json"
     );
   });
 
