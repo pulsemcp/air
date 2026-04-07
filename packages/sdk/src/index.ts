@@ -79,6 +79,13 @@ export type {
   PrepareSessionResult,
 } from "./prepare.js";
 
+// Extension installer
+export { installExtensions } from "./install.js";
+export type {
+  InstallExtensionsOptions,
+  InstallExtensionsResult,
+} from "./install.js";
+
 // Extension loader
 export { loadExtensions } from "./extension-loader.js";
 export type { LoadedExtensions } from "./extension-loader.js";
