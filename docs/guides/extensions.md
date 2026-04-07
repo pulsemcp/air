@@ -8,7 +8,7 @@ Extensions are how AIR grows without bloating the core. Adapters, catalog provid
 |------|---------|---------|
 | **Adapter** | Translate AIR config to agent-specific formats | `@pulsemcp/air-adapter-claude` |
 | **Provider** | Resolve remote URIs in artifact paths | `@pulsemcp/air-provider-github` |
-| **Transform** | Modify `.mcp.json` after session preparation | `@pulsemcp/air-secrets-env` |
+| **Transform** | Modify `.mcp.json` after session preparation | Custom secrets injection extension |
 
 A single extension package can provide any combination of these.
 
@@ -21,8 +21,7 @@ List extensions in your `air.json`:
   "name": "my-config",
   "extensions": [
     "@pulsemcp/air-adapter-claude",
-    "@pulsemcp/air-provider-github",
-    "@pulsemcp/air-secrets-env"
+    "@pulsemcp/air-provider-github"
   ]
 }
 ```
@@ -163,12 +162,12 @@ Extensions load in the order they appear in `air.json`. This matters for transfo
     "@pulsemcp/air-adapter-claude",
     "@pulsemcp/air-provider-github",
     "./custom-transform",
-    "@pulsemcp/air-secrets-env"
+    "./secrets-resolver"
   ]
 }
 ```
 
-Here, `custom-transform` runs before `air-secrets-env`, so any variables it introduces will be resolved by the secrets extension.
+Here, `custom-transform` runs before `secrets-resolver`, so any `${VAR}` patterns it introduces will be resolved by the secrets transform.
 
 ## The prepareSession flow
 

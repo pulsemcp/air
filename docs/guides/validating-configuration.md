@@ -17,19 +17,25 @@ air validate ~/.air/air.json
 Successful output:
 
 ```
-✓ air.json (air)
+✓ ~/.air/air.json is valid (schema: air)
 ```
 
 Failed output:
 
 ```
-✗ air.json (air)
-  /name — must match pattern "^[a-zA-Z0-9_-]+$"
+✗ ~/.air/air.json has validation errors (schema: air):
+  /name: must match pattern "^[a-zA-Z0-9_-]+$"
 ```
 
 ## Schema detection
 
-The validate command auto-detects which schema to use based on the filename. It checks for these substrings (in order):
+The validate command determines which schema to use via three mechanisms, in priority order:
+
+1. **`--schema` flag** — explicit override, always wins
+2. **`$schema` field** — if present in the JSON file, matched against known schema URIs
+3. **Filename matching** — checks for substrings in the filename
+
+For filename matching, these substrings are checked in order:
 
 | Filename contains | Schema used |
 |-------------------|-------------|
@@ -102,9 +108,9 @@ done
 Errors include a JSON path and a message:
 
 ```
-✗ mcp.json (mcp)
-  /github/type — must be equal to one of the allowed values
-  /analytics — must have required property 'url'
+✗ ~/.air/mcp/mcp.json has validation errors (schema: mcp):
+  /github/type: must be equal to one of the allowed values
+  /analytics: must have required property 'url'
 ```
 
 - `/github/type` — the `type` field inside the `github` server entry
@@ -115,7 +121,7 @@ Errors include a JSON path and a message:
 ### Missing required fields
 
 ```
-/my-skill — must have required property 'description'
+/my-skill: must have required property 'description'
 ```
 
 Add the missing field to your index entry.
@@ -123,7 +129,7 @@ Add the missing field to your index entry.
 ### Invalid ID pattern
 
 ```
-/name — must match pattern "^[a-zA-Z0-9_-]+$"
+/name: must match pattern "^[a-zA-Z0-9_-]+$"
 ```
 
 IDs and names can only contain letters, numbers, hyphens, and underscores. No spaces or special characters.
@@ -131,7 +137,7 @@ IDs and names can only contain letters, numbers, hyphens, and underscores. No sp
 ### Transport type mismatch
 
 ```
-/my-server — must NOT have additional properties (url)
+/my-server: must NOT have additional properties (url)
 ```
 
 A `stdio` server cannot have a `url` field. Check that your transport type matches the fields you've provided.

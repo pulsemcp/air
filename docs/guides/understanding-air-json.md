@@ -140,8 +140,7 @@ The `extensions` array lists packages that extend AIR's functionality:
 {
   "extensions": [
     "@pulsemcp/air-adapter-claude",
-    "@pulsemcp/air-provider-github",
-    "@pulsemcp/air-secrets-env"
+    "@pulsemcp/air-provider-github"
   ]
 }
 ```
@@ -181,7 +180,7 @@ A common error is writing paths relative to your current working directory. Path
 
 ### Mismatched IDs
 
-Each artifact's key in its index file must match the `id` (or `name` for roots) field inside the object:
+Each artifact's key in its index file should match the `id` (or `name` for roots) field inside the object:
 
 ```json
 {
@@ -193,7 +192,7 @@ Each artifact's key in its index file must match the `id` (or `name` for roots) 
 }
 ```
 
-If the key is `"my-skill"` but `id` is `"other-skill"`, validation will catch this.
+If the key is `"my-skill"` but `id` is `"other-skill"`, this mismatch is not caught by `air validate` (JSON Schema cannot enforce key-value correspondence), but it can cause unexpected override behavior at runtime. Always keep keys and IDs in sync.
 
 ### Adding unknown fields
 
@@ -201,7 +200,7 @@ If the key is `"my-skill"` but `id` is `"other-skill"`, validation will catch th
 
 ### Leaving unresolved variables
 
-MCP server configs support `${ENV_VAR}` interpolation, but AIR validates that all variables are resolved after transforms run. If you see errors about unresolved variables, either set the environment variable or use a secrets extension to resolve them. You can bypass this check with `--skip-validation` on the `prepare` command.
+MCP server configs support `${ENV_VAR}` interpolation, but AIR validates that all variables are resolved after transforms run. If you see errors about unresolved variables, either set the environment variable or use a transform extension to resolve them. You can bypass this check with `--skip-validation` on the `prepare` command.
 
 ## Validating your config
 

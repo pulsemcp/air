@@ -26,7 +26,7 @@ air --version
 air init
 ```
 
-This creates the `~/.air/` directory with the following structure:
+This creates the `~/.air/` directory with the following structure (this will fail if `~/.air/air.json` already exists):
 
 ```
 ~/.air/
@@ -76,8 +76,8 @@ air validate ~/.air/mcp/mcp.json
 You should see output like:
 
 ```
-✓ air.json (air)
-✓ mcp.json (mcp)
+✓ ~/.air/air.json is valid (schema: air)
+✓ ~/.air/mcp/mcp.json is valid (schema: mcp)
 ```
 
 ## 5. Install the agent adapter

@@ -49,7 +49,7 @@ Add entries to `~/.air/hooks/hooks.json`:
 | `post_tool_call` | After a tool completes |
 | `pre_commit` | Before a git commit is created |
 | `post_commit` | After a git commit is created |
-| `notification` | For notifications/messaging |
+| `notification` | Agent sends a notification or message (behavior is agent-specific) |
 
 ## Examples
 
@@ -139,11 +139,12 @@ Output:
 
 ```
 Hooks (2):
-  notify-session-start — Session Start Notification
+
+  notify-session-start (Session Start Notification)
     Send a Slack notification when an agent session starts
     Event: session_start
 
-  lint-pre-commit — Pre-Commit Lint
+  lint-pre-commit (Pre-Commit Lint)
     Run linting on staged files before allowing a commit
     Event: pre_commit
 ```

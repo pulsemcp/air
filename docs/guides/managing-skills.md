@@ -138,10 +138,11 @@ Output:
 
 ```
 Skills (2):
-  deploy-staging — Deploy to Staging
+
+  deploy-staging (Deploy to Staging)
     Deploy the current branch to the staging environment for testing
 
-  initial-pr-review — Initial PR Review
+  initial-pr-review (Initial PR Review)
     Perform a structured first-pass code review on a pull request
     References: git-workflow, code-standards
 ```

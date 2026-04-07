@@ -20,6 +20,8 @@ air start claude
 
 ### Options
 
+Required argument: `<agent>` — the agent to start (e.g., `claude`).
+
 | Flag | Description |
 |------|-------------|
 | `--root <name>` | Activate a specific root |
@@ -39,23 +41,21 @@ Output:
 ```
 === AIR Session Configuration ===
 Agent: claude
-
-Root: web-app (Web Application)
-  Main web application. Full-stack Rails app with React frontend.
+Root: web-app — Main web application. Full-stack Rails app with React frontend.
 
 MCP Servers (2):
-  • github — GitHub access
-  • postgres-prod — Read-only production database
+  • github — Create and manage issues, PRs, branches, and files in GitHub repos.
+  • postgres-prod — Read-only access to the production PostgreSQL database.
 
 Skills (2):
-  • deploy-staging — Deploy to Staging
-  • initial-pr-review — Initial PR Review
+  • deploy-staging — Deploy the current branch to the staging environment for testing
+  • initial-pr-review — Perform a structured first-pass code review on a pull request
 
 Plugins (1):
-  • code-quality — Code Quality Suite
+  • code-quality — Linting, formatting, and static analysis tools bundled with coding standards skills
 
 Hooks (1):
-  • lint-pre-commit — Pre-Commit Lint Check
+  • lint-pre-commit — Run linting on staged files before allowing a commit
 ```
 
 ### Using roots
@@ -73,8 +73,10 @@ This activates only the MCP servers, skills, plugins, and hooks listed in the ro
 `air prepare` writes agent configuration to a target directory without starting the agent. It's designed for orchestrators and CI/CD pipelines.
 
 ```bash
-air prepare --target /path/to/workspace
+air prepare
 ```
+
+By default, it prepares the current directory. Use `--target` to specify a different directory.
 
 ### What it does
 

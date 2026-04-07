@@ -186,17 +186,18 @@ Output:
 
 ```
 Roots (2):
+
   web-app (Web Application)
     Main web application. Full-stack Rails app with React frontend.
     URL: https://github.com/acme/web-app.git
-    Default MCP Servers: github, postgres-prod
-    Default Skills: deploy-staging, initial-pr-review
+    MCP Servers: github, postgres-prod
+    Skills: deploy-staging, initial-pr-review
 
   data-pipeline (Data Pipeline)
     ETL pipeline and data warehouse management. Python-based with dbt.
     URL: https://github.com/acme/data-pipeline.git
-    Default MCP Servers: github, analytics
-    Default Skills: initial-pr-review
+    MCP Servers: github, analytics
+    Skills: initial-pr-review
 ```
 
 ## Best practices

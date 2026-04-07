@@ -77,6 +77,7 @@ Remote server fields:
 | `type` | Yes | `"sse"` or `"streamable-http"` |
 | `url` | Yes | Server endpoint URL |
 | `headers` | No | HTTP headers (e.g., authorization) |
+| `env` | No | Environment variables (available on all transport types) |
 | `oauth` | No | OAuth configuration for auto-authentication |
 
 ### OAuth configuration
@@ -126,8 +127,8 @@ MCP server configs support `${ENV_VAR}` interpolation in `command`, `args`, `env
 Variables are resolved from the environment when the session starts. After all transforms run, AIR validates that no `${VAR}` patterns remain unresolved. You can:
 
 - Set the variables in your shell environment
-- Use a secrets extension (like `@pulsemcp/air-secrets-env`) to inject them
-- Pass `--skip-validation` to `air prepare` if your orchestrator handles resolution
+- Use a secrets transform extension to inject them at prepare time
+- Pass `--skip-validation` to `air prepare` to skip the unresolved `${VAR}` pattern check (this does not skip schema validation) — useful when your orchestrator resolves variables itself
 
 ## Transport-specific constraints
 
@@ -187,15 +188,16 @@ Output:
 
 ```
 MCP Servers (3):
-  github — GitHub
+
+  github (GitHub)
     Create and manage issues, PRs, branches, and files in GitHub repos.
     Type: stdio
 
-  postgres-prod — PostgreSQL - Production (Read-Only)
+  postgres-prod (PostgreSQL - Production (Read-Only))
     Read-only access to the production PostgreSQL database.
     Type: stdio
 
-  analytics — Analytics Dashboard
+  analytics (Analytics Dashboard)
     Query analytics data and generate reports from the data warehouse.
     Type: streamable-http
 ```

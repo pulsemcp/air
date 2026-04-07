@@ -112,11 +112,12 @@ Output:
 
 ```
 References (2):
-  git-workflow — Git Workflow
+
+  git-workflow (Git Workflow)
     Standard git workflow, branch naming conventions, and PR processes
     File: references/GIT_WORKFLOW.md
 
-  code-standards — Code Standards
+  code-standards (Code Standards)
     Coding standards and conventions for the engineering team
     File: references/CODE_STANDARDS.md
 ```
