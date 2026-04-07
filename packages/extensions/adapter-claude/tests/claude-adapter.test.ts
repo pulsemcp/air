@@ -74,7 +74,7 @@ describe("ClaudeAdapter", () => {
       expect(result.mcpServers.test.description).toBeUndefined();
     });
 
-    it("translates remote servers (sse/streamable-http)", () => {
+    it("translates streamable-http to http for Claude Code compatibility", () => {
       const servers: Record<string, McpServerEntry> = {
         remote: {
           type: "streamable-http",
@@ -85,7 +85,7 @@ describe("ClaudeAdapter", () => {
 
       const result = adapter.translateMcpServers(servers) as any;
       expect(result.mcpServers.remote).toEqual({
-        type: "streamable-http",
+        type: "http",
         url: "https://mcp.example.com/api",
         headers: { Authorization: "Bearer ${TOKEN}" },
       });
@@ -305,7 +305,7 @@ describe("ClaudeAdapter", () => {
       await adapter.prepareSession(artifacts, dir);
 
       const mcpJson = JSON.parse(readFileSync(join(dir, ".mcp.json"), "utf-8"));
-      expect(mcpJson.mcpServers.granola.type).toBe("streamable-http");
+      expect(mcpJson.mcpServers.granola.type).toBe("http");
       expect(mcpJson.mcpServers.granola.url).toBe("https://mcp.granola.ai/mcp");
       expect(mcpJson.mcpServers.events.type).toBe("sse");
       expect(mcpJson.mcpServers.events.url).toBe("https://mcp.example.com/sse");
