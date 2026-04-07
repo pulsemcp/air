@@ -18,7 +18,47 @@ describe("parseGitHubUri", () => {
     });
   });
 
-  it("parses URI with @ref", () => {
+  // --- repo-level @ref syntax (preferred) ---
+
+  it("parses URI with @ref on repo segment", () => {
+    const result = parseGitHubUri(
+      "github://acme/air-org@v1.0.0/mcp/mcp.json"
+    );
+    expect(result).toEqual({
+      owner: "acme",
+      repo: "air-org",
+      path: "mcp/mcp.json",
+      ref: "v1.0.0",
+    });
+  });
+
+  it("parses URI with branch ref on repo segment", () => {
+    const result = parseGitHubUri(
+      "github://pulsemcp/pulsemcp@main/agents/skills/skills.json"
+    );
+    expect(result).toEqual({
+      owner: "pulsemcp",
+      repo: "pulsemcp",
+      path: "agents/skills/skills.json",
+      ref: "main",
+    });
+  });
+
+  it("parses URI with commit SHA ref on repo segment", () => {
+    const result = parseGitHubUri(
+      "github://acme/repo@abc123/path/file.json"
+    );
+    expect(result).toEqual({
+      owner: "acme",
+      repo: "repo",
+      path: "path/file.json",
+      ref: "abc123",
+    });
+  });
+
+  // --- legacy path-level @ref syntax (backward compat) ---
+
+  it("parses URI with legacy @ref on path", () => {
     const result = parseGitHubUri(
       "github://acme/air-org/mcp/mcp.json@v1.0.0"
     );
@@ -30,7 +70,7 @@ describe("parseGitHubUri", () => {
     });
   });
 
-  it("parses URI with branch ref", () => {
+  it("parses URI with legacy branch ref on path", () => {
     const result = parseGitHubUri(
       "github://pulsemcp/pulsemcp/agents/skills/skills.json@main"
     );
@@ -42,6 +82,8 @@ describe("parseGitHubUri", () => {
     });
   });
 
+  // --- general parsing ---
+
   it("handles deeply nested paths", () => {
     const result = parseGitHubUri(
       "github://org/repo/a/b/c/d/file.json"
@@ -52,6 +94,20 @@ describe("parseGitHubUri", () => {
       path: "a/b/c/d/file.json",
     });
   });
+
+  it("handles deeply nested paths with repo-level ref", () => {
+    const result = parseGitHubUri(
+      "github://org/repo@develop/a/b/c/d/file.json"
+    );
+    expect(result).toEqual({
+      owner: "org",
+      repo: "repo",
+      path: "a/b/c/d/file.json",
+      ref: "develop",
+    });
+  });
+
+  // --- error cases ---
 
   it("throws on URI with too few segments", () => {
     expect(() => parseGitHubUri("github://acme/repo")).toThrow(
@@ -71,9 +127,15 @@ describe("parseGitHubUri", () => {
     );
   });
 
-  it("rejects path traversal in ref", () => {
+  it("rejects path traversal in ref on path", () => {
     expect(() =>
       parseGitHubUri("github://acme/repo/file.json@../../etc")
+    ).toThrow("Path traversal");
+  });
+
+  it("rejects path traversal in ref on repo", () => {
+    expect(() =>
+      parseGitHubUri("github://acme/repo@../../etc/file.json")
     ).toThrow("Path traversal");
   });
 
@@ -83,9 +145,15 @@ describe("parseGitHubUri", () => {
     ).toThrow("Invalid owner");
   });
 
-  it("rejects shell metacharacters in ref", () => {
+  it("rejects shell metacharacters in ref on path", () => {
     expect(() =>
       parseGitHubUri("github://acme/repo/file.json@main;rm -rf /")
+    ).toThrow("Invalid ref");
+  });
+
+  it("rejects shell metacharacters in ref on repo", () => {
+    expect(() =>
+      parseGitHubUri("github://acme/repo@main;rm -rf //file.json")
     ).toThrow("Invalid ref");
   });
 });
