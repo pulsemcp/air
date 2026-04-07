@@ -1,6 +1,11 @@
 {
   "name": "acme-engineering",
   "description": "Acme Corp engineering team AI agent configuration",
+  "extensions": [
+    "@pulsemcp/air-adapter-claude",
+    "@pulsemcp/air-provider-github",
+    "@pulsemcp/air-secrets-env"
+  ],
   "skills": [
     "./skills/skills.json"
   ],

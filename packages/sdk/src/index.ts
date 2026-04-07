@@ -36,8 +36,11 @@ export type {
   // Extension interfaces
   AgentAdapter,
   CatalogProvider,
-  SecretResolver,
   AirExtension,
+  PrepareTransform,
+  McpConfig,
+  TransformContext,
+  ExtensionCliOption,
   AgentSessionConfig,
   StartCommand,
   PrepareSessionOptions as CorePrepareSessionOptions,
@@ -75,3 +78,11 @@ export type {
   PrepareSessionOptions,
   PrepareSessionResult,
 } from "./prepare.js";
+
+// Extension loader
+export { loadExtensions } from "./extension-loader.js";
+export type { LoadedExtensions } from "./extension-loader.js";
+
+// Transform runner
+export { runTransforms } from "./transform-runner.js";
+export type { RunTransformsOptions } from "./transform-runner.js";

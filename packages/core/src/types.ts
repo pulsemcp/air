@@ -5,6 +5,7 @@
 export interface AirConfig {
   name: string;
   description?: string;
+  extensions?: string[];
   skills?: string[];
   references?: string[];
   mcp?: string[];
@@ -148,8 +149,6 @@ export interface AgentAdapter {
 export interface PrepareSessionOptions {
   /** Root to filter artifacts by (uses root's default_* arrays) */
   root?: RootEntry;
-  /** Secret resolvers for ${VAR} interpolation in MCP configs */
-  secretResolvers?: SecretResolver[];
   /**
    * Override the root's default_skills — only activate these specific skills.
    * When set, this replaces root.default_skills entirely.
@@ -207,29 +206,71 @@ export interface CatalogProvider {
 }
 
 /**
- * Secret Resolver — resolves ${VAR} interpolation in config values.
+ * Prepare Transform — post-processes the MCP config after the adapter writes it.
  *
- * Adapters accept an array of SecretResolver instances and try them
- * in order. Extensions can implement resolvers for process.env,
- * 1Password, Vault, AWS Secrets Manager, etc.
+ * Transforms run in declaration order (the order they appear in the
+ * air.json `extensions` array). Each transform receives the current
+ * MCP config and returns a (possibly modified) version. This is the
+ * general-purpose hook for secrets resolution, config patching,
+ * server injection, and any other post-processing.
  */
-export interface SecretResolver {
-  /** Unique name for this resolver (e.g., "env", "1password") */
-  name: string;
-  /** Resolve a key to its secret value. Returns undefined if not found. */
-  resolve(key: string): Promise<string | undefined>;
+export interface PrepareTransform {
+  transform(config: McpConfig, context: TransformContext): Promise<McpConfig>;
+}
+
+/**
+ * The shape of the MCP config file (.mcp.json) that transforms operate on.
+ */
+export interface McpConfig {
+  mcpServers: Record<string, Record<string, unknown>>;
+}
+
+/**
+ * Context passed to transforms during execution.
+ */
+export interface TransformContext {
+  /** The target directory being prepared */
+  targetDir: string;
+  /** The root being activated (if any) */
+  root?: RootEntry;
+  /** The full resolved artifacts */
+  artifacts: ResolvedArtifacts;
+  /** Parsed CLI option values contributed by extensions */
+  options: Record<string, unknown>;
+  /** Path to the .mcp.json file being transformed */
+  mcpConfigPath: string;
+}
+
+/**
+ * A CLI option that an extension contributes to `air prepare`.
+ * Extensions declare these so the CLI can register and parse them.
+ */
+export interface ExtensionCliOption {
+  /** Commander flag string, e.g., "--secrets-file <path>" */
+  flag: string;
+  /** Description shown in --help */
+  description: string;
+  /** Default value if not provided */
+  defaultValue?: unknown;
 }
 
 /**
  * Extension metadata — the shape every AIR extension package default-exports.
- * Used by the CLI for adapter/provider discovery.
+ *
+ * An extension can provide any combination of adapter, provider, and/or
+ * transform. The SDK partitions extensions by checking which fields are
+ * present rather than using a type discriminant.
  */
 export interface AirExtension {
   name: string;
-  type: "adapter" | "provider" | "secret-resolver";
+  /** Agent adapter (e.g., Claude Code) */
   adapter?: AgentAdapter;
+  /** Catalog provider for remote URI resolution (e.g., github://) */
   provider?: CatalogProvider;
-  secretResolver?: SecretResolver;
+  /** Post-prepare transform for MCP config */
+  transform?: PrepareTransform;
+  /** CLI options this extension contributes to `air prepare` */
+  prepareOptions?: ExtensionCliOption[];
 }
 
 // ============================================================

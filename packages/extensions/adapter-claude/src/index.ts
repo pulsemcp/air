@@ -5,7 +5,6 @@ export { ClaudeAdapter } from "./claude-adapter.js";
 
 const extension: AirExtension = {
   name: "claude",
-  type: "adapter",
   adapter: new ClaudeAdapter(),
 };
 

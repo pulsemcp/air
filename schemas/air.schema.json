@@ -16,6 +16,11 @@
       "pattern": "^[a-zA-Z0-9_-]+$",
       "description": "Unique identifier for this AIR configuration."
     },
+    "extensions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Extension packages or local paths to load. Extensions provide adapters, providers, and/or transforms. Loaded via dynamic import() in declaration order."
+    },
     "description": {
       "type": "string",
       "maxLength": 500,

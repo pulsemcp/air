@@ -1,5 +1,20 @@
+import { dirname, resolve } from "path";
 import { Command } from "commander";
-import { prepareSession } from "@pulsemcp/air-sdk";
+import {
+  prepareSession,
+  loadAirConfig,
+  getAirJsonPath,
+  loadExtensions,
+} from "@pulsemcp/air-sdk";
+
+/**
+ * Extract the flag name from a Commander flag string.
+ * E.g., "--secrets-file <path>" → "secrets-file"
+ */
+function extractFlagName(flag: string): string {
+  const match = flag.match(/--([a-zA-Z0-9-]+)/);
+  return match ? match[1] : flag;
+}
 
 export function prepareCommand(): Command {
   const cmd = new Command("prepare")
@@ -33,6 +48,7 @@ export function prepareCommand(): Command {
       "--no-subagent-merge",
       "Skip merging subagent roots' artifacts into the parent session (for orchestrators that manage composition externally)"
     )
+    .allowUnknownOption(true)
     .action(
       async (options: {
         config?: string;
@@ -44,6 +60,35 @@ export function prepareCommand(): Command {
         subagentMerge: boolean;
       }) => {
         try {
+          // Load extensions to discover their CLI options
+          const airJsonPath = options.config || getAirJsonPath();
+          const extensionOptions: Record<string, unknown> = {};
+
+          if (airJsonPath) {
+            const airConfig = loadAirConfig(airJsonPath);
+            if (airConfig.extensions?.length) {
+              const airJsonDir = dirname(resolve(airJsonPath));
+              const loaded = await loadExtensions(
+                airConfig.extensions,
+                airJsonDir
+              );
+
+              // Parse extension-contributed CLI options from process.argv
+              for (const ext of loaded.all) {
+                if (!ext.prepareOptions) continue;
+                for (const opt of ext.prepareOptions) {
+                  const flagName = extractFlagName(opt.flag);
+                  const idx = process.argv.indexOf(`--${flagName}`);
+                  if (idx !== -1 && idx + 1 < process.argv.length) {
+                    extensionOptions[flagName] = process.argv[idx + 1];
+                  } else if (opt.defaultValue !== undefined) {
+                    extensionOptions[flagName] = opt.defaultValue;
+                  }
+                }
+              }
+            }
+          }
+
           const result = await prepareSession({
             config: options.config,
             root: options.root,
@@ -56,6 +101,7 @@ export function prepareCommand(): Command {
               ? options.mcpServers.split(",").map((s) => s.trim())
               : undefined,
             skipSubagentMerge: !options.subagentMerge,
+            extensionOptions,
           });
 
           if (result.rootAutoDetected && result.root) {
