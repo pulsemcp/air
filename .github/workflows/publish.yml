@@ -36,6 +36,8 @@ jobs:
         run: |
           npm run build -w packages/extensions/adapter-claude
           npm run build -w packages/extensions/provider-github
+          npm run build -w packages/extensions/secrets-env
+          npm run build -w packages/extensions/secrets-file
           npm run build -w packages/sdk
           npm run build -w packages/cli
 
@@ -63,6 +65,8 @@ jobs:
           # Publish extensions
           publish_if_needed packages/extensions/adapter-claude
           publish_if_needed packages/extensions/provider-github
+          publish_if_needed packages/extensions/secrets-env
+          publish_if_needed packages/extensions/secrets-file
 
           # Publish SDK (depends on core)
           publish_if_needed packages/sdk
