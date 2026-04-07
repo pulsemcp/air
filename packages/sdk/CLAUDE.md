@@ -14,7 +14,8 @@ packages/sdk/
 │   ├── init.ts               # initConfig() — initialize ~/.air/ config directory
 │   ├── list.ts               # listArtifacts() — resolve and return artifacts by type
 │   ├── start.ts              # startSession() — prepare to start an agent session
-│   └── prepare.ts            # prepareSession() — prepare a target directory for an agent
+│   ├── prepare.ts            # prepareSession() — prepare a target directory for an agent
+│   └── install.ts            # installExtensions() — install missing extension packages
 ├── tests/                    # SDK unit tests (direct function calls, not CLI spawning)
 └── package.json
 ```
