@@ -8,7 +8,9 @@ import {
   readFileSync,
 } from "fs";
 import { tmpdir } from "os";
+import type { McpConfig } from "@pulsemcp/air-core";
 import { prepareSession } from "../src/prepare.js";
+import { findUnresolvedVars } from "../src/validate-config.js";
 
 const tempDirs: string[] = [];
 
@@ -494,6 +496,267 @@ export default async function(config, context) {
           target: createTemp({}),
         })
       ).rejects.toThrow("Failed to load extension");
+    });
+  });
+
+  describe("unresolved variable validation", () => {
+    it("passes when all variables are resolved", async () => {
+      const catalog = createTemp({
+        "air.json": {
+          name: "test",
+          mcp: ["./mcp.json"],
+        },
+        "mcp.json": {
+          server: {
+            type: "stdio",
+            command: "npx",
+            env: { TOKEN: "resolved-value" },
+          },
+        },
+      });
+
+      const target = createTemp({});
+
+      await expect(
+        prepareSession({
+          config: join(catalog, "air.json"),
+          target,
+        })
+      ).resolves.toBeDefined();
+    });
+
+    it("throws when unresolved ${VAR} patterns remain", async () => {
+      const catalog = createTemp({
+        "air.json": {
+          name: "test",
+          mcp: ["./mcp.json"],
+        },
+        "mcp.json": {
+          server: {
+            type: "stdio",
+            command: "npx",
+            env: { TOKEN: "${MISSING_SECRET}" },
+          },
+        },
+      });
+
+      const target = createTemp({});
+
+      await expect(
+        prepareSession({
+          config: join(catalog, "air.json"),
+          target,
+        })
+      ).rejects.toThrow("Unresolved variable");
+    });
+
+    it("lists all unresolved variables in the error", async () => {
+      const catalog = createTemp({
+        "air.json": {
+          name: "test",
+          mcp: ["./mcp.json"],
+        },
+        "mcp.json": {
+          server: {
+            type: "stdio",
+            command: "npx",
+            env: { A: "${MISSING_A}", B: "${MISSING_B}" },
+          },
+        },
+      });
+
+      const target = createTemp({});
+
+      await expect(
+        prepareSession({
+          config: join(catalog, "air.json"),
+          target,
+        })
+      ).rejects.toThrow(/\$\{MISSING_A\}.*\$\{MISSING_B\}/);
+    });
+
+    it("checks nested values in MCP server config", async () => {
+      const catalog = createTemp({
+        "air.json": {
+          name: "test",
+          mcp: ["./mcp.json"],
+        },
+        "mcp.json": {
+          server: {
+            type: "sse",
+            url: "https://example.com",
+            headers: {
+              Authorization: "Bearer ${NESTED_SECRET}",
+            },
+          },
+        },
+      });
+
+      const target = createTemp({});
+
+      await expect(
+        prepareSession({
+          config: join(catalog, "air.json"),
+          target,
+        })
+      ).rejects.toThrow("NESTED_SECRET");
+    });
+
+    it("checks values inside arrays", async () => {
+      const catalog = createTemp({
+        "air.json": {
+          name: "test",
+          mcp: ["./mcp.json"],
+        },
+        "mcp.json": {
+          server: {
+            type: "stdio",
+            command: "npx",
+            args: ["--token", "${ARRAY_SECRET}"],
+          },
+        },
+      });
+
+      const target = createTemp({});
+
+      await expect(
+        prepareSession({
+          config: join(catalog, "air.json"),
+          target,
+        })
+      ).rejects.toThrow("ARRAY_SECRET");
+    });
+
+    it("skips validation when skipValidation is true", async () => {
+      const catalog = createTemp({
+        "air.json": {
+          name: "test",
+          mcp: ["./mcp.json"],
+        },
+        "mcp.json": {
+          server: {
+            type: "stdio",
+            command: "npx",
+            env: { TOKEN: "${UNRESOLVED}" },
+          },
+        },
+      });
+
+      const target = createTemp({});
+
+      await expect(
+        prepareSession({
+          config: join(catalog, "air.json"),
+          target,
+          skipValidation: true,
+        })
+      ).resolves.toBeDefined();
+    });
+
+    it("validates after transforms have run", async () => {
+      const savedVal = process.env.SDK_TEST_VALIDATED;
+      process.env.SDK_TEST_VALIDATED = "resolved";
+
+      try {
+        const catalog = createTemp({
+          "air.json": {
+            name: "test",
+            extensions: ["@pulsemcp/air-secrets-env"],
+            mcp: ["./mcp.json"],
+          },
+          "mcp.json": {
+            server: {
+              type: "stdio",
+              command: "npx",
+              env: { RESOLVED: "${SDK_TEST_VALIDATED}", MISSING: "${NOT_SET_VAR_12345}" },
+            },
+          },
+        });
+
+        const target = createTemp({});
+
+        // Should fail because NOT_SET_VAR_12345 is not in env,
+        // but SDK_TEST_VALIDATED should have been resolved by the transform
+        const err = await prepareSession({
+          config: join(catalog, "air.json"),
+          target,
+        }).catch((e: Error) => e);
+
+        expect(err).toBeInstanceOf(Error);
+        expect((err as Error).message).toContain("NOT_SET_VAR_12345");
+        expect((err as Error).message).not.toContain("SDK_TEST_VALIDATED");
+      } finally {
+        if (savedVal === undefined) {
+          delete process.env.SDK_TEST_VALIDATED;
+        } else {
+          process.env.SDK_TEST_VALIDATED = savedVal;
+        }
+      }
+    });
+  });
+
+  describe("findUnresolvedVars", () => {
+    it("returns empty array when no vars present", () => {
+      expect(
+        findUnresolvedVars({ mcpServers: { s: { command: "npx" } } })
+      ).toEqual([]);
+    });
+
+    it("finds vars in flat values", () => {
+      expect(
+        findUnresolvedVars({
+          mcpServers: { s: { env: { KEY: "${SECRET}" } } },
+        })
+      ).toEqual(["SECRET"]);
+    });
+
+    it("finds vars in nested objects", () => {
+      expect(
+        findUnresolvedVars({
+          mcpServers: {
+            s: { headers: { auth: "Bearer ${TOKEN}" } },
+          },
+        })
+      ).toEqual(["TOKEN"]);
+    });
+
+    it("finds vars in arrays", () => {
+      expect(
+        findUnresolvedVars({
+          mcpServers: { s: { args: ["--key", "${ARG_VAR}"] } },
+        })
+      ).toEqual(["ARG_VAR"]);
+    });
+
+    it("deduplicates repeated vars", () => {
+      const result = findUnresolvedVars({
+        mcpServers: {
+          a: { env: { X: "${SAME}" } },
+          b: { env: { Y: "${SAME}" } },
+        },
+      });
+      expect(result).toEqual(["SAME"]);
+    });
+
+    it("finds multiple vars in one string", () => {
+      const result = findUnresolvedVars({
+        mcpServers: {
+          s: { url: "https://${HOST}:${PORT}/api" },
+        },
+      });
+      expect(result).toContain("HOST");
+      expect(result).toContain("PORT");
+      expect(result).toHaveLength(2);
+    });
+
+    it("returns empty array for empty mcpServers", () => {
+      expect(findUnresolvedVars({ mcpServers: {} })).toEqual([]);
+    });
+
+    it("handles missing mcpServers gracefully", () => {
+      expect(
+        findUnresolvedVars({} as McpConfig)
+      ).toEqual([]);
     });
   });
 });

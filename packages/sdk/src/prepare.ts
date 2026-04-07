@@ -10,6 +10,12 @@ import { findAdapter, listAvailableAdapters } from "./adapter-registry.js";
 import { detectRoot } from "./root-detection.js";
 import { loadExtensions, type LoadedExtensions } from "./extension-loader.js";
 import { runTransforms } from "./transform-runner.js";
+import { readFileSync } from "fs";
+import type { McpConfig } from "@pulsemcp/air-core";
+import {
+  findUnresolvedVars,
+  unresolvedVarsMessage,
+} from "./validate-config.js";
 
 export interface PrepareSessionOptions {
   /** Path to air.json. Uses AIR_CONFIG env or ~/.air/air.json if not set. */
@@ -34,6 +40,12 @@ export interface PrepareSessionOptions {
    * Passed through to transforms via TransformContext.options.
    */
   extensionOptions?: Record<string, unknown>;
+  /**
+   * Skip the final validation that checks for unresolved ${VAR} patterns.
+   * Use when partial resolution is intentional (e.g., orchestrators that
+   * resolve remaining variables themselves).
+   */
+  skipValidation?: boolean;
   /**
    * Pre-loaded extensions. When provided, the SDK skips loading extensions
    * from air.json — useful when the CLI has already loaded them to discover
@@ -137,19 +149,29 @@ export async function prepareSession(
   );
 
   // Run transforms in extension-list order on the written .mcp.json
-  if (loaded.transforms.length > 0 && session.configFiles.length > 0) {
-    const mcpConfigPath = session.configFiles.find((f) =>
-      f.endsWith(".mcp.json")
+  const mcpConfigPath = session.configFiles.find((f) =>
+    f.endsWith(".mcp.json")
+  );
+
+  if (loaded.transforms.length > 0 && mcpConfigPath) {
+    await runTransforms({
+      transforms: loaded.transforms,
+      mcpConfigPath,
+      targetDir: options?.target ?? process.cwd(),
+      root,
+      artifacts,
+      extensionOptions: options?.extensionOptions ?? {},
+    });
+  }
+
+  // Final validation: ensure no unresolved ${VAR} patterns remain
+  if (!options?.skipValidation && mcpConfigPath) {
+    const config: McpConfig = JSON.parse(
+      readFileSync(mcpConfigPath, "utf-8")
     );
-    if (mcpConfigPath) {
-      await runTransforms({
-        transforms: loaded.transforms,
-        mcpConfigPath,
-        targetDir: options?.target ?? process.cwd(),
-        root,
-        artifacts,
-        extensionOptions: options?.extensionOptions ?? {},
-      });
+    const unresolved = findUnresolvedVars(config);
+    if (unresolved.length > 0) {
+      throw new Error(unresolvedVarsMessage(mcpConfigPath, unresolved));
     }
   }
 
