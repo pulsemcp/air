@@ -17,12 +17,9 @@ import type {
   McpServerEntry,
   McpOAuthConfig,
   PluginEntry,
-  SecretResolver,
   PrepareSessionOptions,
   PreparedSession,
 } from "@pulsemcp/air-core";
-
-const ENV_VAR_PATTERN = /\$\{([^}]+)\}/g;
 
 export class ClaudeAdapter implements AgentAdapter {
   name = "claude";
@@ -98,7 +95,6 @@ export class ClaudeAdapter implements AgentAdapter {
     options?: PrepareSessionOptions
   ): Promise<PreparedSession> {
     const root = options?.root;
-    const resolvers = options?.secretResolvers || [];
     const configFiles: string[] = [];
     const skillPaths: string[] = [];
 
@@ -126,12 +122,8 @@ export class ClaudeAdapter implements AgentAdapter {
       ? this.filterByIds(artifacts.plugins, root.default_plugins)
       : artifacts.plugins;
 
-    // 2. Write .mcp.json with resolved secrets
-    const resolvedServers = await this.resolveServerSecrets(
-      mcpServers,
-      resolvers
-    );
-    const mcpConfig = this.translateMcpServers(resolvedServers);
+    // 2. Write .mcp.json (${VAR} patterns are left as-is for transforms to resolve)
+    const mcpConfig = this.translateMcpServers(mcpServers);
     const mcpConfigPath = join(targetDir, ".mcp.json");
     writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig, null, 2) + "\n");
     configFiles.push(mcpConfigPath);
@@ -329,66 +321,6 @@ export class ClaudeAdapter implements AgentAdapter {
       description: plugin.description,
       ...(plugin.version && { version: plugin.version }),
     };
-  }
-
-  /**
-   * Resolve ${VAR} patterns in MCP server env values and URLs using
-   * the provided secret resolvers. Falls through resolvers in order.
-   */
-  private async resolveServerSecrets(
-    servers: Record<string, McpServerEntry>,
-    resolvers: SecretResolver[]
-  ): Promise<Record<string, McpServerEntry>> {
-    if (resolvers.length === 0) return servers;
-
-    const resolved: Record<string, McpServerEntry> = {};
-    for (const [name, server] of Object.entries(servers)) {
-      resolved[name] = {
-        ...server,
-        ...(server.env && {
-          env: await this.resolveEnvMap(server.env, resolvers),
-        }),
-        ...(server.url && {
-          url: await this.resolveString(server.url, resolvers),
-        }),
-        ...(server.headers && {
-          headers: await this.resolveEnvMap(server.headers, resolvers),
-        }),
-      };
-    }
-    return resolved;
-  }
-
-  private async resolveEnvMap(
-    env: Record<string, string>,
-    resolvers: SecretResolver[]
-  ): Promise<Record<string, string>> {
-    const resolved: Record<string, string> = {};
-    for (const [key, value] of Object.entries(env)) {
-      resolved[key] = await this.resolveString(value, resolvers);
-    }
-    return resolved;
-  }
-
-  private async resolveString(
-    value: string,
-    resolvers: SecretResolver[]
-  ): Promise<string> {
-    const matches = [...value.matchAll(ENV_VAR_PATTERN)];
-    if (matches.length === 0) return value;
-
-    let result = value;
-    for (const match of matches) {
-      const varName = match[1];
-      for (const resolver of resolvers) {
-        const resolved = await resolver.resolve(varName);
-        if (resolved !== undefined) {
-          result = result.replace(match[0], resolved);
-          break;
-        }
-      }
-    }
-    return result;
   }
 
   private filterByIds<T>(

@@ -16,8 +16,11 @@ export type {
 export type {
   AgentAdapter,
   CatalogProvider,
-  SecretResolver,
   AirExtension,
+  PrepareTransform,
+  McpConfig,
+  TransformContext,
+  ExtensionCliOption,
   AgentSessionConfig,
   StartCommand,
   PrepareSessionOptions,

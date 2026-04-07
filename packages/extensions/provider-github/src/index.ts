@@ -6,7 +6,6 @@ export type { GitHubUri, GitHubProviderOptions } from "./github-provider.js";
 
 const extension: AirExtension = {
   name: "github",
-  type: "provider",
   provider: new GitHubCatalogProvider(),
 };
 

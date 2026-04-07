@@ -1,0 +1,99 @@
+import { resolve } from "path";
+import { pathToFileURL } from "url";
+import type { AirExtension, PrepareTransform } from "@pulsemcp/air-core";
+
+export interface LoadedExtensions {
+  /** Extensions that provide an adapter */
+  adapters: AirExtension[];
+  /** Extensions that provide a provider */
+  providers: AirExtension[];
+  /** Extensions that provide a transform (in declaration order) */
+  transforms: AirExtension[];
+  /** All loaded extensions in declaration order */
+  all: AirExtension[];
+}
+
+/**
+ * Load extensions from the `extensions` array in air.json.
+ *
+ * Each entry is either an npm package name or a local path (starting
+ * with `./`, `../`, or `/`). The default export of each module must be
+ * either an `AirExtension` object or a bare transform function.
+ *
+ * Extensions are loaded sequentially in declaration order because
+ * order matters for transforms.
+ */
+export async function loadExtensions(
+  extensions: string[],
+  airJsonDir: string
+): Promise<LoadedExtensions> {
+  const result: LoadedExtensions = {
+    adapters: [],
+    providers: [],
+    transforms: [],
+    all: [],
+  };
+
+  for (const specifier of extensions) {
+    const ext = await loadSingleExtension(specifier, airJsonDir);
+    result.all.push(ext);
+    if (ext.adapter) result.adapters.push(ext);
+    if (ext.provider) result.providers.push(ext);
+    if (ext.transform) result.transforms.push(ext);
+  }
+
+  return result;
+}
+
+async function loadSingleExtension(
+  specifier: string,
+  airJsonDir: string
+): Promise<AirExtension> {
+  let mod: Record<string, unknown>;
+
+  try {
+    if (
+      specifier.startsWith("./") ||
+      specifier.startsWith("../") ||
+      specifier.startsWith("/")
+    ) {
+      const absPath = resolve(airJsonDir, specifier);
+      const fileUrl = pathToFileURL(absPath).href;
+      mod = await import(fileUrl);
+    } else {
+      mod = await import(specifier);
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `Failed to load extension "${specifier}": ${message}`
+    );
+  }
+
+  const defaultExport = mod.default;
+
+  // Bare function → shorthand for a transform-only extension
+  if (typeof defaultExport === "function") {
+    return {
+      name: specifier,
+      transform: {
+        transform: defaultExport as PrepareTransform["transform"],
+      },
+    };
+  }
+
+  if (!defaultExport || typeof defaultExport !== "object") {
+    throw new Error(
+      `Extension "${specifier}" does not have a valid default export. ` +
+        `Expected an AirExtension object or a transform function.`
+    );
+  }
+
+  const ext = defaultExport as AirExtension;
+  if (!ext.name || typeof ext.name !== "string") {
+    throw new Error(
+      `Extension "${specifier}" is missing a required "name" field.`
+    );
+  }
+  return ext;
+}

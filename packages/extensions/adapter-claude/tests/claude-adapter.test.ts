@@ -9,7 +9,6 @@ import type {
   SkillEntry,
   PluginEntry,
   RootEntry,
-  SecretResolver,
 } from "@pulsemcp/air-core";
 
 function emptyArtifacts(): ResolvedArtifacts {
@@ -312,55 +311,22 @@ describe("ClaudeAdapter", () => {
       expect(mcpJson.mcpServers.events.url).toBe("https://mcp.example.com/sse");
     });
 
-    it("resolves ${VAR} patterns via secret resolvers", async () => {
+    it("writes ${VAR} patterns through without resolution", async () => {
       const dir = createTempDir();
       const artifacts = emptyArtifacts();
       artifacts.mcp["server"] = {
         type: "stdio",
         command: "npx",
-        env: { API_KEY: "${MY_SECRET}" },
+        env: { API_KEY: "${MY_SECRET}", OTHER: "${ANOTHER_VAR}" },
       };
 
-      const mockResolver: SecretResolver = {
-        name: "mock",
-        resolve: async (key) =>
-          key === "MY_SECRET" ? "resolved-secret-value" : undefined,
-      };
-
-      await adapter.prepareSession(artifacts, dir, {
-        secretResolvers: [mockResolver],
-      });
+      await adapter.prepareSession(artifacts, dir);
 
       const mcpJson = JSON.parse(
         readFileSync(join(dir, ".mcp.json"), "utf-8")
       );
-      expect(mcpJson.mcpServers.server.env.API_KEY).toBe(
-        "resolved-secret-value"
-      );
-    });
-
-    it("leaves ${VAR} unresolved when no resolver matches", async () => {
-      const dir = createTempDir();
-      const artifacts = emptyArtifacts();
-      artifacts.mcp["server"] = {
-        type: "stdio",
-        command: "npx",
-        env: { KEY: "${UNKNOWN_VAR}" },
-      };
-
-      await adapter.prepareSession(artifacts, dir, {
-        secretResolvers: [
-          {
-            name: "empty",
-            resolve: async () => undefined,
-          },
-        ],
-      });
-
-      const mcpJson = JSON.parse(
-        readFileSync(join(dir, ".mcp.json"), "utf-8")
-      );
-      expect(mcpJson.mcpServers.server.env.KEY).toBe("${UNKNOWN_VAR}");
+      expect(mcpJson.mcpServers.server.env.API_KEY).toBe("${MY_SECRET}");
+      expect(mcpJson.mcpServers.server.env.OTHER).toBe("${ANOTHER_VAR}");
     });
 
     it("injects skills into .claude/skills/", async () => {

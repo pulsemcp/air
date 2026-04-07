@@ -1,5 +1,6 @@
-import { resolve } from "path";
+import { resolve, dirname } from "path";
 import {
+  loadAirConfig,
   getAirJsonPath,
   resolveArtifacts,
   type RootEntry,
@@ -7,6 +8,8 @@ import {
 } from "@pulsemcp/air-core";
 import { findAdapter, listAvailableAdapters } from "./adapter-registry.js";
 import { detectRoot } from "./root-detection.js";
+import { loadExtensions, type LoadedExtensions } from "./extension-loader.js";
+import { runTransforms } from "./transform-runner.js";
 
 export interface PrepareSessionOptions {
   /** Path to air.json. Uses AIR_CONFIG env or ~/.air/air.json if not set. */
@@ -26,6 +29,17 @@ export interface PrepareSessionOptions {
    * Orchestrators that manage subagent composition externally should set this.
    */
   skipSubagentMerge?: boolean;
+  /**
+   * Parsed CLI option values contributed by extensions.
+   * Passed through to transforms via TransformContext.options.
+   */
+  extensionOptions?: Record<string, unknown>;
+  /**
+   * Pre-loaded extensions. When provided, the SDK skips loading extensions
+   * from air.json — useful when the CLI has already loaded them to discover
+   * contributed CLI options.
+   */
+  extensions?: LoadedExtensions;
 }
 
 export interface PrepareSessionResult {
@@ -40,16 +54,40 @@ export interface PrepareSessionResult {
 /**
  * Prepare a target directory for an agent session.
  *
- * Resolves artifacts, finds/auto-detects the root, and delegates to the adapter's
- * prepareSession() to write .mcp.json, inject skills, etc.
+ * Loads extensions from air.json, resolves artifacts (using providers from
+ * extensions), delegates to the adapter's prepareSession() to write .mcp.json
+ * and inject skills, then runs transforms in declaration order.
  *
  * @throws Error if the adapter is not found, air.json is not found, or the specified root doesn't exist.
  */
 export async function prepareSession(
   options?: PrepareSessionOptions
 ): Promise<PrepareSessionResult> {
+  const airJsonPath = options?.config || getAirJsonPath();
+  if (!airJsonPath) {
+    throw new Error(
+      "No air.json found. Specify a config path or set AIR_CONFIG env var."
+    );
+  }
+
+  // Use pre-loaded extensions or load from air.json
+  let loaded: LoadedExtensions;
+  if (options?.extensions) {
+    loaded = options.extensions;
+  } else {
+    const airConfig = loadAirConfig(airJsonPath);
+    const airJsonDir = dirname(resolve(airJsonPath));
+    loaded = await loadExtensions(airConfig.extensions || [], airJsonDir);
+  }
+
+  // Find adapter: prefer extension-provided, fall back to registry
   const adapterName = options?.adapter ?? "claude";
-  const adapter = await findAdapter(adapterName);
+  let adapter =
+    loaded.adapters.find((ext) => ext.adapter?.name === adapterName)?.adapter ??
+    null;
+  if (!adapter) {
+    adapter = await findAdapter(adapterName);
+  }
   if (!adapter) {
     const available = await listAvailableAdapters();
     const availableMsg =
@@ -61,15 +99,13 @@ export async function prepareSession(
     );
   }
 
-  const airJsonPath = options?.config || getAirJsonPath();
-  if (!airJsonPath) {
-    throw new Error(
-      "No air.json found. Specify a config path or set AIR_CONFIG env var."
-    );
-  }
+  // Extract providers from extensions and resolve artifacts
+  const providers = loaded.providers
+    .map((ext) => ext.provider!)
+    .filter(Boolean);
+  const artifacts = await resolveArtifacts(airJsonPath, { providers });
 
-  const artifacts = await resolveArtifacts(airJsonPath);
-
+  // Detect or validate root
   let root: RootEntry | undefined;
   let rootAutoDetected = false;
 
@@ -88,6 +124,7 @@ export async function prepareSession(
     }
   }
 
+  // Adapter writes .mcp.json and injects skills (no secret resolution)
   const session = await adapter.prepareSession(
     artifacts,
     options?.target ?? process.cwd(),
@@ -98,6 +135,23 @@ export async function prepareSession(
       skipSubagentMerge: options?.skipSubagentMerge,
     }
   );
+
+  // Run transforms in extension-list order on the written .mcp.json
+  if (loaded.transforms.length > 0 && session.configFiles.length > 0) {
+    const mcpConfigPath = session.configFiles.find((f) =>
+      f.endsWith(".mcp.json")
+    );
+    if (mcpConfigPath) {
+      await runTransforms({
+        transforms: loaded.transforms,
+        mcpConfigPath,
+        targetDir: options?.target ?? process.cwd(),
+        root,
+        artifacts,
+        extensionOptions: options?.extensionOptions ?? {},
+      });
+    }
+  }
 
   return { session, root, rootAutoDetected };
 }

@@ -151,7 +151,7 @@ If you're building an orchestration platform on top of AIR, here's a suggested a
 The typical session setup flow:
 
 1. **Resolve config** — call `resolveArtifacts(airJsonPath)` from `@pulsemcp/air-core` to merge all artifact indexes
-2. **Prepare the working directory** — call `adapter.prepareSession(artifacts, cloneDir, { root, secretResolvers })` from the agent adapter. This single call writes everything the agent needs (.mcp.json, skills, references, hooks) into the target directory.
+2. **Prepare the working directory** — call `prepareSession({ config, root, target, adapter })` from `@pulsemcp/air-sdk`. This resolves artifacts, delegates to the adapter to write .mcp.json and inject skills, then runs any transforms declared in `air.json`'s `extensions` array.
 3. **Spawn the agent** — use `result.startCommand` to start the agent process in the prepared directory
 
 An orchestration platform typically depends on just two AIR packages:

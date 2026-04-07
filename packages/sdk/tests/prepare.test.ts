@@ -267,4 +267,233 @@ describe("prepareSession", () => {
       })
     ).rejects.toThrow("not found");
   });
+
+  describe("extensions and transforms", () => {
+    it("runs a local transform that modifies .mcp.json", async () => {
+      const catalog = createTemp({
+        "air.json": {
+          name: "test",
+          extensions: ["./add-marker.js"],
+          mcp: ["./mcp.json"],
+        },
+        "mcp.json": {
+          server: { type: "stdio", command: "npx", env: { KEY: "value" } },
+        },
+        // Local transform that adds a marker env var
+        "add-marker.js": `
+export default async function(config, context) {
+  for (const entry of Object.values(config.mcpServers)) {
+    if (entry.env) {
+      entry.env.TRANSFORMED = "true";
+    }
+  }
+  return config;
+}
+`,
+      });
+
+      const target = createTemp({});
+
+      await prepareSession({
+        config: join(catalog, "air.json"),
+        target,
+      });
+
+      const mcpJson = JSON.parse(readFileSync(join(target, ".mcp.json"), "utf-8"));
+      expect(mcpJson.mcpServers.server.env.KEY).toBe("value");
+      expect(mcpJson.mcpServers.server.env.TRANSFORMED).toBe("true");
+    });
+
+    it("runs transforms in declaration order", async () => {
+      const catalog = createTemp({
+        "air.json": {
+          name: "test",
+          extensions: ["./first.js", "./second.js"],
+          mcp: ["./mcp.json"],
+        },
+        "mcp.json": {
+          server: { type: "stdio", command: "npx", env: { ORDER: "" } },
+        },
+        "first.js": `
+export default async function(config, context) {
+  for (const entry of Object.values(config.mcpServers)) {
+    if (entry.env) entry.env.ORDER = (entry.env.ORDER || "") + "first";
+  }
+  return config;
+}
+`,
+        "second.js": `
+export default async function(config, context) {
+  for (const entry of Object.values(config.mcpServers)) {
+    if (entry.env) entry.env.ORDER = (entry.env.ORDER || "") + ",second";
+  }
+  return config;
+}
+`,
+      });
+
+      const target = createTemp({});
+
+      await prepareSession({
+        config: join(catalog, "air.json"),
+        target,
+      });
+
+      const mcpJson = JSON.parse(readFileSync(join(target, ".mcp.json"), "utf-8"));
+      expect(mcpJson.mcpServers.server.env.ORDER).toBe("first,second");
+    });
+
+    it("works without extensions array (backward compat)", async () => {
+      const catalog = createTemp({
+        "air.json": {
+          name: "test",
+          mcp: ["./mcp.json"],
+        },
+        "mcp.json": {
+          server: { type: "stdio", command: "npx", env: { TOKEN: "abc" } },
+        },
+      });
+
+      const target = createTemp({});
+
+      await prepareSession({
+        config: join(catalog, "air.json"),
+        target,
+      });
+
+      const mcpJson = JSON.parse(readFileSync(join(target, ".mcp.json"), "utf-8"));
+      expect(mcpJson.mcpServers.server.command).toBe("npx");
+      expect(mcpJson.mcpServers.server.env.TOKEN).toBe("abc");
+    });
+
+    it("resolves ${VAR} from process.env via secrets-env extension", async () => {
+      const savedVal = process.env.SDK_TEST_SECRET;
+      process.env.SDK_TEST_SECRET = "resolved-from-env";
+
+      try {
+        const catalog = createTemp({
+          "air.json": {
+            name: "test",
+            extensions: ["@pulsemcp/air-secrets-env"],
+            mcp: ["./mcp.json"],
+          },
+          "mcp.json": {
+            server: {
+              type: "stdio",
+              command: "npx",
+              env: { API_KEY: "${SDK_TEST_SECRET}" },
+            },
+          },
+        });
+
+        const target = createTemp({});
+
+        await prepareSession({
+          config: join(catalog, "air.json"),
+          target,
+        });
+
+        const mcpJson = JSON.parse(readFileSync(join(target, ".mcp.json"), "utf-8"));
+        expect(mcpJson.mcpServers.server.env.API_KEY).toBe("resolved-from-env");
+      } finally {
+        if (savedVal === undefined) {
+          delete process.env.SDK_TEST_SECRET;
+        } else {
+          process.env.SDK_TEST_SECRET = savedVal;
+        }
+      }
+    });
+
+    it("resolves ${VAR} from secrets file via secrets-file extension", async () => {
+      const catalog = createTemp({
+        "air.json": {
+          name: "test",
+          extensions: ["@pulsemcp/air-secrets-file"],
+          mcp: ["./mcp.json"],
+        },
+        "mcp.json": {
+          server: {
+            type: "stdio",
+            command: "npx",
+            env: { API_KEY: "${FILE_SECRET}" },
+          },
+        },
+        "secrets.json": { FILE_SECRET: "resolved-from-file" },
+      });
+
+      const target = createTemp({});
+
+      await prepareSession({
+        config: join(catalog, "air.json"),
+        target,
+        extensionOptions: { "secrets-file": join(catalog, "secrets.json") },
+      });
+
+      const mcpJson = JSON.parse(readFileSync(join(target, ".mcp.json"), "utf-8"));
+      expect(mcpJson.mcpServers.server.env.API_KEY).toBe("resolved-from-file");
+    });
+
+    it("chains multiple secret transforms (file first, env fallback)", async () => {
+      const savedVal = process.env.SDK_TEST_FALLBACK;
+      process.env.SDK_TEST_FALLBACK = "from-env";
+
+      try {
+        const catalog = createTemp({
+          "air.json": {
+            name: "test",
+            extensions: [
+              "@pulsemcp/air-secrets-file",
+              "@pulsemcp/air-secrets-env",
+            ],
+            mcp: ["./mcp.json"],
+          },
+          "mcp.json": {
+            server: {
+              type: "stdio",
+              command: "npx",
+              env: {
+                FROM_FILE: "${FILE_KEY}",
+                FROM_ENV: "${SDK_TEST_FALLBACK}",
+              },
+            },
+          },
+          "secrets.json": { FILE_KEY: "from-file" },
+        });
+
+        const target = createTemp({});
+
+        await prepareSession({
+          config: join(catalog, "air.json"),
+          target,
+          extensionOptions: { "secrets-file": join(catalog, "secrets.json") },
+        });
+
+        const mcpJson = JSON.parse(readFileSync(join(target, ".mcp.json"), "utf-8"));
+        expect(mcpJson.mcpServers.server.env.FROM_FILE).toBe("from-file");
+        expect(mcpJson.mcpServers.server.env.FROM_ENV).toBe("from-env");
+      } finally {
+        if (savedVal === undefined) {
+          delete process.env.SDK_TEST_FALLBACK;
+        } else {
+          process.env.SDK_TEST_FALLBACK = savedVal;
+        }
+      }
+    });
+
+    it("throws with invalid extension specifier", async () => {
+      const catalog = createTemp({
+        "air.json": {
+          name: "test",
+          extensions: ["@nonexistent/air-extension-12345"],
+        },
+      });
+
+      await expect(
+        prepareSession({
+          config: join(catalog, "air.json"),
+          target: createTemp({}),
+        })
+      ).rejects.toThrow("Failed to load extension");
+    });
+  });
 });

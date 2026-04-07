@@ -45,7 +45,7 @@ const artifacts = await resolveArtifacts("./air.json", {
 - **Validation** — `validateJson()` using AJV against AIR JSON Schemas
 - **Schema utilities** — `loadSchema()`, `detectSchemaType()`, `detectSchemaFromValue()`
 - **All artifact types** — `SkillEntry`, `McpServerEntry`, `RootEntry`, `ReferenceEntry`, `PluginEntry`, `HookEntry`
-- **Extension interfaces** — `AgentAdapter`, `CatalogProvider`, `SecretResolver`, `AirExtension`
+- **Extension interfaces** — `AgentAdapter`, `CatalogProvider`, `PrepareTransform`, `AirExtension`
 - **Session types** — `AgentSessionConfig`, `StartCommand`, `PrepareSessionOptions`, `PreparedSession`
 
 ## Extension Interfaces
@@ -56,5 +56,5 @@ Core defines four extension points that other packages implement:
 |-----------|---------|---------|
 | `AgentAdapter` | Translate AIR config for a specific agent | `@pulsemcp/air-adapter-claude` |
 | `CatalogProvider` | Resolve remote URIs in air.json | `@pulsemcp/air-provider-github` |
-| `SecretResolver` | Resolve `${VAR}` interpolation | Custom vault integrations |
+| `PrepareTransform` | Post-prepare transforms on `.mcp.json` | `@pulsemcp/air-secrets-env`, `@pulsemcp/air-secrets-file` |
 | `AirExtension` | Extension metadata for CLI discovery | All extension packages |
