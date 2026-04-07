@@ -8,6 +8,7 @@ import {
   readFileSync,
 } from "fs";
 import { tmpdir } from "os";
+import type { McpConfig } from "@pulsemcp/air-core";
 import { prepareSession } from "../src/prepare.js";
 import { findUnresolvedVars } from "../src/validate-config.js";
 
@@ -674,13 +675,16 @@ export default async function(config, context) {
 
         const target = createTemp({});
 
-        // Should fail because NOT_SET_VAR_12345 is not in env
-        await expect(
-          prepareSession({
-            config: join(catalog, "air.json"),
-            target,
-          })
-        ).rejects.toThrow("NOT_SET_VAR_12345");
+        // Should fail because NOT_SET_VAR_12345 is not in env,
+        // but SDK_TEST_VALIDATED should have been resolved by the transform
+        const err = await prepareSession({
+          config: join(catalog, "air.json"),
+          target,
+        }).catch((e: Error) => e);
+
+        expect(err).toBeInstanceOf(Error);
+        expect((err as Error).message).toContain("NOT_SET_VAR_12345");
+        expect((err as Error).message).not.toContain("SDK_TEST_VALIDATED");
       } finally {
         if (savedVal === undefined) {
           delete process.env.SDK_TEST_VALIDATED;
@@ -743,6 +747,16 @@ export default async function(config, context) {
       expect(result).toContain("HOST");
       expect(result).toContain("PORT");
       expect(result).toHaveLength(2);
+    });
+
+    it("returns empty array for empty mcpServers", () => {
+      expect(findUnresolvedVars({ mcpServers: {} })).toEqual([]);
+    });
+
+    it("handles missing mcpServers gracefully", () => {
+      expect(
+        findUnresolvedVars({} as McpConfig)
+      ).toEqual([]);
     });
   });
 });

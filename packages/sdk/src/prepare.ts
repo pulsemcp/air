@@ -10,7 +10,12 @@ import { findAdapter, listAvailableAdapters } from "./adapter-registry.js";
 import { detectRoot } from "./root-detection.js";
 import { loadExtensions, type LoadedExtensions } from "./extension-loader.js";
 import { runTransforms } from "./transform-runner.js";
-import { validateNoUnresolvedVars } from "./validate-config.js";
+import { readFileSync } from "fs";
+import type { McpConfig } from "@pulsemcp/air-core";
+import {
+  findUnresolvedVars,
+  unresolvedVarsMessage,
+} from "./validate-config.js";
 
 export interface PrepareSessionOptions {
   /** Path to air.json. Uses AIR_CONFIG env or ~/.air/air.json if not set. */
@@ -161,7 +166,13 @@ export async function prepareSession(
 
   // Final validation: ensure no unresolved ${VAR} patterns remain
   if (!options?.skipValidation && mcpConfigPath) {
-    validateNoUnresolvedVars(mcpConfigPath);
+    const config: McpConfig = JSON.parse(
+      readFileSync(mcpConfigPath, "utf-8")
+    );
+    const unresolved = findUnresolvedVars(config);
+    if (unresolved.length > 0) {
+      throw new Error(unresolvedVarsMessage(mcpConfigPath, unresolved));
+    }
   }
 
   return { session, root, rootAutoDetected };

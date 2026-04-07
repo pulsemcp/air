@@ -91,4 +91,5 @@ export type { RunTransformsOptions } from "./transform-runner.js";
 export {
   findUnresolvedVars,
   validateNoUnresolvedVars,
+  unresolvedVarsMessage,
 } from "./validate-config.js";

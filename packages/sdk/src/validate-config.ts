@@ -5,11 +5,13 @@ const ENV_VAR_PATTERN = /\$\{([^}]+)\}/g;
 
 /**
  * Find all unresolved ${VAR} patterns in an MCP config.
- * Recursively walks all string values and collects variable names.
+ * Recursively walks all string values in the entire config object.
  */
 export function findUnresolvedVars(config: McpConfig): string[] {
   const vars = new Set<string>();
-  walkValue(config.mcpServers, vars);
+  if (config.mcpServers) {
+    walkValue(config.mcpServers, vars);
+  }
   return [...vars];
 }
 
@@ -46,8 +48,17 @@ export function validateNoUnresolvedVars(mcpConfigPath: string): void {
   const unresolved = findUnresolvedVars(config);
   if (unresolved.length > 0) {
     throw new Error(
-      `Unresolved variable${unresolved.length === 1 ? "" : "s"} in ${mcpConfigPath}: ${unresolved.map((v) => `\${${v}}`).join(", ")}. ` +
-        `Ensure all variables are provided via environment or a secrets transform.`
+      unresolvedVarsMessage(mcpConfigPath, unresolved)
     );
   }
+}
+
+export function unresolvedVarsMessage(
+  mcpConfigPath: string,
+  unresolved: string[]
+): string {
+  return (
+    `Unresolved variable${unresolved.length === 1 ? "" : "s"} in ${mcpConfigPath}: ${unresolved.map((v) => `\${${v}}`).join(", ")}. ` +
+    `Ensure all variables are provided via environment or a secrets transform.`
+  );
 }
