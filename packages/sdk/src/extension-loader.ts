@@ -89,5 +89,11 @@ async function loadSingleExtension(
     );
   }
 
-  return defaultExport as AirExtension;
+  const ext = defaultExport as AirExtension;
+  if (!ext.name || typeof ext.name !== "string") {
+    throw new Error(
+      `Extension "${specifier}" is missing a required "name" field.`
+    );
+  }
+  return ext;
 }

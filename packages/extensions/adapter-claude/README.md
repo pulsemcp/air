@@ -32,7 +32,6 @@ const adapter = new ClaudeAdapter();
 // Prepare a working directory for a Claude Code session
 const session = await adapter.prepareSession(artifacts, "./my-project", {
   root: artifacts.roots["web-app"],
-  secretResolvers: [myVaultResolver],
 });
 
 // session.configFiles  — paths written (.mcp.json, etc.)
@@ -42,7 +41,7 @@ const session = await adapter.prepareSession(artifacts, "./my-project", {
 
 ## What `prepareSession()` does
 
-1. **Writes `.mcp.json`** — translates AIR MCP server configs to Claude Code format, resolves `${VAR}` secrets via the provided `SecretResolver` chain
+1. **Writes `.mcp.json`** — translates AIR MCP server configs to Claude Code format (secret resolution is handled by transform extensions, not the adapter)
 2. **Injects skills** — copies SKILL.md files and associated content into `.claude/skills/{name}/`
 3. **Copies references** — attaches referenced documents into `.claude/skills/{name}/references/`
 4. **Respects local priority** — if a skill directory already exists in the target, it is not overwritten

@@ -8,7 +8,7 @@ The core package for the AIR framework. Handles config resolution, JSON Schema v
 packages/core/
 ├── src/
 │   ├── index.ts       # Barrel export — the public API surface
-│   ├── types.ts       # All artifact types + extension interfaces (AgentAdapter, CatalogProvider, SecretResolver)
+│   ├── types.ts       # All artifact types + extension interfaces (AgentAdapter, CatalogProvider, PrepareTransform)
 │   ├── config.ts      # Config loading, merging, and resolution with CatalogProvider injection
 │   ├── validator.ts   # AJV-based JSON Schema validation
 │   └── schemas.ts     # Schema loading and detection utilities

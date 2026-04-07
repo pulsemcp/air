@@ -14,6 +14,7 @@ export async function envTransform(
   _context: TransformContext
 ): Promise<McpConfig> {
   return {
+    ...config,
     mcpServers: resolveObject(config.mcpServers),
   };
 }

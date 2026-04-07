@@ -346,7 +346,7 @@ The core defines four extension interfaces:
 |----------------|-----------|----------|-------------------|
 | **Catalog Providers** | `CatalogProvider` | Local filesystem | `@pulsemcp/air-provider-github` |
 | **Agent Adapters** | `AgentAdapter` | None | `@pulsemcp/air-adapter-claude` |
-| **Secret Resolvers** | `SecretResolver` | `process.env` | None yet |
+| **Transforms** | `PrepareTransform` | None | `@pulsemcp/air-secrets-env`, `@pulsemcp/air-secrets-file` |
 | **Transports** | Consume SDK | CLI | None yet |
 
 Community extensions follow the `@pulsemcp/air-adapter-*` and `@pulsemcp/air-provider-*` naming convention.

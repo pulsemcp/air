@@ -20,11 +20,18 @@ export async function fileTransform(
   const secretsFilePath = context.options["secrets-file"] as string | undefined;
   if (!secretsFilePath) return config;
 
-  const secrets: Record<string, string> = JSON.parse(
-    readFileSync(secretsFilePath, "utf-8")
-  );
+  let secrets: Record<string, string>;
+  try {
+    secrets = JSON.parse(readFileSync(secretsFilePath, "utf-8"));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `Failed to read secrets file "${secretsFilePath}": ${message}`
+    );
+  }
 
   return {
+    ...config,
     mcpServers: resolveObject(config.mcpServers, secrets),
   };
 }

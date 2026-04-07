@@ -8,7 +8,7 @@ import {
 } from "@pulsemcp/air-core";
 import { findAdapter, listAvailableAdapters } from "./adapter-registry.js";
 import { detectRoot } from "./root-detection.js";
-import { loadExtensions } from "./extension-loader.js";
+import { loadExtensions, type LoadedExtensions } from "./extension-loader.js";
 import { runTransforms } from "./transform-runner.js";
 
 export interface PrepareSessionOptions {
@@ -34,6 +34,12 @@ export interface PrepareSessionOptions {
    * Passed through to transforms via TransformContext.options.
    */
   extensionOptions?: Record<string, unknown>;
+  /**
+   * Pre-loaded extensions. When provided, the SDK skips loading extensions
+   * from air.json — useful when the CLI has already loaded them to discover
+   * contributed CLI options.
+   */
+  extensions?: LoadedExtensions;
 }
 
 export interface PrepareSessionResult {
@@ -64,10 +70,15 @@ export async function prepareSession(
     );
   }
 
-  // Load air.json and extensions
-  const airConfig = loadAirConfig(airJsonPath);
-  const airJsonDir = dirname(resolve(airJsonPath));
-  const loaded = await loadExtensions(airConfig.extensions || [], airJsonDir);
+  // Use pre-loaded extensions or load from air.json
+  let loaded: LoadedExtensions;
+  if (options?.extensions) {
+    loaded = options.extensions;
+  } else {
+    const airConfig = loadAirConfig(airJsonPath);
+    const airJsonDir = dirname(resolve(airJsonPath));
+    loaded = await loadExtensions(airConfig.extensions || [], airJsonDir);
+  }
 
   // Find adapter: prefer extension-provided, fall back to registry
   const adapterName = options?.adapter ?? "claude";

@@ -37,4 +37,4 @@ If `.claude/skills/{name}/` already exists in the target directory, the catalog 
 
 - Do not deep-merge MCP server configs — full replacement only
 - Do not write files outside the target directory
-- Do not resolve secrets when no `SecretResolver` is provided — leave `${VAR}` patterns as-is
+- Do not resolve secrets in the adapter — secret resolution is handled by transform extensions (e.g., `@pulsemcp/air-secrets-env`)

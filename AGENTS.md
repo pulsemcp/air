@@ -25,7 +25,7 @@ air/
 
 AIR is a TypeScript monorepo (npm workspaces, ESM-only, Node 18+). It has five packages:
 
-- **Core** owns config resolution (`resolveArtifacts`), JSON Schema validation, and the extension interfaces (`AgentAdapter`, `CatalogProvider`, `SecretResolver`). No agent-specific code.
+- **Core** owns config resolution (`resolveArtifacts`), JSON Schema validation, and the extension interfaces (`AgentAdapter`, `CatalogProvider`, `PrepareTransform`). No agent-specific code.
 - **SDK** is the programmatic API layer. It re-exports core and adds adapter discovery, root detection, and high-level operations (`validateFile`, `initConfig`, `listArtifacts`, `startSession`, `prepareSession`). This is the primary dependency for TypeScript/JavaScript consumers.
 - **CLI** is a thin wrapper (Commander.js) that delegates all business logic to the SDK.
 - **Adapter extensions** translate AIR artifacts into agent-specific formats. The Claude adapter writes `.mcp.json` and injects skills via `prepareSession()`.
