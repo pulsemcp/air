@@ -52,12 +52,23 @@ function validateUriComponent(value: string, label: string): void {
  * separates the repository reference from the file path and avoids ambiguity
  * when file paths contain "@" characters. The path-level syntax is supported
  * for backward compatibility.
+ *
+ * Note: refs containing slashes (e.g., feature/branch) cannot be expressed
+ * with the repo-level syntax because the URI is split on "/". Use the legacy
+ * path-level syntax for such refs: github://owner/repo/path@feature/branch
  */
 export function parseGitHubUri(uri: string): GitHubUri {
   const withoutScheme = uri.replace(/^github:\/\//, "");
   const parts = withoutScheme.split("/");
 
   if (parts.length < 3) {
+    // Detect repo@ref with no path for a more helpful error
+    if (parts.length === 2 && parts[1]?.includes("@")) {
+      throw new Error(
+        `Missing file path in github:// URI: "${uri}". ` +
+          `URI must include a path after the ref: github://owner/repo@ref/path/to/file.json`
+      );
+    }
     throw new Error(
       `Invalid github:// URI: "${uri}". Expected format: github://owner/repo[@ref]/path/to/file.json`
     );
@@ -72,6 +83,12 @@ export function parseGitHubUri(uri: string): GitHubUri {
   if (repoAtIndex > 0) {
     ref = repoSegment.slice(repoAtIndex + 1);
     repoSegment = repoSegment.slice(0, repoAtIndex);
+    if (ref.length === 0) {
+      throw new Error(
+        `Empty ref after "@" in github:// URI: "${uri}". ` +
+          `Either remove the "@" or specify a ref: github://owner/repo@ref/path`
+      );
+    }
   }
 
   const repo = repoSegment;
@@ -83,6 +100,15 @@ export function parseGitHubUri(uri: string): GitHubUri {
     if (pathAtIndex > 0) {
       ref = filePath.slice(pathAtIndex + 1);
       filePath = filePath.slice(0, pathAtIndex);
+    }
+  } else {
+    // Repo-level ref already found — reject if path also has @ref (ambiguous)
+    const pathAtIndex = filePath.lastIndexOf("@");
+    if (pathAtIndex > 0) {
+      throw new Error(
+        `Ambiguous github:// URI: "${uri}". ` +
+          `Ref specified on both repo ("@${ref}") and path. Use only one: github://owner/repo@ref/path`
+      );
     }
   }
 
