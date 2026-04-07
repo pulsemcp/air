@@ -156,6 +156,36 @@ describe("parseGitHubUri", () => {
       parseGitHubUri("github://acme/repo@main;rm -rf //file.json")
     ).toThrow("Invalid ref");
   });
+
+  it("gives helpful error for repo@ref with no path", () => {
+    expect(() =>
+      parseGitHubUri("github://acme/repo@main")
+    ).toThrow("Missing file path");
+  });
+
+  it("rejects empty ref after @ on repo segment", () => {
+    expect(() =>
+      parseGitHubUri("github://acme/repo@/path/file.json")
+    ).toThrow('Empty ref after "@"');
+  });
+
+  it("rejects ambiguous double @ref on repo and path", () => {
+    expect(() =>
+      parseGitHubUri("github://acme/repo@v1/path/file.json@v2")
+    ).toThrow("Ambiguous");
+  });
+
+  it("handles ref with slashes via legacy path syntax", () => {
+    const result = parseGitHubUri(
+      "github://acme/repo/path/file.json@feature/branch"
+    );
+    expect(result).toEqual({
+      owner: "acme",
+      repo: "repo",
+      path: "path/file.json",
+      ref: "feature/branch",
+    });
+  });
 });
 
 describe("getCacheDir", () => {

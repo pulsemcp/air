@@ -62,8 +62,11 @@ Examples:
 - `github://acme/air-org@v1.0.0/mcp/mcp.json` — pinned to a tag
 - `github://acme/air-org@main/mcp/mcp.json` — explicit branch
 - `github://acme/air-org@abc123/mcp/mcp.json` — pinned to a commit SHA
+- `github://acme/air-org/mcp/mcp.json@feature/branch` — ref with slashes (use legacy syntax)
 
 The legacy syntax `github://owner/repo/path@ref` (ref at end of path) is also supported for backward compatibility.
+
+> **Note:** Refs containing slashes (e.g., `feature/branch`) cannot be expressed with the repo-level `@ref` syntax because the URI is split on `/`. Use the legacy path-level syntax for such refs.
 
 ## Authentication
 
