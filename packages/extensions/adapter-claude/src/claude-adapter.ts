@@ -280,8 +280,10 @@ export class ClaudeAdapter implements AgentAdapter {
           ...(server.env && { env: server.env }),
         };
       } else {
+        // Claude Code uses "http" for the streamable-http transport
+        const claudeType = server.type === "streamable-http" ? "http" : server.type;
         mcpServers[name] = {
-          type: server.type,
+          type: claudeType,
           url: server.url,
           ...(server.headers && { headers: server.headers }),
           ...(server.oauth && { oauth: this.translateOAuth(server.oauth) }),
