@@ -46,7 +46,7 @@ describe("ClaudeAdapter", () => {
         },
       };
 
-      const result = adapter.translateMcpServers(servers);
+      const result = adapter.translateMcpServers(servers) as any;
       expect(result).toEqual({
         mcpServers: {
           github: {
@@ -56,6 +56,8 @@ describe("ClaudeAdapter", () => {
           },
         },
       });
+      // stdio servers should NOT include type (Claude Code infers it from command)
+      expect(result.mcpServers.github.type).toBeUndefined();
     });
 
     it("strips title and description from output", () => {
@@ -84,8 +86,24 @@ describe("ClaudeAdapter", () => {
 
       const result = adapter.translateMcpServers(servers) as any;
       expect(result.mcpServers.remote).toEqual({
+        type: "streamable-http",
         url: "https://mcp.example.com/api",
         headers: { Authorization: "Bearer ${TOKEN}" },
+      });
+    });
+
+    it("preserves type field for sse servers", () => {
+      const servers: Record<string, McpServerEntry> = {
+        events: {
+          type: "sse",
+          url: "https://mcp.example.com/sse",
+        },
+      };
+
+      const result = adapter.translateMcpServers(servers) as any;
+      expect(result.mcpServers.events).toEqual({
+        type: "sse",
+        url: "https://mcp.example.com/sse",
       });
     });
 
@@ -103,6 +121,7 @@ describe("ClaudeAdapter", () => {
       };
 
       const result = adapter.translateMcpServers(servers) as any;
+      expect(result.mcpServers.authed.type).toBe("sse");
       expect(result.mcpServers.authed.oauth).toEqual({
         clientId: "my-client",
         scopes: ["read", "write"],
@@ -269,6 +288,28 @@ describe("ClaudeAdapter", () => {
       const mcpJson = JSON.parse(readFileSync(mcpPath, "utf-8"));
       expect(mcpJson.mcpServers.github.command).toBe("npx");
       expect(mcpJson.mcpServers.github.env.TOKEN).toBe("literal-value");
+    });
+
+    it("writes .mcp.json with type field for non-stdio servers", async () => {
+      const dir = createTempDir();
+      const artifacts = emptyArtifacts();
+      artifacts.mcp["granola"] = {
+        type: "streamable-http",
+        url: "https://mcp.granola.ai/mcp",
+      };
+      artifacts.mcp["events"] = {
+        type: "sse",
+        url: "https://mcp.example.com/sse",
+        headers: { Authorization: "Bearer token" },
+      };
+
+      await adapter.prepareSession(artifacts, dir);
+
+      const mcpJson = JSON.parse(readFileSync(join(dir, ".mcp.json"), "utf-8"));
+      expect(mcpJson.mcpServers.granola.type).toBe("streamable-http");
+      expect(mcpJson.mcpServers.granola.url).toBe("https://mcp.granola.ai/mcp");
+      expect(mcpJson.mcpServers.events.type).toBe("sse");
+      expect(mcpJson.mcpServers.events.url).toBe("https://mcp.example.com/sse");
     });
 
     it("resolves ${VAR} patterns via secret resolvers", async () => {
