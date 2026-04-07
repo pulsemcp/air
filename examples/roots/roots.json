@@ -8,8 +8,7 @@
     "default_mcp_servers": ["github", "postgres-prod"],
     "default_skills": ["deploy-staging", "initial-pr-review"],
     "default_plugins": ["code-quality"],
-    "user_invocable": true,
-    "default_stop_condition": "open-reviewed-green-pr"
+    "user_invocable": true
   },
   "data-pipeline": {
     "name": "data-pipeline",

@@ -82,7 +82,7 @@
         }
       },
       "required": ["id", "description", "event", "command"],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   }
 }

@@ -92,7 +92,6 @@ export interface RootEntry {
   default_hooks?: string[];
   default_subagent_roots?: string[];
   user_invocable?: boolean;
-  default_stop_condition?: string;
 }
 
 export interface HookEntry {

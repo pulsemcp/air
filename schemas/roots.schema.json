@@ -91,14 +91,10 @@
           "type": "boolean",
           "description": "Whether this root can be directly invoked by users to start a session.",
           "default": true
-        },
-        "default_stop_condition": {
-          "type": "string",
-          "description": "Default condition that signals the agent should hand back control (e.g., 'open-reviewed-green-pr')."
         }
       },
       "required": ["name", "description"],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   }
 }
