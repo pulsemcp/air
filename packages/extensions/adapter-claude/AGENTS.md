@@ -19,7 +19,7 @@ packages/extensions/adapter-claude/
 This package implements the `AgentAdapter` interface from `@pulsemcp/air-core` for Claude Code. The most important method is `prepareSession()` which is the single entry point for setting up a working directory — it writes `.mcp.json`, injects skills into `.claude/skills/`, copies references, and resolves `${VAR}` secrets.
 
 Claude Code expects:
-- MCP config at `.mcp.json` with a `mcpServers` wrapper (no `title`/`description`/`type` fields)
+- MCP config at `.mcp.json` with a `mcpServers` wrapper (no `title`/`description` fields; `type` preserved for non-stdio servers)
 - Skills as directories under `.claude/skills/{name}/SKILL.md`
 - References copied alongside skills in `.claude/skills/{name}/references/`
 - OAuth `redirectUri` converted to `callbackPort`

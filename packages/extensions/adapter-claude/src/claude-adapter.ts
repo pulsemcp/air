@@ -289,6 +289,7 @@ export class ClaudeAdapter implements AgentAdapter {
         };
       } else {
         mcpServers[name] = {
+          type: server.type,
           url: server.url,
           ...(server.headers && { headers: server.headers }),
           ...(server.oauth && { oauth: this.translateOAuth(server.oauth) }),

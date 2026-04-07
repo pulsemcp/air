@@ -84,8 +84,24 @@ describe("ClaudeAdapter", () => {
 
       const result = adapter.translateMcpServers(servers) as any;
       expect(result.mcpServers.remote).toEqual({
+        type: "streamable-http",
         url: "https://mcp.example.com/api",
         headers: { Authorization: "Bearer ${TOKEN}" },
+      });
+    });
+
+    it("preserves type field for sse servers", () => {
+      const servers: Record<string, McpServerEntry> = {
+        events: {
+          type: "sse",
+          url: "https://mcp.example.com/sse",
+        },
+      };
+
+      const result = adapter.translateMcpServers(servers) as any;
+      expect(result.mcpServers.events).toEqual({
+        type: "sse",
+        url: "https://mcp.example.com/sse",
       });
     });
 
@@ -103,6 +119,7 @@ describe("ClaudeAdapter", () => {
       };
 
       const result = adapter.translateMcpServers(servers) as any;
+      expect(result.mcpServers.authed.type).toBe("sse");
       expect(result.mcpServers.authed.oauth).toEqual({
         clientId: "my-client",
         scopes: ["read", "write"],
