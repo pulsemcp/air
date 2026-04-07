@@ -131,6 +131,62 @@ describe("installExtensions", () => {
     expect(result.installed).toEqual([]);
   });
 
+  it("deduplicates extension specifiers", async () => {
+    const catalog = createTemp({
+      "air.json": {
+        name: "test",
+        extensions: ["./local.js", "./local.js", "vitest", "vitest"],
+      },
+    });
+
+    const monorepoRoot = resolve(__dirname, "../../..");
+    const result = await installExtensions({
+      config: join(catalog, "air.json"),
+      prefix: monorepoRoot,
+    });
+
+    expect(result.skipped).toEqual(["./local.js"]);
+    expect(result.alreadyInstalled).toEqual(["vitest"]);
+  });
+
+  it("detects already-installed scoped package with version suffix", async () => {
+    // The monorepo has @pulsemcp/air-core in node_modules.
+    // Even with a version suffix, isPackageInstalled should strip it.
+    const catalog = createTemp({
+      "air.json": {
+        name: "test",
+        extensions: ["@pulsemcp/air-core@0.0.9"],
+      },
+    });
+
+    const monorepoRoot = resolve(__dirname, "../../..");
+    const result = await installExtensions({
+      config: join(catalog, "air.json"),
+      prefix: monorepoRoot,
+    });
+
+    expect(result.alreadyInstalled).toEqual(["@pulsemcp/air-core@0.0.9"]);
+    expect(result.installed).toEqual([]);
+  });
+
+  it("skips non-string entries in extensions array", async () => {
+    const catalog = createTemp({
+      "air.json": {
+        name: "test",
+        extensions: ["./local.js", 123, null, "vitest"],
+      },
+    });
+
+    const monorepoRoot = resolve(__dirname, "../../..");
+    const result = await installExtensions({
+      config: join(catalog, "air.json"),
+      prefix: monorepoRoot,
+    });
+
+    expect(result.skipped).toEqual(["./local.js"]);
+    expect(result.alreadyInstalled).toEqual(["vitest"]);
+  });
+
   it("throws when air.json does not exist", async () => {
     await expect(
       installExtensions({ config: "/nonexistent/air.json" })
