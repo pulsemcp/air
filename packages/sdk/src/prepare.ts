@@ -21,6 +21,11 @@ export interface PrepareSessionOptions {
   skills?: string[];
   /** MCP server IDs to activate (overrides root defaults). */
   mcpServers?: string[];
+  /**
+   * Skip merging subagent roots' artifacts into the parent session.
+   * Orchestrators that manage subagent composition externally should set this.
+   */
+  skipSubagentMerge?: boolean;
 }
 
 export interface PrepareSessionResult {
@@ -90,6 +95,7 @@ export async function prepareSession(
       root,
       skillOverrides: options?.skills,
       mcpServerOverrides: options?.mcpServers,
+      skipSubagentMerge: options?.skipSubagentMerge,
     }
   );
 

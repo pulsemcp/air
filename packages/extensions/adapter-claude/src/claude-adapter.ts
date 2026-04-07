@@ -87,6 +87,10 @@ export class ClaudeAdapter implements AgentAdapter {
    * Prepare a working directory for a Claude Code session.
    * Writes .mcp.json, injects skills + references into .claude/skills/,
    * and returns the start command.
+   *
+   * When the root declares default_subagent_roots and skipSubagentMerge is not set,
+   * subagent roots' skills and MCP servers are merged into the parent session and
+   * a system prompt section is generated describing the subagent dependencies.
    */
   async prepareSession(
     artifacts: ResolvedArtifacts,
@@ -99,9 +103,21 @@ export class ClaudeAdapter implements AgentAdapter {
     const skillPaths: string[] = [];
 
     // 1. Resolve which artifacts to activate (overrides take precedence over root defaults)
-    const mcpServerIds = options?.mcpServerOverrides
+    let mcpServerIds = options?.mcpServerOverrides
       ?? root?.default_mcp_servers
       ?? undefined;
+    let skillIds = options?.skillOverrides
+      ?? root?.default_skills
+      ?? Object.keys(artifacts.skills);
+
+    // 1b. Merge subagent roots' artifacts if applicable
+    const subagentRoots = this.resolveSubagentRoots(root, artifacts, options);
+    if (subagentRoots.length > 0) {
+      const merged = this.mergeSubagentArtifacts(subagentRoots, mcpServerIds, skillIds);
+      mcpServerIds = merged.mcpServerIds;
+      skillIds = merged.skillIds;
+    }
+
     const mcpServers = mcpServerIds
       ? this.filterByIds(artifacts.mcp, mcpServerIds)
       : artifacts.mcp;
@@ -109,10 +125,6 @@ export class ClaudeAdapter implements AgentAdapter {
     const plugins = root?.default_plugins
       ? this.filterByIds(artifacts.plugins, root.default_plugins)
       : artifacts.plugins;
-
-    const skillIds = options?.skillOverrides
-      ?? root?.default_skills
-      ?? Object.keys(artifacts.skills);
 
     // 2. Write .mcp.json with resolved secrets
     const resolvedServers = await this.resolveServerSecrets(
@@ -160,14 +172,106 @@ export class ClaudeAdapter implements AgentAdapter {
       }
     }
 
-    // 4. Build start command
+    // 4. Generate ephemeral subagent context for system prompt
+    let subagentContext: string | undefined;
+    if (subagentRoots.length > 0) {
+      subagentContext = this.buildSubagentContext(subagentRoots);
+    }
+
+    // 5. Build start command (include --append-system-prompt if subagent context exists)
     const config = this.generateConfig(artifacts, root, targetDir);
     const startCommand = this.buildStartCommand({
       ...config,
       workDir: targetDir,
     });
+    if (subagentContext) {
+      startCommand.args.push("--append-system-prompt", subagentContext);
+    }
 
-    return { configFiles, skillPaths, startCommand };
+    return { configFiles, skillPaths, startCommand, subagentContext };
+  }
+
+  /**
+   * Resolve subagent roots from the root's default_subagent_roots.
+   * Returns empty array if skipSubagentMerge is set or no subagent roots exist.
+   */
+  private resolveSubagentRoots(
+    root: RootEntry | undefined,
+    artifacts: ResolvedArtifacts,
+    options?: PrepareSessionOptions
+  ): RootEntry[] {
+    if (options?.skipSubagentMerge) return [];
+    if (!root?.default_subagent_roots?.length) return [];
+
+    const resolved: RootEntry[] = [];
+    for (const id of root.default_subagent_roots) {
+      const subRoot = artifacts.roots[id];
+      if (subRoot) {
+        resolved.push(subRoot);
+      }
+    }
+    return resolved;
+  }
+
+  /**
+   * Merge subagent roots' default_mcp_servers and default_skills into the
+   * parent's activated sets (union, preserving order with parent first).
+   */
+  private mergeSubagentArtifacts(
+    subagentRoots: RootEntry[],
+    parentMcpServerIds: string[] | undefined,
+    parentSkillIds: string[]
+  ): { mcpServerIds: string[] | undefined; skillIds: string[] } {
+    const mcpSet = new Set(parentMcpServerIds ?? []);
+    const skillSet = new Set(parentSkillIds);
+
+    for (const sub of subagentRoots) {
+      if (sub.default_mcp_servers) {
+        for (const id of sub.default_mcp_servers) mcpSet.add(id);
+      }
+      if (sub.default_skills) {
+        for (const id of sub.default_skills) skillSet.add(id);
+      }
+    }
+
+    return {
+      mcpServerIds: parentMcpServerIds !== undefined || mcpSet.size > 0
+        ? [...mcpSet]
+        : undefined,
+      skillIds: [...skillSet],
+    };
+  }
+
+  /**
+   * Build a system prompt section describing the subagent root dependencies.
+   * Gives the agent context about what capabilities were merged and from where.
+   */
+  private buildSubagentContext(subagentRoots: RootEntry[]): string {
+    const lines: string[] = [
+      "## Subagent Root Dependencies",
+      "",
+      "This session includes capabilities from the following subagent roots.",
+      "Their skills and MCP servers have been merged into your session.",
+      "",
+    ];
+
+    for (const sub of subagentRoots) {
+      lines.push(`### ${sub.display_name || sub.name}`);
+      lines.push("");
+      lines.push(`**Description**: ${sub.description}`);
+      if (sub.default_mcp_servers?.length) {
+        lines.push(`**MCP Servers**: ${sub.default_mcp_servers.join(", ")}`);
+      }
+      if (sub.default_skills?.length) {
+        lines.push(`**Skills**: ${sub.default_skills.join(", ")}`);
+      }
+      if (sub.subdirectory) {
+        lines.push(`**Subdirectory**: ${sub.subdirectory}`);
+      }
+      lines.push("");
+    }
+
+    return lines.join("\n");
   }
 
   /** Translate AIR mcp.json format to Claude Code .mcp.json format */

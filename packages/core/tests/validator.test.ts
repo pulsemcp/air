@@ -115,6 +115,18 @@ describe("validateJson", () => {
       );
       expect(result.valid).toBe(true);
     });
+
+    it("validates root with default_subagent_roots", () => {
+      const result = validateJson(
+        {
+          "my-root": exampleRoot("my-root", {
+            default_subagent_roots: ["sub-configs", "sub-research"],
+          }),
+        },
+        "roots"
+      );
+      expect(result.valid).toBe(true);
+    });
   });
 
   describe("references.json", () => {
