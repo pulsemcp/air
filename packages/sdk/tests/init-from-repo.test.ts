@@ -210,6 +210,45 @@ describe("discoverArtifacts", () => {
     const artifacts = discoverArtifacts(dir, "acme/config", "main");
     expect(artifacts).toHaveLength(0);
   });
+
+  it("skips files in hidden directories (root and nested)", () => {
+    const dir = createGitRepo("https://github.com/acme/config.git", {
+      ".hidden/skills.json": {
+        s: { id: "s", description: "d", path: "p" },
+      },
+      "path/.secret/mcp.json": {
+        m: { type: "stdio", command: "echo" },
+      },
+      // This one should be discovered
+      "skills/skills.json": {
+        s: { id: "s", description: "d", path: "p" },
+      },
+    });
+
+    const artifacts = discoverArtifacts(dir, "acme/config", "main");
+    expect(artifacts).toHaveLength(1);
+    expect(artifacts[0].repoPath).toBe("skills/skills.json");
+  });
+
+  it("discovers multiple files of the same artifact type", () => {
+    const dir = createGitRepo("https://github.com/acme/config.git", {
+      "frontend/skills.json": {
+        s1: { id: "s1", description: "frontend skill", path: "p1" },
+      },
+      "backend/skills.json": {
+        s2: { id: "s2", description: "backend skill", path: "p2" },
+      },
+    });
+
+    const artifacts = discoverArtifacts(dir, "acme/config", "main");
+    expect(artifacts).toHaveLength(2);
+    expect(artifacts.every((a) => a.type === "skills")).toBe(true);
+    const paths = artifacts.map((a) => a.repoPath).sort();
+    expect(paths).toEqual([
+      "backend/skills.json",
+      "frontend/skills.json",
+    ]);
+  });
 });
 
 describe("initFromRepo", () => {
@@ -404,6 +443,37 @@ describe("initFromRepo", () => {
     expect(result.repo).toBe("myorg/my-repo");
     const airJson = JSON.parse(readFileSync(airJsonPath, "utf-8"));
     expect(airJson.mcp[0]).toContain("github://myorg/my-repo/");
+  });
+
+  it("includes multiple same-type artifacts as separate URIs", () => {
+    const repoDir = createGitRepo(
+      "https://github.com/acme/config.git",
+      {
+        "frontend/skills.json": {
+          s1: { id: "s1", description: "frontend skill", path: "p1" },
+        },
+        "backend/skills.json": {
+          s2: { id: "s2", description: "backend skill", path: "p2" },
+        },
+      }
+    );
+
+    const airJsonPath = resolve(makeTempDir(), "air.json");
+    const result = initFromRepo({
+      cwd: repoDir,
+      path: airJsonPath,
+    });
+
+    expect(result.discovered).toHaveLength(2);
+
+    const airJson = JSON.parse(readFileSync(airJsonPath, "utf-8"));
+    expect(airJson.skills).toHaveLength(2);
+    expect(airJson.skills).toContain(
+      "github://acme/config/backend/skills.json@main"
+    );
+    expect(airJson.skills).toContain(
+      "github://acme/config/frontend/skills.json@main"
+    );
   });
 
   it("discovers all six artifact types", () => {

@@ -1,5 +1,6 @@
 import { Command } from "commander";
-import { initConfig, initFromRepo } from "@pulsemcp/air-sdk";
+import { existsSync, unlinkSync } from "fs";
+import { initConfig, initFromRepo, getDefaultAirJsonPath } from "@pulsemcp/air-sdk";
 
 export function initCommand(): Command {
   const cmd = new Command("init")
@@ -33,18 +34,17 @@ export function initCommand(): Command {
         }
         console.log(`\nConfig written to ${result.airJsonPath}`);
       } catch (repoErr) {
-        // If repo-based init fails (not in a repo, no remote, no artifacts),
-        // fall back to blank scaffolding.
         const repoMessage =
           repoErr instanceof Error ? repoErr.message : String(repoErr);
 
-        // If --force was used and the error is about existing config,
-        // re-throw since the user explicitly wanted overwrite.
+        // If the config already exists and --force was not used, exit with the error.
         if (
           repoMessage.includes("already exists") &&
           !options.force
         ) {
-          console.error(`Error: ${repoMessage}`);
+          console.error(
+            `Error: ${repoMessage} Use --force to overwrite.`
+          );
           process.exit(1);
         }
 
@@ -56,14 +56,20 @@ export function initCommand(): Command {
           repoMessage.includes("No AIR artifact index files")
         ) {
           try {
+            // When --force is set and an existing config blocks initConfig,
+            // remove it first since initConfig does not support overwriting.
+            if (options.force) {
+              const targetPath = options.path ?? getDefaultAirJsonPath();
+              if (existsSync(targetPath)) {
+                unlinkSync(targetPath);
+              }
+            }
+
             const result = initConfig({ path: options.path });
 
             console.log(
-              `Initialized AIR configuration at ${result.airDir}/:`
+              `Initialized AIR configuration at ${result.airJsonPath}`
             );
-            for (const file of result.files) {
-              console.log(`  ${file}`);
-            }
             console.log(
               "\nEdit air.json to configure your setup. Run 'air validate ~/.air/air.json' to check."
             );

@@ -1,22 +1,18 @@
-import { execSync } from "child_process";
+import { execFileSync, execSync } from "child_process";
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from "fs";
 import { resolve, dirname } from "path";
 import {
   getDefaultAirJsonPath,
   detectSchemaType,
+  getAllSchemaTypes,
   validateJson,
   type SchemaType,
 } from "@pulsemcp/air-core";
 
-/** Artifact types that map to air.json properties. */
-const ARTIFACT_TYPES: SchemaType[] = [
-  "skills",
-  "references",
-  "mcp",
-  "plugins",
-  "roots",
-  "hooks",
-];
+/** Artifact types that map to air.json properties (all schema types except "air"). */
+const ARTIFACT_TYPES = getAllSchemaTypes().filter(
+  (t): t is Exclude<SchemaType, "air"> => t !== "air"
+);
 
 export interface InitFromRepoOptions {
   /** Working directory (must be inside a git repo). Defaults to process.cwd(). */
@@ -92,7 +88,7 @@ export function parseGitHubRemote(remoteUrl: string): string {
  * Get the git remote URL for the given remote name.
  */
 function getRemoteUrl(cwd: string, remote = "origin"): string {
-  return execSync(`git remote get-url ${remote}`, {
+  return execFileSync("git", ["remote", "get-url", remote], {
     cwd,
     stdio: ["pipe", "pipe", "pipe"],
     encoding: "utf-8",
@@ -167,8 +163,8 @@ export function discoverArtifacts(
   const [owner, repoName] = repo.split("/");
 
   for (const file of jsonFiles) {
-    // Skip files in node_modules or hidden directories
-    if (file.includes("node_modules/") || file.startsWith(".")) continue;
+    // Skip files in node_modules or hidden directories (root or nested)
+    if (file.includes("node_modules/") || /(?:^|\/)\./.test(file)) continue;
 
     const schemaType = detectSchemaType(file);
 
@@ -218,9 +214,7 @@ export function initFromRepo(
   // Check for existing config
   const overwritten = existsSync(airJsonPath);
   if (overwritten && !force) {
-    throw new Error(
-      `${airJsonPath} already exists. Use --force to overwrite.`
-    );
+    throw new Error(`${airJsonPath} already exists.`);
   }
 
   // Get repo root
