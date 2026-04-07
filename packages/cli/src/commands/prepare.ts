@@ -68,6 +68,10 @@ export function prepareCommand(): Command {
       "--no-subagent-merge",
       "Skip merging subagent roots' artifacts into the parent session (for orchestrators that manage composition externally)"
     )
+    .option(
+      "--skip-validation",
+      "Skip final validation for unresolved ${VAR} patterns (for orchestrators that resolve variables themselves)"
+    )
     .allowUnknownOption(true)
     .action(
       async (options: {
@@ -78,6 +82,7 @@ export function prepareCommand(): Command {
         skills?: string;
         mcpServers?: string;
         subagentMerge: boolean;
+        skipValidation?: boolean;
       }) => {
         try {
           // Load extensions once — pass to SDK to avoid double loading
@@ -122,6 +127,7 @@ export function prepareCommand(): Command {
               ? options.mcpServers.split(",").map((s) => s.trim())
               : undefined,
             skipSubagentMerge: !options.subagentMerge,
+            skipValidation: options.skipValidation,
             extensionOptions,
             extensions: loadedExtensions,
           });

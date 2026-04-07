@@ -86,3 +86,9 @@ export type { LoadedExtensions } from "./extension-loader.js";
 // Transform runner
 export { runTransforms } from "./transform-runner.js";
 export type { RunTransformsOptions } from "./transform-runner.js";
+
+// Config validation
+export {
+  findUnresolvedVars,
+  validateNoUnresolvedVars,
+} from "./validate-config.js";
