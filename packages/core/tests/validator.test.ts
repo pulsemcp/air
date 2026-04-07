@@ -237,6 +237,18 @@ describe("validateJson", () => {
       );
       expect(result.valid).toBe(true);
     });
+
+    it("accepts additional properties on mcp servers", () => {
+      const result = validateJson(
+        {
+          "my-server": exampleMcpStdio({
+            custom_field: "value",
+          }),
+        },
+        "mcp"
+      );
+      expect(result.valid).toBe(true);
+    });
   });
 
   describe("example files", () => {
