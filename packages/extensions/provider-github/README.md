@@ -47,20 +47,23 @@ const artifacts = await resolveArtifacts("./air.json", {
 
 ```
 github://owner/repo/path/to/file.json
-github://owner/repo/path/to/file.json@ref
+github://owner/repo@ref/path/to/file.json
 ```
 
 | Component | Description |
 |-----------|-------------|
 | `owner` | GitHub organization or user |
 | `repo` | Repository name |
+| `@ref` | Optional git ref (branch, tag, commit SHA) — appended to the repo name |
 | `path` | Path to the JSON file within the repo |
-| `@ref` | Optional git ref (branch, tag, commit SHA) |
 
 Examples:
 - `github://acme/air-org/skills/skills.json` — latest from default branch
-- `github://acme/air-org/mcp/mcp.json@v1.0.0` — pinned to a tag
-- `github://acme/air-org/mcp/mcp.json@main` — explicit branch
+- `github://acme/air-org@v1.0.0/mcp/mcp.json` — pinned to a tag
+- `github://acme/air-org@main/mcp/mcp.json` — explicit branch
+- `github://acme/air-org@abc123/mcp/mcp.json` — pinned to a commit SHA
+
+The legacy syntax `github://owner/repo/path@ref` (ref at end of path) is also supported for backward compatibility.
 
 ## Authentication
 
