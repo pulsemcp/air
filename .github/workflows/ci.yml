@@ -26,23 +26,26 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Build all packages
+      - name: Build core
+        run: npm run build -w packages/core
+
+      - name: Build extensions
         run: |
-          npm run build -w packages/core
-          npm run build -w packages/extensions/adapter-claude
-          npm run build -w packages/extensions/provider-github
-          npm run build -w packages/extensions/secrets-env
-          npm run build -w packages/extensions/secrets-file
+          for dir in packages/extensions/*/; do
+            npm run build -w "$dir"
+          done
+
+      - name: Build SDK and CLI
+        run: |
           npm run build -w packages/sdk
           npm run build -w packages/cli
 
       - name: Type check all packages
         run: |
           npx tsc --noEmit -p packages/core/tsconfig.json
-          npx tsc --noEmit -p packages/extensions/adapter-claude/tsconfig.json
-          npx tsc --noEmit -p packages/extensions/provider-github/tsconfig.json
-          npx tsc --noEmit -p packages/extensions/secrets-env/tsconfig.json
-          npx tsc --noEmit -p packages/extensions/secrets-file/tsconfig.json
+          for dir in packages/extensions/*/; do
+            npx tsc --noEmit -p "${dir}tsconfig.json"
+          done
           npx tsc --noEmit -p packages/sdk/tsconfig.json
           npx tsc --noEmit -p packages/cli/tsconfig.json
 
