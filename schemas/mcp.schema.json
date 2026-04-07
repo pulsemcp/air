@@ -40,7 +40,7 @@
           "description": "Redirect URI for the OAuth callback. For CLI/desktop clients this is typically http://localhost:{port}/callback (RFC 8252)."
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "ServerConfiguration": {
       "type": "object",

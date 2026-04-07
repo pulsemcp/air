@@ -53,7 +53,7 @@
         }
       },
       "required": ["id", "description", "path"],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   }
 }

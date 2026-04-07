@@ -104,11 +104,11 @@ describe("validateJson", () => {
       expect(result.valid).toBe(true);
     });
 
-    it("validates root with stop condition", () => {
+    it("validates root with additional custom fields", () => {
       const result = validateJson(
         {
           "my-root": exampleRoot("my-root", {
-            default_stop_condition: "open-reviewed-green-pr",
+            custom_field: "custom-value",
           }),
         },
         "roots"
@@ -176,6 +176,64 @@ describe("validateJson", () => {
       const result = validateJson(
         { "my-hook": exampleHook("my-hook") },
         "hooks"
+      );
+      expect(result.valid).toBe(true);
+    });
+  });
+
+  describe("additional properties", () => {
+    it("accepts additional properties on air.json", () => {
+      const result = validateJson(
+        { name: "test", custom_field: "value" },
+        "air"
+      );
+      expect(result.valid).toBe(true);
+    });
+
+    it("accepts additional properties on skills", () => {
+      const result = validateJson(
+        {
+          "my-skill": exampleSkill("my-skill", {
+            custom_field: "value",
+          }),
+        },
+        "skills"
+      );
+      expect(result.valid).toBe(true);
+    });
+
+    it("accepts additional properties on references", () => {
+      const result = validateJson(
+        {
+          "my-ref": exampleReference("my-ref", {
+            custom_field: "value",
+          }),
+        },
+        "references"
+      );
+      expect(result.valid).toBe(true);
+    });
+
+    it("accepts additional properties on hooks", () => {
+      const result = validateJson(
+        {
+          "my-hook": exampleHook("my-hook", {
+            custom_field: "value",
+          }),
+        },
+        "hooks"
+      );
+      expect(result.valid).toBe(true);
+    });
+
+    it("accepts additional properties on plugins", () => {
+      const result = validateJson(
+        {
+          "my-plugin": examplePlugin("my-plugin", {
+            custom_field: "value",
+          }),
+        },
+        "plugins"
       );
       expect(result.valid).toBe(true);
     });

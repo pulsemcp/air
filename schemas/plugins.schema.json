@@ -92,7 +92,7 @@
               "description": "Author's website or profile URL."
             }
           },
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "homepage": {
           "type": "string",
@@ -120,7 +120,7 @@
         }
       },
       "required": ["id", "description"],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   }
 }
