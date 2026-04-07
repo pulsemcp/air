@@ -32,7 +32,7 @@ jobs:
       - name: Build extensions
         run: |
           for dir in packages/extensions/*/; do
-            npm run build -w "$dir"
+            npm run build -w "${dir%/}"
           done
 
       - name: Build SDK and CLI
@@ -44,7 +44,7 @@ jobs:
         run: |
           npx tsc --noEmit -p packages/core/tsconfig.json
           for dir in packages/extensions/*/; do
-            npx tsc --noEmit -p "${dir}tsconfig.json"
+            npx tsc --noEmit -p "${dir%/}/tsconfig.json"
           done
           npx tsc --noEmit -p packages/sdk/tsconfig.json
           npx tsc --noEmit -p packages/cli/tsconfig.json

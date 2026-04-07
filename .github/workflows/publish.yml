@@ -35,7 +35,7 @@ jobs:
       - name: Build extensions
         run: |
           for dir in packages/extensions/*/; do
-            npm run build -w "$dir"
+            npm run build -w "${dir%/}"
           done
 
       - name: Build SDK and CLI
