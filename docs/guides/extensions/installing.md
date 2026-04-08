@@ -104,6 +104,6 @@ Local paths are resolved relative to the directory containing `air.json`. They d
 
 ## Next steps
 
-- **[Extensions System](extensions.md)** — How adapters, providers, and transforms work.
-- **[Understanding air.json](understanding-air-json.md)** — The `extensions` field in detail.
-- **[Running Sessions](running-sessions.md)** — Using extensions in session preparation.
+- **[Extensions System](readme.md)** — How adapters, providers, and transforms work.
+- **[Understanding air.json](../understanding-air-json.md)** — The `extensions` field in detail.
+- **[Running Sessions](../running-sessions.md)** — Using extensions in session preparation.

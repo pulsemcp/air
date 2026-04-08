@@ -60,7 +60,7 @@ Hooks (1):
 
 ### Using roots
 
-If you have [roots](roots.md) configured, activate one to scope the session:
+If you have [roots](roots/readme.md) configured, activate one to scope the session:
 
 ```bash
 air start claude --root web-app
@@ -105,7 +105,7 @@ By default, it prepares the current directory. Use `--target` to specify a diffe
 | `--no-subagent-merge` | Skip merging subagent roots' artifacts |
 | `--skip-validation` | Skip `${VAR}` validation |
 
-Extensions can contribute additional flags — see [Extensions System](extensions.md).
+Extensions can contribute additional flags — see [Extensions System](extensions/readme.md).
 
 ### Output
 
@@ -201,6 +201,6 @@ air start claude --root web-app
 
 ## Next steps
 
-- **[Roots and Multi-Root Setups](roots.md)** — Configure roots for different projects.
-- **[Extensions System](extensions.md)** — Add adapters, providers, and transforms.
+- **[Roots and Multi-Root Setups](roots/readme.md)** — Configure roots for different projects.
+- **[Extensions System](extensions/readme.md)** — Add adapters, providers, and transforms.
 - **[Composition and Overrides](composition-and-overrides.md)** — Advanced config layering.

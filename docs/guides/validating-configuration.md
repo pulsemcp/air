@@ -166,5 +166,5 @@ air validate ~/.air/air.json || exit 1
 ## Next steps
 
 - **[Understanding air.json](understanding-air-json.md)** — Learn about the root config file structure.
-- **[Configuring MCP Servers](configuring-mcp-servers.md)** — MCP server schema details.
-- **[Hooks](hooks.md)** — Hook schema and lifecycle events.
+- **[Configuring MCP Servers](mcp-servers/readme.md)** — MCP server schema details.
+- **[Hooks](hooks/readme.md)** — Hook schema and lifecycle events.

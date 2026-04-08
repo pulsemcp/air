@@ -147,6 +147,6 @@ Later entries override earlier ones by ID (full replacement). A team can overrid
 
 ## Next steps
 
-- **[Managing Skills](managing-skills.md)** — Link references to skills.
-- **[Composition and Overrides](composition-and-overrides.md)** — Override org-level references at the team level.
-- **[Validating Configuration](validating-configuration.md)** — Validate your references index.
+- **[Managing Skills](../skills/readme.md)** — Link references to skills.
+- **[Composition and Overrides](../composition-and-overrides.md)** — Override org-level references at the team level.
+- **[Validating Configuration](../validating-configuration.md)** — Validate your references index.

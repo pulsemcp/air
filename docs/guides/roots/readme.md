@@ -187,6 +187,6 @@ Roots (2):
 
 ## Next steps
 
-- **[Running Sessions](running-sessions.md)** — Use roots with `air start` and `air prepare`.
-- **[Managing Skills](managing-skills.md)** — Define skills to assign to roots.
-- **[Configuring MCP Servers](configuring-mcp-servers.md)** — Define servers to assign to roots.
+- **[Running Sessions](../running-sessions.md)** — Use roots with `air start` and `air prepare`.
+- **[Managing Skills](../skills/readme.md)** — Define skills to assign to roots.
+- **[Configuring MCP Servers](../mcp-servers/readme.md)** — Define servers to assign to roots.

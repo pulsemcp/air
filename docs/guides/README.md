@@ -11,16 +11,16 @@ For detailed reference documentation, see the [docs/](../) directory.
 
 ## Common Workflows
 
-- **[Managing Skills](managing-skills.md)** — Define reusable skills, list them, and understand how they get injected into agent sessions.
-- **[Configuring MCP Servers](configuring-mcp-servers.md)** — Define MCP server entries for local and remote servers, wire them into sessions, and handle secrets.
+- **[Managing Skills](skills/readme.md)** — Define reusable skills, list them, and understand how they get injected into agent sessions.
+- **[Configuring MCP Servers](mcp-servers/readme.md)** — Define MCP server entries for local and remote servers, wire them into sessions, and handle secrets.
 - **[Running Sessions](running-sessions.md)** — Use `air start` and `air prepare` to launch agent sessions with the right configuration.
 - **[Validating Configuration](validating-configuration.md)** — Catch config errors early with `air validate` before they cause runtime failures.
-- **[Installing Extensions](installing-extensions.md)** — Use `air install` to add adapters, providers, and transforms declared in your configuration.
+- **[Installing Extensions](extensions/installing.md)** — Use `air install` to add adapters, providers, and transforms declared in your configuration.
 
 ## Advanced Usage
 
-- **[Extensions System](extensions.md)** — How adapter, provider, and transform extensions work. Install, configure, and build on the extension pipeline.
-- **[Roots and Multi-Root Setups](roots.md)** — Organize agent configurations across repositories and teams with roots.
-- **[Hooks](hooks.md)** — Automate actions around agent lifecycle events with shell-command hooks.
-- **[References](references.md)** — Share reference documents across skills to keep documentation DRY.
+- **[Extensions System](extensions/readme.md)** — How adapter, provider, and transform extensions work. Install, configure, and build on the extension pipeline.
+- **[Roots and Multi-Root Setups](roots/readme.md)** — Organize agent configurations across repositories and teams with roots.
+- **[Hooks](hooks/readme.md)** — Automate actions around agent lifecycle events with shell-command hooks.
+- **[References](references/readme.md)** — Share reference documents across skills to keep documentation DRY.
 - **[Composition and Overrides](composition-and-overrides.md)** — Layer multiple config files, use override semantics, and pull remote configs with providers.

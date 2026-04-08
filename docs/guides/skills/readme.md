@@ -149,7 +149,7 @@ Skills (2):
 
 ## Skills with references
 
-Skills can declare dependencies on [reference documents](references.md) to keep knowledge DRY:
+Skills can declare dependencies on [reference documents](../references/readme.md) to keep knowledge DRY:
 
 ```json
 {
@@ -195,6 +195,6 @@ This activates only the listed skills, ignoring root defaults.
 
 ## Next steps
 
-- **[References](references.md)** — Share documents across skills without duplication.
-- **[Roots and Multi-Root Setups](roots.md)** — Assign default skills to specific roots.
-- **[Running Sessions](running-sessions.md)** — See how skills get activated in practice.
+- **[References](../references/readme.md)** — Share documents across skills without duplication.
+- **[Roots and Multi-Root Setups](../roots/readme.md)** — Assign default skills to specific roots.
+- **[Running Sessions](../running-sessions.md)** — See how skills get activated in practice.

@@ -111,7 +111,7 @@ Then install them:
 air install
 ```
 
-This reads the `extensions` array and installs any missing npm packages. See [Installing Extensions](installing-extensions.md) for details.
+This reads the `extensions` array and installs any missing npm packages. See [Installing Extensions](extensions/installing.md) for details.
 
 ## 6. Preview your session
 
@@ -136,6 +136,6 @@ This prepares the configuration and shows the command to launch Claude Code with
 ## Next steps
 
 - **[Understanding air.json](understanding-air-json.md)** — Learn how the root config file works in detail.
-- **[Managing Skills](managing-skills.md)** — Add reusable skills to your configuration.
-- **[Configuring MCP Servers](configuring-mcp-servers.md)** — Add more MCP servers and handle secrets.
-- **[Roots and Multi-Root Setups](roots.md)** — Organize configs across multiple repositories.
+- **[Managing Skills](skills/readme.md)** — Add reusable skills to your configuration.
+- **[Configuring MCP Servers](mcp-servers/readme.md)** — Add more MCP servers and handle secrets.
+- **[Roots and Multi-Root Setups](roots/readme.md)** — Organize configs across multiple repositories.
