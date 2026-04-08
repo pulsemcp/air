@@ -113,9 +113,7 @@ export function exampleHook(
     id,
     title: `${id} Hook`,
     description: `Description for ${id}`,
-    event: "session_start",
-    command: "echo",
-    args: ["hook fired"],
+    path: `hooks/${id}`,
     ...overrides,
   };
 }

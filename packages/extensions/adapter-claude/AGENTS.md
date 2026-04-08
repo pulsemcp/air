@@ -16,12 +16,13 @@ packages/extensions/adapter-claude/
 
 ## Domain Context
 
-This package implements the `AgentAdapter` interface from `@pulsemcp/air-core` for Claude Code. The most important method is `prepareSession()` which is the single entry point for setting up a working directory — it writes `.mcp.json`, injects skills into `.claude/skills/`, copies references, and resolves `${VAR}` secrets.
+This package implements the `AgentAdapter` interface from `@pulsemcp/air-core` for Claude Code. The most important method is `prepareSession()` which is the single entry point for setting up a working directory — it writes `.mcp.json`, injects skills into `.claude/skills/`, injects hooks into `.claude/hooks/`, copies references, and resolves `${VAR}` secrets.
 
 Claude Code expects:
 - MCP config at `.mcp.json` with a `mcpServers` wrapper (no `title`/`description` fields; `type` preserved for non-stdio servers)
 - Skills as directories under `.claude/skills/{name}/SKILL.md`
-- References copied alongside skills in `.claude/skills/{name}/references/`
+- Hooks as directories under `.claude/hooks/{name}/HOOK.json`
+- References copied alongside skills/hooks in `{artifact}/references/`
 - OAuth `redirectUri` converted to `callbackPort`
 - Plugin `id` mapped to `name`; artifact references (skills/mcp_servers/hooks) stripped (used by CLI, not agent)
 
@@ -30,8 +31,8 @@ Claude Code expects:
 ### prepareSession is the primary interface
 Callers should use `prepareSession()` rather than calling `translateMcpServers`, `generateConfig`, and writing files separately. The adapter owns the full "make this directory ready" contract.
 
-### Local skills take priority
-If `.claude/skills/{name}/` already exists in the target directory, the catalog version is not written. This allows repos to override catalog skills.
+### Local artifacts take priority
+If `.claude/skills/{name}/` or `.claude/hooks/{name}/` already exists in the target directory, the catalog version is not written. This allows repos to override catalog skills and hooks.
 
 ## What NOT to Do
 

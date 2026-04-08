@@ -310,6 +310,25 @@ describe("absolute path resolution", () => {
     expect(artifacts.skills["my-skill"].path.startsWith("/")).toBe(true);
   });
 
+  it("resolves hook path fields to absolute paths", async () => {
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        hooks: ["./hooks.json"],
+      },
+      "hooks.json": {
+        "my-hook": exampleHook("my-hook"),
+      },
+    });
+    cleanup = c;
+
+    const artifacts = await resolveArtifacts(join(dir, "air.json"));
+
+    // hook.path should be resolved to an absolute path
+    expect(artifacts.hooks["my-hook"].path).toBe(join(dir, "hooks/my-hook"));
+    expect(artifacts.hooks["my-hook"].path.startsWith("/")).toBe(true);
+  });
+
   it("resolves reference file fields to absolute paths", async () => {
     const { dir, cleanup: c } = createTempAirDir({
       "air.json": {

@@ -7,6 +7,7 @@ import type {
   ResolvedArtifacts,
   McpServerEntry,
   SkillEntry,
+  HookEntry,
   PluginEntry,
   RootEntry,
 } from "@pulsemcp/air-core";
@@ -675,6 +676,144 @@ describe("ClaudeAdapter", () => {
 
         expect(result.subagentContext).toBeUndefined();
         expect(result.startCommand.args).not.toContain("--append-system-prompt");
+      });
+    });
+
+    describe("hook injection", () => {
+      it("injects path-based hooks into .claude/hooks/", async () => {
+        const dir = createTempDir();
+
+        // Create a hook source directory with HOOK.json and a script
+        const hookSrcDir = join(dir, "..", "hooks", "lint-pre-commit");
+        mkdirSync(hookSrcDir, { recursive: true });
+        writeFileSync(
+          join(hookSrcDir, "HOOK.json"),
+          JSON.stringify({ event: "pre_commit", command: "npx", args: ["lint-staged"] })
+        );
+        writeFileSync(join(hookSrcDir, "run.sh"), "#!/bin/bash\nnpx lint-staged");
+
+        const artifacts = emptyArtifacts();
+        artifacts.hooks["lint-pre-commit"] = {
+          id: "lint-pre-commit",
+          description: "Pre-commit lint check",
+          path: resolve(hookSrcDir),
+        };
+
+        const result = await adapter.prepareSession(artifacts, dir);
+
+        const hookJson = join(dir, ".claude", "hooks", "lint-pre-commit", "HOOK.json");
+        const hookScript = join(dir, ".claude", "hooks", "lint-pre-commit", "run.sh");
+        expect(existsSync(hookJson)).toBe(true);
+        expect(existsSync(hookScript)).toBe(true);
+        expect(JSON.parse(readFileSync(hookJson, "utf-8")).event).toBe("pre_commit");
+        expect(result.hookPaths).toHaveLength(1);
+      });
+
+      it("skips hooks that already exist locally", async () => {
+        const dir = createTempDir();
+
+        // Pre-existing local hook
+        const localHookDir = join(dir, ".claude", "hooks", "my-hook");
+        mkdirSync(localHookDir, { recursive: true });
+        writeFileSync(
+          join(localHookDir, "HOOK.json"),
+          JSON.stringify({ event: "session_start", command: "echo", args: ["local"] })
+        );
+
+        // Catalog hook source
+        const catalogHookDir = join(dir, "..", "hooks", "my-hook");
+        mkdirSync(catalogHookDir, { recursive: true });
+        writeFileSync(
+          join(catalogHookDir, "HOOK.json"),
+          JSON.stringify({ event: "session_start", command: "echo", args: ["catalog"] })
+        );
+
+        const artifacts = emptyArtifacts();
+        artifacts.hooks["my-hook"] = {
+          id: "my-hook",
+          description: "My hook",
+          path: resolve(catalogHookDir),
+        };
+
+        const result = await adapter.prepareSession(artifacts, dir);
+
+        // Local version should be preserved
+        const content = JSON.parse(
+          readFileSync(join(localHookDir, "HOOK.json"), "utf-8")
+        );
+        expect(content.args).toEqual(["local"]);
+        expect(result.hookPaths).toHaveLength(0);
+      });
+
+      it("filters hooks by root default_hooks", async () => {
+        const dir = createTempDir();
+
+        // Create two hook sources
+        const hookADir = join(dir, "..", "hooks", "hook-a");
+        mkdirSync(hookADir, { recursive: true });
+        writeFileSync(join(hookADir, "HOOK.json"), JSON.stringify({ event: "pre_commit", command: "a" }));
+
+        const hookBDir = join(dir, "..", "hooks", "hook-b");
+        mkdirSync(hookBDir, { recursive: true });
+        writeFileSync(join(hookBDir, "HOOK.json"), JSON.stringify({ event: "post_commit", command: "b" }));
+
+        const artifacts = emptyArtifacts();
+        artifacts.hooks["hook-a"] = { id: "hook-a", description: "Hook A", path: resolve(hookADir) };
+        artifacts.hooks["hook-b"] = { id: "hook-b", description: "Hook B", path: resolve(hookBDir) };
+
+        const root: RootEntry = {
+          name: "test",
+          description: "Test root",
+          default_hooks: ["hook-a"],
+        };
+
+        const result = await adapter.prepareSession(artifacts, dir, { root });
+
+        expect(existsSync(join(dir, ".claude", "hooks", "hook-a", "HOOK.json"))).toBe(true);
+        expect(existsSync(join(dir, ".claude", "hooks", "hook-b"))).toBe(false);
+        expect(result.hookPaths).toHaveLength(1);
+      });
+
+      it("copies hook references", async () => {
+        const dir = createTempDir();
+
+        // Hook source
+        const hookSrcDir = join(dir, "..", "hooks", "my-hook");
+        mkdirSync(hookSrcDir, { recursive: true });
+        writeFileSync(join(hookSrcDir, "HOOK.json"), JSON.stringify({ event: "pre_commit", command: "lint" }));
+
+        // Reference source
+        const refSrcDir = join(dir, "..", "references");
+        mkdirSync(refSrcDir, { recursive: true });
+        writeFileSync(join(refSrcDir, "CODE_STANDARDS.md"), "# Code Standards");
+
+        const artifacts = emptyArtifacts();
+        artifacts.hooks["my-hook"] = {
+          id: "my-hook",
+          description: "My hook",
+          path: resolve(hookSrcDir),
+          references: ["code-standards"],
+        };
+        artifacts.references["code-standards"] = {
+          id: "code-standards",
+          description: "Code standards",
+          file: resolve(refSrcDir, "CODE_STANDARDS.md"),
+        };
+
+        await adapter.prepareSession(artifacts, dir);
+
+        const refPath = join(dir, ".claude", "hooks", "my-hook", "references", "CODE_STANDARDS.md");
+        expect(existsSync(refPath)).toBe(true);
+        expect(readFileSync(refPath, "utf-8")).toContain("# Code Standards");
+      });
+
+      it("returns empty hookPaths when no hooks are defined", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+
+        const result = await adapter.prepareSession(artifacts, dir);
+
+        expect(result.hookPaths).toEqual([]);
       });
     });
   });

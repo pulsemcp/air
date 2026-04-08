@@ -98,12 +98,10 @@ export interface HookEntry {
   id: string;
   title?: string;
   description: string;
-  event: string;
-  command: string;
-  args?: string[];
-  env?: Record<string, string>;
-  timeout_seconds?: number;
-  matcher?: string;
+  /** Relative path to the hook directory containing HOOK.json and associated scripts. */
+  path: string;
+  /** IDs of reference documents this hook depends on. */
+  references?: string[];
 }
 
 // ============================================================
@@ -172,6 +170,8 @@ export interface PreparedSession {
   configFiles: string[];
   /** Paths to skill directories created */
   skillPaths: string[];
+  /** Paths to hook directories created */
+  hookPaths: string[];
   /** The command to start the agent in the prepared directory */
   startCommand: StartCommand;
   /**

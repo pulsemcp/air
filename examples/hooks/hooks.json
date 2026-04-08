@@ -3,18 +3,12 @@
     "id": "notify-session-start",
     "title": "Session Start Notification",
     "description": "Send a Slack notification when an agent session starts",
-    "event": "session_start",
-    "command": "curl",
-    "args": ["-X", "POST", "-H", "Content-Type: application/json", "-d", "{\"text\": \"Agent session started\"}", "${SLACK_WEBHOOK_URL}"],
-    "timeout_seconds": 10
+    "path": "hooks/notify-session-start"
   },
   "lint-pre-commit": {
     "id": "lint-pre-commit",
     "title": "Pre-Commit Lint Check",
     "description": "Run linting on staged files before allowing a commit",
-    "event": "pre_commit",
-    "command": "npx",
-    "args": ["lint-staged"],
-    "timeout_seconds": 30
+    "path": "hooks/lint-pre-commit"
   }
 }
