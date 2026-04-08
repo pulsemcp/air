@@ -575,8 +575,7 @@ describe("initFromRepo", () => {
           h1: {
             id: "h1",
             description: "hook",
-            event: "session_start",
-            command: "echo",
+            path: "hooks/h1",
           },
         },
       }
