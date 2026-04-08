@@ -26,7 +26,9 @@ air --version
 air init
 ```
 
-This creates the `~/.air/` directory with the following structure (this will fail if `~/.air/air.json` already exists):
+When run inside a git repo that contains AIR artifact index files (skills.json, mcp.json, etc.), `air init` **discovers them automatically**, detects the GitHub remote and default branch, and generates an `air.json` with `github://` resolver URIs. This is the fastest way to get started with an existing repo.
+
+When no artifacts are found (or you're not in a git repo), it falls back to creating a blank scaffolding:
 
 ```
 ~/.air/
@@ -44,6 +46,10 @@ This creates the `~/.air/` directory with the following structure (this will fai
 └── hooks/
     └── hooks.json         # Hooks index (empty)
 ```
+
+Options:
+- `--force` — overwrite an existing `air.json`
+- `--path <path>` — write the config to a custom location instead of `~/.air/air.json`
 
 ## 3. Add an MCP server
 

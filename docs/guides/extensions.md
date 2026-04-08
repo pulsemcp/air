@@ -104,8 +104,12 @@ The `@pulsemcp/air-provider-github` provider resolves `github://` URIs:
 
 ```
 github://owner/repo/path/to/file.json
-github://owner/repo/path/to/file.json@branch-or-tag
+github://owner/repo@ref/path/to/file.json
 ```
+
+The `@ref` is appended to the repo name (preferred). You can specify a branch, tag, or commit SHA. Without `@ref`, the default branch is used.
+
+The legacy syntax `github://owner/repo/path/to/file.json@ref` is also supported for backward compatibility, and is required for refs containing slashes (e.g., `feature/branch`).
 
 It does a shallow clone of the repository to `~/.air/cache/github/{owner}/{repo}/{ref}/` and reads the file from the local clone.
 

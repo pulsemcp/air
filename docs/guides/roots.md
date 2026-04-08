@@ -26,8 +26,7 @@ Add entries to `~/.air/roots/roots.json`:
     "default_mcp_servers": ["github", "postgres-prod"],
     "default_skills": ["deploy-staging", "initial-pr-review"],
     "default_plugins": ["code-quality"],
-    "default_hooks": ["lint-pre-commit"],
-    "default_stop_condition": "open-reviewed-green-pr"
+    "default_hooks": ["lint-pre-commit"]
   },
   "data-pipeline": {
     "name": "data-pipeline",
@@ -57,7 +56,6 @@ Add entries to `~/.air/roots/roots.json`:
 | `default_hooks` | No | Hook IDs to activate by default. |
 | `default_subagent_roots` | No | IDs of other roots this root depends on as subagents. |
 | `user_invocable` | No | Whether users can start sessions with this root directly (default: `true`). |
-| `default_stop_condition` | No | When the agent should hand back control (e.g., `"open-reviewed-green-pr"`). |
 
 ## Using roots with air start
 
@@ -140,26 +138,6 @@ To opt out of this merging (e.g., when your orchestrator manages subagent compos
 air prepare --no-subagent-merge
 ```
 
-## Stop conditions
-
-The `default_stop_condition` field tells the agent when it should hand back control:
-
-```json
-{
-  "web-app": {
-    "name": "web-app",
-    "description": "Main web application",
-    "default_stop_condition": "open-reviewed-green-pr"
-  }
-}
-```
-
-Stop conditions are conventions — they're passed to the agent as context, not enforced by AIR. Common examples:
-
-- `"open-reviewed-green-pr"` — open a PR, get review, CI must pass
-- `"tests-passing"` — all tests pass
-- `"draft-pr"` — open a draft PR
-
 ## Non-invocable roots
 
 Set `user_invocable: false` for roots that should only be used as subagent dependencies, not started directly:
@@ -204,7 +182,6 @@ Roots (2):
 
 - **Scope tightly.** Each root should represent a single project or bounded context. Avoid catch-all roots.
 - **Minimize defaults.** Only include the skills and servers that are genuinely needed for most sessions in that root. Users can always override with `--skills` and `--mcp-servers`.
-- **Use stop conditions.** They give agents clear success criteria and prevent open-ended sessions.
 - **Set URLs for auto-detection.** Without `url`, the root can only be used with explicit `--root`.
 - **Mark utility roots as non-invocable.** If a root only makes sense as a subagent dependency, set `user_invocable: false`.
 

@@ -88,7 +88,8 @@ By default, it prepares the current directory. Use `--target` to specify a diffe
    - Copies skills into the agent's skill directory
    - Copies referenced documents
 5. Runs transforms on `.mcp.json` (e.g., secrets injection)
-6. Validates no `${VAR}` patterns remain unresolved
+6. Copies hook directories into the agent's hook directory
+7. Validates no `${VAR}` patterns remain unresolved
 7. Outputs structured JSON to stdout
 
 ### Options
@@ -165,7 +166,7 @@ Artifacts resolved → Adapter translates → Transforms modify → Session read
 2. **Providers** (from extensions) resolve remote URIs in artifact paths
 3. **Artifacts** are loaded and merged from all index files
 4. **Root** selection filters which artifacts are activated
-5. **Adapter** translates AIR artifacts to agent-specific format (e.g., writes `.mcp.json`)
+5. **Adapter** translates AIR artifacts to agent-specific format (e.g., writes `.mcp.json`, copies skills and hook directories)
 6. **Transforms** (from extensions) modify the output (e.g., inject secrets)
 7. **Validation** checks for unresolved `${VAR}` patterns
 

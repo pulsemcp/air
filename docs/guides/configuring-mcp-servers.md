@@ -109,7 +109,7 @@ OAuth fields:
 
 ## Environment variable interpolation
 
-MCP server configs support `${ENV_VAR}` interpolation in `command`, `args`, `env` values, `url`, and `headers` values:
+MCP server configs support `${ENV_VAR}` and `${ENV_VAR:-default}` interpolation in `command`, `args`, `env` values, `url`, and `headers` values:
 
 ```json
 {
@@ -124,9 +124,21 @@ MCP server configs support `${ENV_VAR}` interpolation in `command`, `args`, `env
 }
 ```
 
-Variables are resolved from the environment when the session starts. After all transforms run, AIR validates that no `${VAR}` patterns remain unresolved. You can:
+Variables are resolved from the environment when the session starts. Use `${VAR:-default}` to provide a fallback value when the variable is unset:
+
+```json
+{
+  "analytics": {
+    "type": "streamable-http",
+    "url": "${ANALYTICS_URL:-https://analytics.example.com/mcp}"
+  }
+}
+```
+
+After all transforms run, AIR validates that no unresolved `${VAR}` patterns remain (patterns with `:-default` always resolve). You can:
 
 - Set the variables in your shell environment
+- Use `${VAR:-fallback}` to provide default values for optional variables
 - Use a secrets transform extension to inject them at prepare time
 - Pass `--skip-validation` to `air prepare` to skip the unresolved `${VAR}` pattern check (this does not skip schema validation) — useful when your orchestrator resolves variables itself
 

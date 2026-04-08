@@ -2,7 +2,29 @@
 
 Hooks are shell commands that run in response to agent lifecycle events. Use them for notifications, guardrails, automation, and integrations.
 
+## Two-layer structure
+
+Hooks use a two-layer directory-based pattern, like skills:
+
+1. **Index** (`hooks.json`) — lightweight catalog entries with `id`, `description`, and a `path`
+2. **Directory** (`hooks/{id}/`) — contains the runtime definition (`HOOK.json`) and any associated scripts
+
+This keeps the index scannable while letting hooks bundle scripts and configuration together.
+
+```
+~/.air/hooks/
+├── hooks.json
+└── hooks/
+    ├── notify-session-start/
+    │   ├── HOOK.json
+    │   └── notify.sh
+    └── lint-pre-commit/
+        └── HOOK.json
+```
+
 ## Defining hooks
+
+### Step 1: Add an index entry
 
 Add entries to `~/.air/hooks/hooks.json`:
 
@@ -12,30 +34,50 @@ Add entries to `~/.air/hooks/hooks.json`:
     "id": "notify-session-start",
     "title": "Session Start Notification",
     "description": "Send a Slack notification when an agent session starts",
-    "event": "session_start",
-    "command": "curl",
-    "args": [
-      "-X", "POST",
-      "-H", "Content-Type: application/json",
-      "-d", "{\"text\": \"Agent session started\"}",
-      "${SLACK_WEBHOOK_URL}"
-    ],
-    "timeout_seconds": 10
+    "path": "hooks/notify-session-start"
+  },
+  "lint-pre-commit": {
+    "id": "lint-pre-commit",
+    "title": "Pre-Commit Lint Check",
+    "description": "Run linting on staged files before allowing a commit",
+    "path": "hooks/lint-pre-commit"
   }
 }
 ```
 
-### Hook fields
+### Index fields
 
 | Field | Required | Description |
 |-------|----------|-------------|
 | `id` | Yes | Unique identifier. Must match the key. |
 | `description` | Yes | What this hook does. Max 500 characters. |
+| `title` | No | Human-readable name. Max 100 characters. |
+| `path` | Yes | Relative path to the hook directory containing `HOOK.json`. |
+| `references` | No | IDs of reference documents this hook depends on. |
+
+### Step 2: Create the hook directory with HOOK.json
+
+Each hook directory contains a `HOOK.json` file with the runtime definition, plus any scripts or files the hook needs:
+
+```json
+{
+  "event": "session_start",
+  "command": "./notify.sh",
+  "timeout_seconds": 10,
+  "env": {
+    "WEBHOOK_URL": "${SLACK_WEBHOOK_URL}"
+  }
+}
+```
+
+### HOOK.json fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
 | `event` | Yes | Lifecycle event that triggers this hook. |
 | `command` | Yes | Shell command to execute. |
-| `title` | No | Human-readable name. Max 100 characters. |
 | `args` | No | Command arguments. |
-| `env` | No | Environment variables for the hook process. |
+| `env` | No | Environment variables for the hook process. Values support `${VAR}` interpolation. |
 | `timeout_seconds` | No | Maximum execution time before the hook is killed (minimum: 1). |
 | `matcher` | No | Regex pattern — hook only fires when matched against event data. |
 
@@ -55,7 +97,7 @@ Add entries to `~/.air/hooks/hooks.json`:
 
 ### Pre-commit linting
 
-Run linting before every commit:
+Index entry in `hooks.json`:
 
 ```json
 {
@@ -63,47 +105,71 @@ Run linting before every commit:
     "id": "lint-pre-commit",
     "title": "Pre-Commit Lint",
     "description": "Run linting on staged files before allowing a commit",
-    "event": "pre_commit",
-    "command": "npx",
-    "args": ["lint-staged"],
-    "timeout_seconds": 30
+    "path": "hooks/lint-pre-commit"
   }
 }
 ```
 
-### Post-commit notification
-
-Notify a channel after each commit:
+`hooks/lint-pre-commit/HOOK.json`:
 
 ```json
 {
-  "post-commit-notify": {
-    "id": "post-commit-notify",
-    "title": "Post-Commit Notify",
-    "description": "Post commit details to the team Slack channel",
-    "event": "post_commit",
-    "command": "bash",
-    "args": ["-c", "curl -X POST -d '{\"text\": \"New commit pushed\"}' ${SLACK_WEBHOOK_URL}"],
-    "timeout_seconds": 10
+  "event": "pre_commit",
+  "command": "npx",
+  "args": ["lint-staged"],
+  "timeout_seconds": 30
+}
+```
+
+### Session start notification
+
+Index entry in `hooks.json`:
+
+```json
+{
+  "notify-session-start": {
+    "id": "notify-session-start",
+    "title": "Session Start Notification",
+    "description": "Send a Slack notification when an agent session starts",
+    "path": "hooks/notify-session-start"
   }
 }
+```
+
+`hooks/notify-session-start/HOOK.json`:
+
+```json
+{
+  "event": "session_start",
+  "command": "./notify.sh",
+  "timeout_seconds": 10,
+  "env": {
+    "WEBHOOK_URL": "${SLACK_WEBHOOK_URL}"
+  }
+}
+```
+
+`hooks/notify-session-start/notify.sh`:
+
+```bash
+#!/usr/bin/env bash
+curl -s -X POST -H "Content-Type: application/json" \
+  -d '{"text": "Agent session started"}' \
+  "$WEBHOOK_URL"
 ```
 
 ### Tool call guardrail
 
-Log or gate specific tool calls with a matcher:
+Use the `matcher` field in `HOOK.json` to filter which events trigger the hook:
+
+`hooks/log-bash-calls/HOOK.json`:
 
 ```json
 {
-  "log-bash-calls": {
-    "id": "log-bash-calls",
-    "title": "Log Bash Calls",
-    "description": "Log all Bash tool invocations for audit",
-    "event": "pre_tool_call",
-    "command": "bash",
-    "args": ["-c", "echo \"Tool call: $TOOL_NAME\" >> /tmp/agent-audit.log"],
-    "matcher": "Bash"
-  }
+  "event": "pre_tool_call",
+  "command": "bash",
+  "args": ["-c", "echo \"Tool call: $TOOL_NAME\" >> /tmp/agent-audit.log"],
+  "matcher": "Bash"
 }
 ```
 
@@ -127,7 +193,7 @@ Without a root, all hooks are available.
 
 ## Agent translation
 
-AIR hooks are translated to agent-specific formats during session preparation. The adapter handles this translation — you define hooks once in AIR's format and they work across supported agents.
+At session start, AIR copies hook directories into the agent's working directory (e.g., `.claude/hooks/{id}/`). The adapter reads `HOOK.json` to translate hooks into agent-specific formats. Local hooks take priority — if a hook directory already exists in the target, the catalog version is not copied.
 
 ## Listing hooks
 
@@ -142,21 +208,22 @@ Hooks (2):
 
   notify-session-start (Session Start Notification)
     Send a Slack notification when an agent session starts
-    Event: session_start
+    Path: hooks/notify-session-start
 
-  lint-pre-commit (Pre-Commit Lint)
+  lint-pre-commit (Pre-Commit Lint Check)
     Run linting on staged files before allowing a commit
-    Event: pre_commit
+    Path: hooks/lint-pre-commit
 ```
 
 ## Best practices
 
-- **Set timeouts.** Always set `timeout_seconds` to prevent runaway hook processes. A stuck `curl` or script can block the entire session.
-- **Keep hooks simple.** Complex logic belongs in a script file, not in `args` arrays. Point `command` at a script.
+- **Set timeouts.** Always set `timeout_seconds` in `HOOK.json` to prevent runaway hook processes. A stuck `curl` or script can block the entire session.
+- **Bundle scripts.** Put helper scripts in the hook directory alongside `HOOK.json` rather than using complex `args` arrays.
+- **Keep hooks simple.** Complex logic belongs in a script file. Point `command` at a script in the hook directory.
 - **Make hooks idempotent.** Hooks may fire multiple times. Don't rely on them firing exactly once.
 - **Use matchers sparingly.** Broad matchers on `pre_tool_call` fire frequently and can slow down sessions.
 - **Test locally.** Run your hook command manually before adding it to your config.
-- **Use env for secrets.** Pass sensitive values through `env` or environment variable interpolation rather than hardcoding in `args`.
+- **Use env for secrets.** Pass sensitive values through `env` in `HOOK.json` or environment variable interpolation rather than hardcoding in `args`.
 
 ## Next steps
 
