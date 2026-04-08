@@ -46,7 +46,7 @@
         }
       },
       "required": ["id", "description", "file"],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   }
 }

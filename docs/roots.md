@@ -28,8 +28,7 @@ Roots are registered in `roots.json`:
     "default_skills": ["deploy-staging", "pr-review"],
     "default_plugins": ["code-quality"],
     "default_hooks": ["lint-pre-commit"],
-    "user_invocable": true,
-    "default_stop_condition": "open-reviewed-green-pr"
+    "user_invocable": true
   }
 }
 ```
@@ -49,7 +48,6 @@ Roots are registered in `roots.json`:
 | `default_plugins` | No | Plugin IDs to activate by default. |
 | `default_hooks` | No | Hook IDs to activate by default. |
 | `user_invocable` | No | Whether users can start sessions with this root directly (default: true). |
-| `default_stop_condition` | No | Default condition for when the agent should hand back control. |
 
 ## Monorepo Support
 
@@ -69,16 +67,6 @@ For monorepos, use the `subdirectory` field to point to a specific path within t
 ```
 
 AIR works inside monorepos seamlessly — you just need everyone to know where the `air.json` file is.
-
-## Stop Conditions
-
-The `default_stop_condition` field tells the agent when to hand back control. Common patterns:
-
-- `"open-reviewed-green-pr"` — open a PR, get review, ensure CI passes
-- `"tests-passing"` — make changes and ensure tests pass
-- `"draft-pr"` — open a draft PR for human review
-
-These are conventions, not enforced values. Agents interpret them based on their capabilities.
 
 ## Starting Sessions with Roots
 
@@ -123,5 +111,4 @@ AIR resolves the config for each root independently. The orchestration logic —
 
 1. **Scope descriptions clearly** — anyone in the org should understand what each root is for
 2. **Minimize defaults** — only include MCP servers and skills the root actually needs
-3. **Use stop conditions** — help agents know when they're done
-4. **Keep roots focused** — one domain per root. If a root needs too many things, it's probably too broad.
+3. **Keep roots focused** — one domain per root. If a root needs too many things, it's probably too broad.

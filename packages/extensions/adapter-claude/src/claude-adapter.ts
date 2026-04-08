@@ -83,7 +83,7 @@ export class ClaudeAdapter implements AgentAdapter {
   /**
    * Prepare a working directory for a Claude Code session.
    * Writes .mcp.json, injects skills + references into .claude/skills/,
-   * and returns the start command.
+   * injects path-based hooks into .claude/hooks/, and returns the start command.
    *
    * When the root declares default_subagent_roots and skipSubagentMerge is not set,
    * subagent roots' skills and MCP servers are merged into the parent session and
@@ -97,6 +97,7 @@ export class ClaudeAdapter implements AgentAdapter {
     const root = options?.root;
     const configFiles: string[] = [];
     const skillPaths: string[] = [];
+    const hookPaths: string[] = [];
 
     // 1. Resolve which artifacts to activate (overrides take precedence over root defaults)
     let mcpServerIds = options?.mcpServerOverrides
@@ -147,30 +148,41 @@ export class ClaudeAdapter implements AgentAdapter {
 
       // Copy referenced documents
       if (skill.references && skill.references.length > 0) {
-        const refsTargetDir = join(skillTargetDir, "references");
-        for (const refId of skill.references) {
-          const ref = artifacts.references[refId];
-          if (!ref) continue;
-          const refSourcePath = ref.file;
-          if (existsSync(refSourcePath)) {
-            const refTargetPath = join(
-              refsTargetDir,
-              ref.file.split("/").pop() || ref.file
-            );
-            mkdirSync(dirname(refTargetPath), { recursive: true });
-            copyFileSync(refSourcePath, refTargetPath);
-          }
-        }
+        this.copyReferences(skill.references, skillTargetDir, artifacts);
       }
     }
 
-    // 4. Generate ephemeral subagent context for system prompt
+    // 4. Inject path-based hooks into .claude/hooks/
+    const hookIds = root?.default_hooks ?? Object.keys(artifacts.hooks);
+    for (const hookId of hookIds) {
+      const hook = artifacts.hooks[hookId];
+      if (!hook) continue;
+
+      const hookTargetDir = join(targetDir, ".claude", "hooks", hookId);
+
+      // Skip if hook already exists locally (local takes priority)
+      if (existsSync(hookTargetDir)) continue;
+
+      // Copy hook directory contents (paths are absolute from resolveArtifacts)
+      const hookSourceDir = hook.path;
+      if (existsSync(hookSourceDir)) {
+        this.copyDirRecursive(hookSourceDir, hookTargetDir);
+        hookPaths.push(hookTargetDir);
+      }
+
+      // Copy referenced documents
+      if (hook.references && hook.references.length > 0) {
+        this.copyReferences(hook.references, hookTargetDir, artifacts);
+      }
+    }
+
+    // 5. Generate ephemeral subagent context for system prompt
     let subagentContext: string | undefined;
     if (subagentRoots.length > 0) {
       subagentContext = this.buildSubagentContext(subagentRoots);
     }
 
-    // 5. Build start command (include --append-system-prompt if subagent context exists)
+    // 6. Build start command (include --append-system-prompt if subagent context exists)
     const config = this.generateConfig(artifacts, root, targetDir);
     const startCommand = this.buildStartCommand({
       ...config,
@@ -180,7 +192,7 @@ export class ClaudeAdapter implements AgentAdapter {
       startCommand.args.push("--append-system-prompt", subagentContext);
     }
 
-    return { configFiles, skillPaths, startCommand, subagentContext };
+    return { configFiles, skillPaths, hookPaths, startCommand, subagentContext };
   }
 
   /**
@@ -336,6 +348,30 @@ export class ClaudeAdapter implements AgentAdapter {
       }
     }
     return filtered;
+  }
+
+  /**
+   * Copy referenced documents into a references/ subdirectory of the target.
+   */
+  private copyReferences(
+    refIds: string[],
+    targetDir: string,
+    artifacts: ResolvedArtifacts
+  ): void {
+    const refsTargetDir = join(targetDir, "references");
+    for (const refId of refIds) {
+      const ref = artifacts.references[refId];
+      if (!ref) continue;
+      const refSourcePath = ref.file;
+      if (existsSync(refSourcePath)) {
+        const refTargetPath = join(
+          refsTargetDir,
+          ref.file.split("/").pop() || ref.file
+        );
+        mkdirSync(dirname(refTargetPath), { recursive: true });
+        copyFileSync(refSourcePath, refTargetPath);
+      }
+    }
   }
 
   private copyDirRecursive(src: string, dest: string): void {

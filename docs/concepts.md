@@ -25,7 +25,7 @@ The index files act as lightweight registries. Agents use the ID and description
 | MCP Servers | `mcp/mcp.json` | Inline server configs | `schemas/mcp.schema.json` |
 | Plugins | `plugins/plugins.json` | Named groupings of skills, MCP servers, hooks (composable with other plugins) | `schemas/plugins.schema.json` |
 | Roots | `roots/roots.json` | Agent workspaces (repos with AGENTS.md) | `schemas/roots.schema.json` |
-| Hooks | `hooks/hooks.json` | Inline hook definitions | `schemas/hooks.schema.json` |
+| Hooks | `hooks/hooks.json` | Hook directories (HOOK.json + scripts) | `schemas/hooks.schema.json` |
 
 ### The Root Config
 

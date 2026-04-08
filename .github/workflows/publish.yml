@@ -32,10 +32,14 @@ jobs:
       - name: Build core first
         run: npm run build -w packages/core
 
-      - name: Build remaining packages
+      - name: Build extensions
         run: |
-          npm run build -w packages/extensions/adapter-claude
-          npm run build -w packages/extensions/provider-github
+          for dir in packages/extensions/*/; do
+            npm run build -w "${dir%/}"
+          done
+
+      - name: Build SDK and CLI
+        run: |
           npm run build -w packages/sdk
           npm run build -w packages/cli
 
@@ -60,9 +64,10 @@ jobs:
           # Publish core first (others depend on it)
           publish_if_needed packages/core
 
-          # Publish extensions
-          publish_if_needed packages/extensions/adapter-claude
-          publish_if_needed packages/extensions/provider-github
+          # Publish extensions (auto-discovers all extension packages)
+          for dir in packages/extensions/*/; do
+            publish_if_needed "${dir%/}"
+          done
 
           # Publish SDK (depends on core)
           publish_if_needed packages/sdk

@@ -137,7 +137,7 @@ export function listCommand(): Command {
             const title = hook.title ? ` (${hook.title})` : "";
             console.log(`  ${id}${title}`);
             console.log(`    ${hook.description}`);
-            console.log(`    Event: ${hook.event}`);
+            console.log(`    Path: ${hook.path}`);
             console.log();
           }
           break;

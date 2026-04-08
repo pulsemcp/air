@@ -26,26 +26,23 @@ function makeTempDir(): string {
 }
 
 describe("initConfig", () => {
-  it("creates air.json and index files", () => {
+  it("creates a minimal air.json", () => {
     const dir = makeTempDir();
     const airJsonPath = resolve(dir, "air.json");
     const result = initConfig({ path: airJsonPath });
 
     expect(result.airJsonPath).toBe(airJsonPath);
     expect(result.airDir).toBe(dir);
-    expect(result.files).toContain("air.json");
-    expect(result.files).toContain("skills/skills.json");
-    expect(result.files).toContain("mcp/mcp.json");
-    expect(result.files).toContain("roots/roots.json");
 
-    // Verify air.json content
+    // Verify air.json content — minimal, no empty catalog files
     const airJson = JSON.parse(readFileSync(airJsonPath, "utf-8"));
     expect(airJson.name).toBe("my-config");
-    expect(airJson.skills).toEqual(["./skills/skills.json"]);
+    expect(airJson.skills).toBeUndefined();
+    expect(airJson.mcp).toBeUndefined();
 
-    // Verify index files exist
-    expect(existsSync(resolve(dir, "skills/skills.json"))).toBe(true);
-    expect(existsSync(resolve(dir, "mcp/mcp.json"))).toBe(true);
+    // Should not create empty catalog index files
+    expect(existsSync(resolve(dir, "skills/skills.json"))).toBe(false);
+    expect(existsSync(resolve(dir, "mcp/mcp.json"))).toBe(false);
   });
 
   it("throws if air.json already exists", () => {
