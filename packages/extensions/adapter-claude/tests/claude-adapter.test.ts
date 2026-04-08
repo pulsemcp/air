@@ -228,16 +228,36 @@ describe("ClaudeAdapter", () => {
       expect(mcpConfig.mcpServers["slack"]).toBeUndefined();
     });
 
-    it("handles missing skill references gracefully", () => {
+    it("throws on unknown skill IDs in root defaults", () => {
       const artifacts = emptyArtifacts();
+      artifacts.skills["deploy"] = {
+        id: "deploy",
+        description: "Deploy",
+        path: "skills/deploy",
+      };
       const root: RootEntry = {
         name: "test",
         description: "Test",
         default_skills: ["nonexistent"],
       };
 
-      const config = adapter.generateConfig(artifacts, root);
-      expect(config.skillPaths).toEqual([]);
+      expect(() => adapter.generateConfig(artifacts, root)).toThrow(
+        /Unknown skill ID\(s\): nonexistent\. Available: deploy/
+      );
+    });
+
+    it("throws on unknown MCP server IDs in root defaults", () => {
+      const artifacts = emptyArtifacts();
+      artifacts.mcp["github"] = { type: "stdio", command: "gh" };
+      const root: RootEntry = {
+        name: "test",
+        description: "Test",
+        default_mcp_servers: ["github", "nonexistent"],
+      };
+
+      expect(() => adapter.generateConfig(artifacts, root)).toThrow(
+        /Unknown MCP server ID\(s\): nonexistent\. Available: github/
+      );
     });
   });
 
@@ -504,6 +524,111 @@ describe("ClaudeAdapter", () => {
       expect(result.startCommand.cwd).toBe(dir);
     });
 
+    describe("unknown ID validation", () => {
+      it("throws on unknown MCP server IDs from overrides", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+        artifacts.mcp["github"] = { type: "stdio", command: "gh" };
+
+        await expect(
+          adapter.prepareSession(artifacts, dir, {
+            mcpServerOverrides: ["github", "nonexistent"],
+          })
+        ).rejects.toThrow(
+          /Unknown MCP server ID\(s\): nonexistent\. Available: github/
+        );
+      });
+
+      it("throws on unknown MCP server IDs from root defaults", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+        artifacts.mcp["github"] = { type: "stdio", command: "gh" };
+
+        const root: RootEntry = {
+          name: "test",
+          description: "Test",
+          default_mcp_servers: ["github", "invalid-server"],
+        };
+
+        await expect(
+          adapter.prepareSession(artifacts, dir, { root })
+        ).rejects.toThrow(
+          /Unknown MCP server ID\(s\): invalid-server\. Available: github/
+        );
+      });
+
+      it("throws on unknown skill IDs from overrides", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+        artifacts.skills["deploy"] = {
+          id: "deploy",
+          description: "Deploy",
+          path: "/tmp/skills/deploy",
+        };
+
+        await expect(
+          adapter.prepareSession(artifacts, dir, {
+            skillOverrides: ["deploy", "bogus-skill"],
+          })
+        ).rejects.toThrow(
+          /Unknown skill ID\(s\): bogus-skill\. Available: deploy/
+        );
+      });
+
+      it("throws on unknown skill IDs from root defaults", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+
+        const root: RootEntry = {
+          name: "test",
+          description: "Test",
+          default_skills: ["nonexistent-skill"],
+        };
+
+        await expect(
+          adapter.prepareSession(artifacts, dir, { root })
+        ).rejects.toThrow(
+          /Unknown skill ID\(s\): nonexistent-skill\. None available/
+        );
+      });
+
+      it("throws on unknown hook IDs from root defaults", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+        artifacts.hooks["lint"] = {
+          id: "lint",
+          description: "Lint hook",
+          path: "/tmp/hooks/lint",
+        };
+
+        const root: RootEntry = {
+          name: "test",
+          description: "Test",
+          default_hooks: ["lint", "nonexistent-hook"],
+        };
+
+        await expect(
+          adapter.prepareSession(artifacts, dir, { root })
+        ).rejects.toThrow(
+          /Unknown hook ID\(s\): nonexistent-hook\. Available: lint/
+        );
+      });
+
+      it("lists multiple unknown IDs in the error", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+        artifacts.mcp["github"] = { type: "stdio", command: "gh" };
+
+        await expect(
+          adapter.prepareSession(artifacts, dir, {
+            mcpServerOverrides: ["bad-one", "bad-two"],
+          })
+        ).rejects.toThrow(
+          /Unknown MCP server ID\(s\): bad-one, bad-two/
+        );
+      });
+    });
+
     describe("subagent root merging", () => {
       it("merges subagent roots' MCP servers and skills into parent session", async () => {
         const dir = createTempDir();
@@ -568,6 +693,14 @@ describe("ClaudeAdapter", () => {
       it("generates subagent context system prompt", async () => {
         const dir = createTempDir();
         const artifacts = emptyArtifacts();
+
+        // Add the MCP server and skill referenced by the subagent root
+        artifacts.mcp["web-search"] = { type: "stdio", command: "search" };
+        artifacts.skills["find-source"] = {
+          id: "find-source",
+          description: "Find source",
+          path: join(dir, "..", "skills", "find-source"),
+        };
 
         artifacts.roots["research"] = {
           name: "research",
