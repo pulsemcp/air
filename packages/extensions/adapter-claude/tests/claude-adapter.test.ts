@@ -614,6 +614,27 @@ describe("ClaudeAdapter", () => {
         );
       });
 
+      it("throws on unknown plugin IDs from root defaults", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+        artifacts.plugins["code-quality"] = {
+          id: "code-quality",
+          description: "Linting tools",
+        };
+
+        const root: RootEntry = {
+          name: "test",
+          description: "Test",
+          default_plugins: ["code-quality", "nonexistent-plugin"],
+        };
+
+        await expect(
+          adapter.prepareSession(artifacts, dir, { root })
+        ).rejects.toThrow(
+          /Unknown plugin ID\(s\): nonexistent-plugin\. Available: code-quality/
+        );
+      });
+
       it("lists multiple unknown IDs in the error", async () => {
         const dir = createTempDir();
         const artifacts = emptyArtifacts();
