@@ -353,10 +353,11 @@ describe("initFromRepo", () => {
     expect(airJson.mcp).toEqual([
       "github://acme/air-config@main/mcp/mcp.json",
     ]);
+    // roots always includes the auto-generated roots.json
+    expect(airJson.roots).toEqual(["./roots/roots.json"]);
     // Should not include empty artifact types
     expect(airJson.references).toBeUndefined();
     expect(airJson.plugins).toBeUndefined();
-    expect(airJson.roots).toBeUndefined();
     expect(airJson.hooks).toBeUndefined();
   });
 
@@ -596,6 +597,132 @@ describe("initFromRepo", () => {
     expect(airJson.plugins).toBeDefined();
     expect(airJson.roots).toBeDefined();
     expect(airJson.hooks).toBeDefined();
+
+    // Auto-generated roots.json should be first, discovered roots.json after
+    expect(airJson.roots[0]).toBe("./roots/roots.json");
+    expect(airJson.roots).toContain(
+      "github://acme/full-config@main/roots/roots.json"
+    );
+  });
+
+  it("auto-generates roots.json for the current repo", () => {
+    const repoDir = createGitRepo(
+      "https://github.com/acme/my-project.git",
+      {
+        "skills/skills.json": {
+          "deploy-staging": {
+            id: "deploy-staging",
+            description: "Deploy to staging",
+            path: "skills/deploy-staging",
+          },
+        },
+      }
+    );
+
+    const outputDir = makeTempDir();
+    const airJsonPath = resolve(outputDir, "air.json");
+
+    const result = initFromRepo({
+      cwd: repoDir,
+      path: airJsonPath,
+    });
+
+    // Verify result fields
+    expect(result.generatedRootName).toBe("my-project");
+    expect(result.generatedRootsPath).toBe(
+      resolve(outputDir, "roots", "roots.json")
+    );
+
+    // Verify roots.json file was created
+    expect(existsSync(result.generatedRootsPath)).toBe(true);
+    const rootsJson = JSON.parse(
+      readFileSync(result.generatedRootsPath, "utf-8")
+    );
+    expect(rootsJson["my-project"]).toBeDefined();
+    expect(rootsJson["my-project"].name).toBe("my-project");
+    expect(rootsJson["my-project"].description).toBe(
+      "Agent root for acme/my-project."
+    );
+    expect(rootsJson["my-project"].url).toBe(
+      "https://github.com/acme/my-project.git"
+    );
+    expect(rootsJson["my-project"].default_branch).toBe("main");
+  });
+
+  it("populates root defaults from discovered artifact IDs", () => {
+    const repoDir = createGitRepo(
+      "https://github.com/acme/config.git",
+      {
+        "skills/skills.json": {
+          "deploy-staging": {
+            id: "deploy-staging",
+            description: "Deploy",
+            path: "skills/deploy-staging",
+          },
+          "review-pr": {
+            id: "review-pr",
+            description: "Review",
+            path: "skills/review-pr",
+          },
+        },
+        "mcp/mcp.json": {
+          github: { type: "stdio", command: "npx", args: ["mcp"] },
+          postgres: { type: "stdio", command: "pg" },
+        },
+        "hooks/hooks.json": {
+          "lint-check": {
+            id: "lint-check",
+            description: "Lint",
+            path: "hooks/lint-check",
+          },
+        },
+      }
+    );
+
+    const outputDir = makeTempDir();
+    const airJsonPath = resolve(outputDir, "air.json");
+
+    const result = initFromRepo({
+      cwd: repoDir,
+      path: airJsonPath,
+    });
+
+    const rootsJson = JSON.parse(
+      readFileSync(result.generatedRootsPath, "utf-8")
+    );
+    const root = rootsJson["config"];
+
+    expect(root.default_skills).toEqual(["deploy-staging", "review-pr"]);
+    expect(root.default_mcp_servers).toEqual(["github", "postgres"]);
+    expect(root.default_hooks).toEqual(["lint-check"]);
+  });
+
+  it("omits empty default arrays from generated root", () => {
+    const repoDir = createGitRepo(
+      "https://github.com/acme/simple.git",
+      {
+        "skills/skills.json": {
+          s1: { id: "s1", description: "A skill", path: "skills/s1" },
+        },
+      }
+    );
+
+    const outputDir = makeTempDir();
+    const airJsonPath = resolve(outputDir, "air.json");
+
+    const result = initFromRepo({
+      cwd: repoDir,
+      path: airJsonPath,
+    });
+
+    const rootsJson = JSON.parse(
+      readFileSync(result.generatedRootsPath, "utf-8")
+    );
+    const root = rootsJson["simple"];
+
+    expect(root.default_skills).toEqual(["s1"]);
+    expect(root.default_mcp_servers).toBeUndefined();
+    expect(root.default_hooks).toBeUndefined();
   });
 });
 

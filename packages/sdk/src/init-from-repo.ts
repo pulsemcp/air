@@ -74,6 +74,10 @@ export interface InitFromRepoResult {
   discovered: DiscoveredArtifact[];
   /** Whether an existing config was overwritten. */
   overwritten: boolean;
+  /** Absolute path to the auto-generated roots.json, if created. */
+  generatedRootsPath: string;
+  /** Name/key of the auto-generated root entry. */
+  generatedRootName: string;
 }
 
 /**
@@ -226,11 +230,42 @@ export function discoverArtifacts(
 }
 
 /**
+ * Extract artifact entry IDs from discovered artifact files.
+ * Reads each file, parses the JSON, and collects the top-level keys (IDs).
+ */
+function extractArtifactIds(
+  discovered: DiscoveredArtifact[],
+  repoRoot: string
+): Partial<Record<string, string[]>> {
+  const ids: Partial<Record<string, string[]>> = {};
+  for (const artifact of discovered) {
+    const filePath = resolve(repoRoot, artifact.repoPath);
+    try {
+      const content = readFileSync(filePath, "utf-8");
+      const data = JSON.parse(content);
+      const { $schema, ...entries } = data;
+      const entryIds = Object.keys(entries);
+      if (entryIds.length > 0) {
+        if (!ids[artifact.type]) ids[artifact.type] = [];
+        ids[artifact.type]!.push(...entryIds);
+      }
+    } catch {
+      continue;
+    }
+  }
+  return ids;
+}
+
+/**
  * Initialize an AIR config from artifact files discovered in a git repository.
  *
  * Scans the git repo for artifact index files (skills.json, mcp.json, etc.),
  * detects the GitHub remote, and generates an air.json with github:// URIs
  * pointing to the repository's default branch.
+ *
+ * Also auto-generates a roots.json entry describing the current repo,
+ * populated with default_skills, default_mcp_servers, and default_hooks
+ * from the discovered artifacts.
  *
  * @throws Error if not in a git repo, no GitHub remote, no artifacts found,
  *         or air.json already exists (unless force is true).
@@ -310,14 +345,47 @@ export function initFromRepo(
   const repoName = repo.split("/")[1] || "my-config";
   const configName = repoName.replace(/[^a-zA-Z0-9_-]/g, "-");
 
-  // Build air.json
+  // Auto-generate roots.json for the current repo
+  const artifactIds = extractArtifactIds(discovered, repoRoot);
+
+  const rootEntry: Record<string, unknown> = {
+    name: configName,
+    description: `Agent root for ${repo}.`,
+    url: remoteUrl.trim(),
+    default_branch: branch,
+  };
+
+  if (artifactIds.skills?.length) {
+    rootEntry.default_skills = artifactIds.skills;
+  }
+  if (artifactIds.mcp?.length) {
+    rootEntry.default_mcp_servers = artifactIds.mcp;
+  }
+  if (artifactIds.hooks?.length) {
+    rootEntry.default_hooks = artifactIds.hooks;
+  }
+
+  const rootsDir = resolve(airDir, "roots");
+  mkdirSync(rootsDir, { recursive: true });
+
+  const rootsJson = { [configName]: rootEntry };
+  const rootsPath = resolve(rootsDir, "roots.json");
+  writeFileSync(rootsPath, JSON.stringify(rootsJson, null, 2) + "\n");
+
+  // Build air.json — include auto-generated roots.json first, then discovered
   const airJson: Record<string, unknown> = {
     name: configName,
     extensions: ["@pulsemcp/air-provider-github"],
   };
 
   for (const type of ARTIFACT_TYPES) {
-    if (grouped[type]) {
+    if (type === "roots") {
+      // Combine auto-generated local roots with any discovered roots
+      airJson.roots = [
+        "./roots/roots.json",
+        ...(grouped.roots || []),
+      ];
+    } else if (grouped[type]) {
       airJson[type] = grouped[type];
     }
   }
@@ -333,6 +401,8 @@ export function initFromRepo(
     branch,
     discovered,
     overwritten,
+    generatedRootsPath: rootsPath,
+    generatedRootName: configName,
   };
 }
 

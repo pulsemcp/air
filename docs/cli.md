@@ -24,14 +24,11 @@ Initialize a new AIR configuration at `~/.air/`.
 air init
 ```
 
-Creates:
-- `~/.air/air.json` — root config
-- `~/.air/skills/skills.json` — empty skills index
-- `~/.air/references/references.json` — empty references index
-- `~/.air/mcp/mcp.json` — empty MCP servers config
-- `~/.air/plugins/plugins.json` — empty plugins index
-- `~/.air/roots/roots.json` — empty roots index
-- `~/.air/hooks/hooks.json` — empty hooks index
+When run inside a git repo with AIR artifact index files, discovers them automatically and generates:
+- `~/.air/air.json` — root config with `github://` resolver URIs
+- `~/.air/roots/roots.json` — auto-generated root entry for the current repo, with `default_skills`, `default_mcp_servers`, and `default_hooks` populated from discovered artifacts
+
+When no artifacts are found (or outside a git repo), creates a minimal `~/.air/air.json` scaffold.
 
 Orgs and teams can provide default `air.json` files as starting points. Copy one into `~/.air/air.json` and customize.
 
