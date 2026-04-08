@@ -1,0 +1,8 @@
+{
+  "event": "session_start",
+  "command": "./notify.sh",
+  "timeout_seconds": 10,
+  "env": {
+    "WEBHOOK_URL": "${SLACK_WEBHOOK_URL}"
+  }
+}

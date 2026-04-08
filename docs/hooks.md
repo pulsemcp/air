@@ -11,6 +11,15 @@ Hooks let you attach behavior to agent lifecycle events:
 - **Automation** — trigger CI pipelines, update dashboards, log metrics
 - **Integration** — connect agent activity to your existing tooling
 
+## Structure
+
+Hooks use a two-layer structure, like skills:
+
+1. **Index** (`hooks.json`) — lightweight catalog entries with id, description, and a path
+2. **Directory** (`hooks/{id}/`) — contains the runtime definition (`HOOK.json`) and any associated scripts
+
+This separation keeps the index scannable while allowing hooks to bundle scripts and configuration together in an isolated directory.
+
 ## Index Format
 
 Hooks are registered in `hooks.json`:
@@ -21,23 +30,59 @@ Hooks are registered in `hooks.json`:
     "id": "notify-session-start",
     "title": "Session Start Notification",
     "description": "Post to Slack when an agent session starts",
-    "event": "session_start",
-    "command": "curl",
-    "args": ["-X", "POST", "-H", "Content-Type: application/json",
-             "-d", "{\"text\": \"Agent session started\"}",
-             "${SLACK_WEBHOOK_URL}"],
-    "timeout_seconds": 10
+    "path": "hooks/notify-session-start"
+  },
+  "lint-pre-commit": {
+    "id": "lint-pre-commit",
+    "title": "Pre-Commit Lint Check",
+    "description": "Run linting on staged files before allowing a commit",
+    "path": "hooks/lint-pre-commit"
   }
 }
 ```
 
-### Fields
+### Index Fields
 
 | Field | Required | Description |
 |-------|----------|-------------|
 | `id` | Yes | Unique identifier. Must match the key. |
 | `title` | No | Human-readable display name. |
 | `description` | Yes | What this hook does. |
+| `path` | Yes | Relative path to the hook directory containing `HOOK.json`. |
+| `references` | No | IDs of reference documents this hook depends on. |
+
+## Hook Directory
+
+Each hook directory contains a `HOOK.json` file with the runtime definition, plus any scripts or files the hook needs:
+
+```
+hooks/
+├── notify-session-start/
+│   ├── HOOK.json
+│   └── notify.sh
+└── lint-pre-commit/
+    └── HOOK.json
+```
+
+### HOOK.json
+
+The `HOOK.json` file defines how the hook executes:
+
+```json
+{
+  "event": "session_start",
+  "command": "./notify.sh",
+  "timeout_seconds": 10,
+  "env": {
+    "WEBHOOK_URL": "${SLACK_WEBHOOK_URL}"
+  }
+}
+```
+
+### HOOK.json Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
 | `event` | Yes | Lifecycle event that triggers this hook. |
 | `command` | Yes | Shell command to execute. |
 | `args` | No | Command-line arguments. |
@@ -59,30 +104,29 @@ Hooks are registered in `hooks.json`:
 
 ## Matchers
 
-Use the `matcher` field to filter which events trigger the hook. The value is a regex pattern matched against event data:
+Use the `matcher` field in `HOOK.json` to filter which events trigger the hook. The value is a regex pattern matched against event data:
 
 ```json
 {
-  "block-prod-deploy": {
-    "id": "block-prod-deploy",
-    "description": "Prevent direct deployments to production",
-    "event": "pre_tool_call",
-    "matcher": "deploy.*production",
-    "command": "echo",
-    "args": ["ERROR: Direct production deployments are blocked. Use the release skill."],
-    "timeout_seconds": 5
-  }
+  "event": "pre_tool_call",
+  "matcher": "deploy.*production",
+  "command": "echo",
+  "args": ["ERROR: Direct production deployments are blocked. Use the release skill."],
+  "timeout_seconds": 5
 }
 ```
 
 ## Agent Translation
 
-At session start, AIR translates hooks to agent-specific formats. For Claude Code, hooks are written to the agent's settings configuration.
+At session start, AIR copies hook directories into the agent's working directory (e.g., `.claude/hooks/{id}/`). The adapter reads `HOOK.json` to translate hooks into agent-specific formats. For Claude Code, hooks are written to the agent's settings configuration.
+
+Local hooks take priority — if a hook directory already exists in the target, the catalog version is not copied.
 
 ## Best Practices
 
 1. **Set timeouts** — hooks should be fast; don't block the agent
 2. **Use matchers sparingly** — overly broad matchers can slow down sessions
 3. **Idempotent hooks** — hooks may fire multiple times; make them safe to repeat
-4. **Keep hooks simple** — complex logic belongs in skills, not hooks
-5. **Test locally** — verify hook commands work before adding them to configuration
+4. **Bundle scripts** — put helper scripts in the hook directory alongside `HOOK.json`
+5. **Keep hooks simple** — complex logic belongs in skills, not hooks
+6. **Test locally** — verify hook commands work before adding them to configuration
