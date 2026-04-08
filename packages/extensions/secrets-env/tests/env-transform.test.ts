@@ -151,6 +151,54 @@ describe("envTransform", () => {
     expect((result.mcpServers.server.env as any).PORT).toBe("resolved-secret-value");
   });
 
+  it("resolves ${VAR:-default} using the default when env var is unset", async () => {
+    const config: McpConfig = {
+      mcpServers: {
+        server: {
+          command: "npx",
+          env: {
+            BASE_URL: "${NONEXISTENT_VAR_12345:-https://ao.pulsemcp.com}",
+          },
+        },
+      },
+    };
+
+    const result = await envTransform(config, makeContext());
+    expect((result.mcpServers.server.env as any).BASE_URL).toBe(
+      "https://ao.pulsemcp.com"
+    );
+  });
+
+  it("resolves ${VAR:-} to empty string when env var is unset", async () => {
+    const config: McpConfig = {
+      mcpServers: {
+        server: {
+          command: "npx",
+          env: { API_KEY: "${NONEXISTENT_VAR_12345:-}" },
+        },
+      },
+    };
+
+    const result = await envTransform(config, makeContext());
+    expect((result.mcpServers.server.env as any).API_KEY).toBe("");
+  });
+
+  it("resolves ${VAR:-default} using env value when env var is set", async () => {
+    const config: McpConfig = {
+      mcpServers: {
+        server: {
+          command: "npx",
+          env: {
+            API_KEY: "${MY_SECRET:-fallback-value}",
+          },
+        },
+      },
+    };
+
+    const result = await envTransform(config, makeContext());
+    expect((result.mcpServers.server.env as any).API_KEY).toBe("resolved-secret-value");
+  });
+
   it("resolves ${VAR} in nested objects", async () => {
     const config: McpConfig = {
       mcpServers: {
