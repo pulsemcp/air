@@ -75,8 +75,16 @@ async function loadSingleExtension(
         );
         const resolved = projectRequire.resolve(specifier);
         mod = await import(pathToFileURL(resolved).href);
-      } catch {
-        mod = await import(specifier);
+      } catch (projectErr: unknown) {
+        // Only fall back to SDK-local resolution when the package wasn't
+        // found in the project directory.  Re-throw other errors (e.g.
+        // syntax errors in the resolved module) so they aren't masked.
+        const code = (projectErr as NodeJS.ErrnoException)?.code;
+        if (code === "MODULE_NOT_FOUND" || code === "ERR_MODULE_NOT_FOUND") {
+          mod = await import(specifier);
+        } else {
+          throw projectErr;
+        }
       }
     }
   } catch (err) {
