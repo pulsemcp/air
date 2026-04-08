@@ -41,11 +41,11 @@ export class ClaudeAdapter implements AgentAdapter {
   ): AgentSessionConfig {
     const mcpServers = root?.default_mcp_servers
       ? this.filterByIds(artifacts.mcp, root.default_mcp_servers)
-      : artifacts.mcp;
+      : {};
 
     const plugins = root?.default_plugins
       ? this.filterByIds(artifacts.plugins, root.default_plugins)
-      : artifacts.plugins;
+      : {};
 
     const mcpConfig = this.translateMcpServers(mcpServers);
 
@@ -53,9 +53,7 @@ export class ClaudeAdapter implements AgentAdapter {
       this.translatePlugin(p)
     );
 
-    const skillIds = root?.default_skills
-      ? root.default_skills
-      : Object.keys(artifacts.skills);
+    const skillIds = root?.default_skills ?? [];
     const skillPaths = skillIds
       .filter((id) => artifacts.skills[id])
       .map((id) => artifacts.skills[id].path);
@@ -105,7 +103,7 @@ export class ClaudeAdapter implements AgentAdapter {
       ?? undefined;
     let skillIds = options?.skillOverrides
       ?? root?.default_skills
-      ?? Object.keys(artifacts.skills);
+      ?? [];
 
     // 1b. Merge subagent roots' artifacts if applicable
     const subagentRoots = this.resolveSubagentRoots(root, artifacts, options);
@@ -115,13 +113,13 @@ export class ClaudeAdapter implements AgentAdapter {
       skillIds = merged.skillIds;
     }
 
-    const mcpServers = mcpServerIds
+    const mcpServers = mcpServerIds?.length
       ? this.filterByIds(artifacts.mcp, mcpServerIds)
-      : artifacts.mcp;
+      : {};
 
     const plugins = root?.default_plugins
       ? this.filterByIds(artifacts.plugins, root.default_plugins)
-      : artifacts.plugins;
+      : {};
 
     // 2. Write .mcp.json (${VAR} patterns are left as-is for transforms to resolve)
     const mcpConfig = this.translateMcpServers(mcpServers);
@@ -153,7 +151,7 @@ export class ClaudeAdapter implements AgentAdapter {
     }
 
     // 4. Inject path-based hooks into .claude/hooks/
-    const hookIds = root?.default_hooks ?? Object.keys(artifacts.hooks);
+    const hookIds = root?.default_hooks ?? [];
     for (const hookId of hookIds) {
       const hook = artifacts.hooks[hookId];
       if (!hook) continue;

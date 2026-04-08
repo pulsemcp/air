@@ -1,6 +1,6 @@
 {
   "name": "@pulsemcp/air-provider-github",
-  "version": "0.0.12",
+  "version": "0.0.13",
   "publishConfig": {
     "access": "public"
   },
@@ -29,7 +29,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@pulsemcp/air-core": "0.0.12"
+    "@pulsemcp/air-core": "0.0.13"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
