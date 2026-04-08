@@ -80,7 +80,7 @@ Key fields:
 | `title` | No | Human-readable display name. Max 100 characters. |
 | `references` | No | Array of reference document IDs this skill depends on. |
 
-The `path` is relative to the directory containing `air.json`.
+The `path` is relative to the directory containing the index file (e.g., `skills.json`).
 
 ### 3. Validate
 

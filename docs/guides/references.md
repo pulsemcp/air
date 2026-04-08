@@ -36,7 +36,7 @@ Add entries to `~/.air/references/references.json`:
 | `file` | Yes | Relative path to the Markdown file. |
 | `title` | No | Human-readable name. Max 100 characters. |
 
-The `file` path is relative to the directory containing `air.json`.
+The `file` path is relative to the directory containing the index file (e.g., `references.json`).
 
 ## Writing reference documents
 
