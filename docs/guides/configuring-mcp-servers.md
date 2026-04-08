@@ -236,6 +236,6 @@ Avoid unpinned versions like `@modelcontextprotocol/server-github` or `@latest` 
 
 ## Next steps
 
-- **[Running Sessions](../running-sessions.md)** — See how MCP servers get activated during sessions.
-- **[Extensions System](../extensions/readme.md)** — Use transforms to inject secrets or modify server configs.
-- **[Composition and Overrides](../composition-and-overrides.md)** — Layer org, team, and local server configs.
+- **[Running Sessions](running-sessions.md)** — See how MCP servers get activated during sessions.
+- **[Extensions System](extensions.md)** — Use transforms to inject secrets or modify server configs.
+- **[Composition and Overrides](composition-and-overrides.md)** — Layer org, team, and local server configs.

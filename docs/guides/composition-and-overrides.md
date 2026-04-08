@@ -222,5 +222,5 @@ To effectively "remove" an artifact from an earlier layer, you'd need to overrid
 ## Next steps
 
 - **[Understanding air.json](understanding-air-json.md)** — Root config file structure.
-- **[Extensions System](extensions/readme.md)** — Providers that enable remote configuration.
-- **[Roots and Multi-Root Setups](roots/readme.md)** — Subagent composition.
+- **[Extensions System](extensions.md)** — Providers that enable remote configuration.
+- **[Roots and Multi-Root Setups](roots.md)** — Subagent composition.

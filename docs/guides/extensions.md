@@ -44,7 +44,7 @@ Or install manually:
 npm install @pulsemcp/air-adapter-claude @pulsemcp/air-provider-github
 ```
 
-See [Installing Extensions](installing.md) for details.
+See [Installing Extensions](installing-extensions.md) for details.
 
 ## Adapters
 
@@ -194,6 +194,6 @@ Here's the complete flow during `air prepare`:
 
 ## Next steps
 
-- **[Installing Extensions](installing.md)** — Install declared extensions.
-- **[Composition and Overrides](../composition-and-overrides.md)** — Use providers for remote config.
-- **[Running Sessions](../running-sessions.md)** — See extensions in action during sessions.
+- **[Installing Extensions](installing-extensions.md)** — Install declared extensions.
+- **[Composition and Overrides](composition-and-overrides.md)** — Use providers for remote config.
+- **[Running Sessions](running-sessions.md)** — See extensions in action during sessions.

@@ -154,7 +154,7 @@ Extensions provide three types of functionality:
 - **Providers** — resolve remote URIs like `github://` in artifact paths
 - **Transforms** — modify `.mcp.json` after session preparation (e.g., secrets injection)
 
-Order matters for transforms — they run in declaration order. See [Extensions System](extensions/readme.md) for details.
+Order matters for transforms — they run in declaration order. See [Extensions System](extensions.md) for details.
 
 ## Minimal configuration
 
@@ -216,4 +216,4 @@ This checks the file against the AIR JSON Schema. See [Validating Configuration]
 
 - **[Quickstart](quickstart.md)** — Full walkthrough of setting up AIR from scratch.
 - **[Composition and Overrides](composition-and-overrides.md)** — Advanced layering and remote config patterns.
-- **[Extensions System](extensions/readme.md)** — How to install and configure extensions.
+- **[Extensions System](extensions.md)** — How to install and configure extensions.

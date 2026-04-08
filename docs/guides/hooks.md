@@ -227,6 +227,6 @@ Hooks (2):
 
 ## Next steps
 
-- **[Roots and Multi-Root Setups](../roots/readme.md)** — Assign hooks to specific roots.
-- **[Validating Configuration](../validating-configuration.md)** — Validate your hooks config.
-- **[Extensions System](../extensions/readme.md)** — Hooks and the extension pipeline.
+- **[Roots and Multi-Root Setups](roots.md)** — Assign hooks to specific roots.
+- **[Validating Configuration](validating-configuration.md)** — Validate your hooks config.
+- **[Extensions System](extensions.md)** — Hooks and the extension pipeline.
