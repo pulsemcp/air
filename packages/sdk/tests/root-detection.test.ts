@@ -52,7 +52,6 @@ describe("normalizeGitUrl", () => {
 
 describe("detectRoot", () => {
   const makeRoot = (name: string, url: string, subdirectory?: string): RootEntry => ({
-    name,
     description: `${name} root`,
     url,
     subdirectory,
@@ -116,7 +115,7 @@ describe("detectRoot", () => {
       air: makeRoot("air", "https://github.com/pulsemcp/air.git"),
     };
     const result = detectRoot(roots, dir);
-    expect(result?.name).toBe("air");
+    expect(result?.description).toBe("air root");
   });
 
   it("matches root by normalized URL (SSH format)", () => {
@@ -125,7 +124,7 @@ describe("detectRoot", () => {
       air: makeRoot("air", "git@github.com:pulsemcp/air.git"),
     };
     const result = detectRoot(roots, dir);
-    expect(result?.name).toBe("air");
+    expect(result?.description).toBe("air root");
   });
 
   it("matches root by normalized URL (without .git suffix)", () => {
@@ -134,7 +133,7 @@ describe("detectRoot", () => {
       air: makeRoot("air", "https://github.com/pulsemcp/air"),
     };
     const result = detectRoot(roots, dir);
-    expect(result?.name).toBe("air");
+    expect(result?.description).toBe("air root");
   });
 
   it("prefers exact subdirectory match", () => {
@@ -147,7 +146,7 @@ describe("detectRoot", () => {
       cli: makeRoot("cli", "https://github.com/pulsemcp/air.git", "packages/cli"),
     };
     const result = detectRoot(roots, resolve(dir, "packages/cli"));
-    expect(result?.name).toBe("cli");
+    expect(result?.description).toBe("cli root");
   });
 
   it("falls back to longest prefix when no exact match", () => {
@@ -159,7 +158,7 @@ describe("detectRoot", () => {
       packages: makeRoot("packages", "https://github.com/pulsemcp/air.git", "packages"),
     };
     const result = detectRoot(roots, resolve(dir, "packages/cli/src"));
-    expect(result?.name).toBe("packages");
+    expect(result?.description).toBe("packages root");
   });
 
   it("falls back to root-level when no subdirectory match", () => {
@@ -169,16 +168,16 @@ describe("detectRoot", () => {
       unrelated: makeRoot("unrelated", "https://github.com/pulsemcp/air.git", "some/other/dir"),
     };
     const result = detectRoot(roots, dir);
-    expect(result?.name).toBe("root");
+    expect(result?.description).toBe("root root");
   });
 
   it("skips roots without URL", () => {
     const dir = createTempGitRepo("https://github.com/pulsemcp/air.git");
     const roots = {
-      nourl: { name: "nourl", description: "No URL" } as RootEntry,
+      nourl: { description: "No URL" } as RootEntry,
       withurl: makeRoot("withurl", "https://github.com/pulsemcp/air.git"),
     };
     const result = detectRoot(roots, dir);
-    expect(result?.name).toBe("withurl");
+    expect(result?.description).toBe("withurl root");
   });
 });
