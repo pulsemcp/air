@@ -154,7 +154,7 @@ export function listCommand(): Command {
             const title = ref.title ? ` (${ref.title})` : "";
             console.log(`  ${id}${title}`);
             console.log(`    ${ref.description}`);
-            console.log(`    File: ${ref.file}`);
+            console.log(`    Path: ${ref.path}`);
             console.log();
           }
           break;

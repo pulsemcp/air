@@ -1,26 +1,22 @@
 {
   "git-workflow": {
-    "id": "git-workflow",
     "title": "Git Workflow",
     "description": "Standard git workflow, branch naming conventions, and PR processes",
-    "file": "references/GIT_WORKFLOW.md"
+    "path": "references/GIT_WORKFLOW.md"
   },
   "staging-env": {
-    "id": "staging-env",
     "title": "Staging Environment",
     "description": "Staging environment architecture, access, and deployment practices",
-    "file": "references/STAGING_ENV.md"
+    "path": "references/STAGING_ENV.md"
   },
   "code-standards": {
-    "id": "code-standards",
     "title": "Code Standards",
     "description": "Coding standards and conventions for the engineering team",
-    "file": "references/CODE_STANDARDS.md"
+    "path": "references/CODE_STANDARDS.md"
   },
   "mcp-json-spec": {
-    "id": "mcp-json-spec",
     "title": "mcp.json Specification",
     "description": "Client-side MCP configuration file format: structure, fields, transport types, and validation",
-    "file": "references/MCP_JSON.md"
+    "path": "references/MCP_JSON.md"
   }
 }

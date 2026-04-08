@@ -42,7 +42,6 @@ describe("listArtifacts", () => {
       },
       "skills.json": {
         deploy: {
-          id: "deploy",
           description: "Deploy to staging",
           path: "./skills/deploy",
         },
@@ -85,7 +84,6 @@ describe("listArtifacts", () => {
       },
       "roots.json": {
         "web-app": {
-          name: "web-app",
           description: "Main web app",
           url: "https://github.com/test/repo.git",
         },
@@ -108,7 +106,6 @@ describe("listArtifacts", () => {
       },
       "plugins.json": {
         "code-quality": {
-          id: "code-quality",
           description: "Linting tools",
           version: "1.0.0",
         },
@@ -131,7 +128,6 @@ describe("listArtifacts", () => {
       },
       "hooks.json": {
         "pre-commit": {
-          id: "pre-commit",
           description: "Lint check",
           event: "pre-commit",
           command: "npx lint-staged",
@@ -155,9 +151,8 @@ describe("listArtifacts", () => {
       },
       "references.json": {
         "git-workflow": {
-          id: "git-workflow",
           description: "Git workflow guide",
-          file: "./docs/git.md",
+          path: "./docs/git.md",
         },
       },
     });

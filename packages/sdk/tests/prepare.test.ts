@@ -95,7 +95,6 @@ describe("prepareSession", () => {
       },
       "skills.json": {
         "my-skill": {
-          id: "my-skill",
           description: "A test skill",
           path: "skills/my-skill",
         },
@@ -142,7 +141,6 @@ describe("prepareSession", () => {
       },
       "roots.json": {
         "web-app": {
-          name: "web-app",
           description: "Web app root",
           default_mcp_servers: ["github", "postgres"],
         },
@@ -215,17 +213,14 @@ describe("prepareSession", () => {
       },
       "skills.json": {
         "skill-a": {
-          id: "skill-a",
           description: "Skill A",
           path: "skills/skill-a",
         },
         "skill-b": {
-          id: "skill-b",
           description: "Skill B",
           path: "skills/skill-b",
         },
         "skill-c": {
-          id: "skill-c",
           description: "Skill C",
           path: "skills/skill-c",
         },
@@ -235,7 +230,6 @@ describe("prepareSession", () => {
       "skills/skill-c/SKILL.md": "# C",
       "roots.json": {
         myroot: {
-          name: "myroot",
           description: "Test root",
           default_skills: ["skill-a", "skill-b"],
         },
@@ -273,7 +267,6 @@ describe("prepareSession", () => {
       },
       "roots.json": {
         myroot: {
-          name: "myroot",
           description: "Test",
           default_mcp_servers: ["github"],
         },

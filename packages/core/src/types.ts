@@ -24,7 +24,6 @@ export interface ResolvedArtifacts {
 }
 
 export interface SkillEntry {
-  id: string;
   title?: string;
   description: string;
   path: string;
@@ -32,10 +31,9 @@ export interface SkillEntry {
 }
 
 export interface ReferenceEntry {
-  id: string;
   title?: string;
   description: string;
-  file: string;
+  path: string;
 }
 
 export interface McpOAuthConfig {
@@ -63,7 +61,6 @@ export interface PluginAuthor {
 }
 
 export interface PluginEntry {
-  id: string;
   title?: string;
   description: string;
   version?: string;
@@ -80,7 +77,6 @@ export interface PluginEntry {
 }
 
 export interface RootEntry {
-  name: string;
   display_name?: string;
   description: string;
   url?: string;
@@ -95,7 +91,6 @@ export interface RootEntry {
 }
 
 export interface HookEntry {
-  id: string;
   title?: string;
   description: string;
   /** Relative path to the hook directory containing HOOK.json and associated scripts. */

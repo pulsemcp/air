@@ -1,6 +1,5 @@
 {
   "web-app": {
-    "name": "web-app",
     "display_name": "Web Application",
     "description": "Main web application. Full-stack Rails app with React frontend.",
     "url": "https://github.com/acme/web-app.git",
@@ -11,7 +10,6 @@
     "user_invocable": true
   },
   "data-pipeline": {
-    "name": "data-pipeline",
     "display_name": "Data Pipeline",
     "description": "ETL pipeline and data warehouse management. Python-based with dbt.",
     "url": "https://github.com/acme/data-pipeline.git",

@@ -22,12 +22,6 @@
       "type": "object",
       "description": "An agent root — a self-contained workspace for a specific domain.",
       "properties": {
-        "name": {
-          "type": "string",
-          "minLength": 1,
-          "pattern": "^[a-zA-Z0-9_-]+$",
-          "description": "Unique identifier for this root. Must match the key in the parent object."
-        },
         "display_name": {
           "type": "string",
           "minLength": 1,
@@ -93,7 +87,7 @@
           "default": true
         }
       },
-      "required": ["name", "description"],
+      "required": ["description"],
       "additionalProperties": true
     }
   }

@@ -133,7 +133,6 @@ describe("ClaudeAdapter", () => {
   describe("translatePlugin", () => {
     it("translates plugin format and strips artifact references", () => {
       const plugin: PluginEntry = {
-        id: "code-quality",
         description: "Linting and formatting tools",
         version: "1.2.0",
         skills: ["lint-fix"],
@@ -141,7 +140,7 @@ describe("ClaudeAdapter", () => {
         hooks: ["lint-pre-commit"],
       };
 
-      const result = adapter.translatePlugin(plugin);
+      const result = adapter.translatePlugin("code-quality", plugin);
       expect(result).toEqual({
         name: "code-quality",
         description: "Linting and formatting tools",
@@ -155,11 +154,10 @@ describe("ClaudeAdapter", () => {
 
     it("omits optional fields when not present", () => {
       const plugin: PluginEntry = {
-        id: "minimal",
         description: "A minimal plugin",
       };
 
-      const result = adapter.translatePlugin(plugin);
+      const result = adapter.translatePlugin("minimal", plugin);
       expect(result).toEqual({
         name: "minimal",
         description: "A minimal plugin",
@@ -172,12 +170,10 @@ describe("ClaudeAdapter", () => {
     it("defaults to empty artifacts when no root is specified (opt-in)", () => {
       const artifacts = emptyArtifacts();
       artifacts.skills["a"] = {
-        id: "a",
         description: "Skill A",
         path: "skills/a",
       };
       artifacts.skills["b"] = {
-        id: "b",
         description: "Skill B",
         path: "skills/b",
       };
@@ -194,12 +190,10 @@ describe("ClaudeAdapter", () => {
     it("filters by root defaults when root is specified", () => {
       const artifacts = emptyArtifacts();
       artifacts.skills["deploy"] = {
-        id: "deploy",
         description: "Deploy",
         path: "skills/deploy",
       };
       artifacts.skills["review"] = {
-        id: "review",
         description: "Review",
         path: "skills/review",
       };
@@ -213,7 +207,6 @@ describe("ClaudeAdapter", () => {
       };
 
       const root: RootEntry = {
-        name: "web-app",
         description: "Web app",
         default_skills: ["deploy"],
         default_mcp_servers: ["github"],
@@ -236,7 +229,6 @@ describe("ClaudeAdapter", () => {
         path: "skills/deploy",
       };
       const root: RootEntry = {
-        name: "test",
         description: "Test",
         default_skills: ["nonexistent"],
       };
@@ -381,7 +373,6 @@ describe("ClaudeAdapter", () => {
 
       const artifacts = emptyArtifacts();
       artifacts.skills["deploy"] = {
-        id: "deploy",
         description: "Deploy skill",
         path: resolve(skillSrcDir),
       };
@@ -418,15 +409,13 @@ describe("ClaudeAdapter", () => {
 
       const artifacts = emptyArtifacts();
       artifacts.skills["deploy"] = {
-        id: "deploy",
         description: "Deploy",
         path: resolve(skillSrcDir),
         references: ["git-workflow"],
       };
       artifacts.references["git-workflow"] = {
-        id: "git-workflow",
         description: "Git workflow",
-        file: resolve(refSrcDir, "GIT_WORKFLOW.md"),
+        path: resolve(refSrcDir, "GIT_WORKFLOW.md"),
       };
 
       const root: RootEntry = {
@@ -464,7 +453,6 @@ describe("ClaudeAdapter", () => {
 
       const artifacts = emptyArtifacts();
       artifacts.skills["deploy"] = {
-        id: "deploy",
         description: "Deploy",
         path: resolve(catalogSkillDir),
       };
@@ -500,7 +488,6 @@ describe("ClaudeAdapter", () => {
       };
 
       const root: RootEntry = {
-        name: "web-app",
         description: "Web app",
         default_mcp_servers: ["github"],
       };
@@ -672,26 +659,22 @@ describe("ClaudeAdapter", () => {
         writeFileSync(join(subSkillDir, "SKILL.md"), "# Validate");
 
         artifacts.skills["deploy"] = {
-          id: "deploy",
           description: "Deploy skill",
           path: resolve(parentSkillDir),
         };
         artifacts.skills["validate"] = {
-          id: "validate",
           description: "Validate skill",
           path: resolve(subSkillDir),
         };
 
         // Define roots
         artifacts.roots["sub-configs"] = {
-          name: "sub-configs",
           description: "Config subagent",
           default_mcp_servers: ["postgres", "slack"],
           default_skills: ["validate"],
         };
 
         const root: RootEntry = {
-          name: "parent",
           description: "Parent root",
           default_mcp_servers: ["github"],
           default_skills: ["deploy"],
@@ -724,7 +707,6 @@ describe("ClaudeAdapter", () => {
         };
 
         artifacts.roots["research"] = {
-          name: "research",
           display_name: "Research Agent",
           description: "Researches server sources",
           default_mcp_servers: ["web-search"],
@@ -733,7 +715,6 @@ describe("ClaudeAdapter", () => {
         };
 
         const root: RootEntry = {
-          name: "onboarding",
           description: "Server onboarding",
           default_subagent_roots: ["research"],
         };
@@ -764,13 +745,11 @@ describe("ClaudeAdapter", () => {
         artifacts.mcp["postgres"] = { type: "stdio", command: "psql" };
 
         artifacts.roots["sub-db"] = {
-          name: "sub-db",
           description: "DB subagent",
           default_mcp_servers: ["postgres"],
         };
 
         const root: RootEntry = {
-          name: "parent",
           description: "Parent root",
           default_mcp_servers: ["github"],
           default_subagent_roots: ["sub-db"],
@@ -798,7 +777,6 @@ describe("ClaudeAdapter", () => {
         artifacts.mcp["github"] = { type: "stdio", command: "gh" };
 
         const root: RootEntry = {
-          name: "parent",
           description: "Parent root",
           default_mcp_servers: ["github"],
           default_subagent_roots: ["nonexistent-root"],
@@ -822,18 +800,15 @@ describe("ClaudeAdapter", () => {
         artifacts.mcp["slack"] = { type: "stdio", command: "slack" };
 
         artifacts.roots["sub-a"] = {
-          name: "sub-a",
           description: "Subagent A",
           default_mcp_servers: ["github", "postgres"],
         };
         artifacts.roots["sub-b"] = {
-          name: "sub-b",
           description: "Subagent B",
           default_mcp_servers: ["postgres", "slack"],
         };
 
         const root: RootEntry = {
-          name: "parent",
           description: "Parent root",
           default_mcp_servers: ["github"],
           default_subagent_roots: ["sub-a", "sub-b"],
@@ -857,7 +832,6 @@ describe("ClaudeAdapter", () => {
         artifacts.mcp["github"] = { type: "stdio", command: "gh" };
 
         const root: RootEntry = {
-          name: "simple",
           description: "Simple root",
           default_mcp_servers: ["github"],
         };
@@ -884,7 +858,6 @@ describe("ClaudeAdapter", () => {
 
         const artifacts = emptyArtifacts();
         artifacts.hooks["lint-pre-commit"] = {
-          id: "lint-pre-commit",
           description: "Pre-commit lint check",
           path: resolve(hookSrcDir),
         };
@@ -926,7 +899,6 @@ describe("ClaudeAdapter", () => {
 
         const artifacts = emptyArtifacts();
         artifacts.hooks["my-hook"] = {
-          id: "my-hook",
           description: "My hook",
           path: resolve(catalogHookDir),
         };
@@ -960,11 +932,10 @@ describe("ClaudeAdapter", () => {
         writeFileSync(join(hookBDir, "HOOK.json"), JSON.stringify({ event: "post_commit", command: "b" }));
 
         const artifacts = emptyArtifacts();
-        artifacts.hooks["hook-a"] = { id: "hook-a", description: "Hook A", path: resolve(hookADir) };
-        artifacts.hooks["hook-b"] = { id: "hook-b", description: "Hook B", path: resolve(hookBDir) };
+        artifacts.hooks["hook-a"] = { description: "Hook A", path: resolve(hookADir) };
+        artifacts.hooks["hook-b"] = { description: "Hook B", path: resolve(hookBDir) };
 
         const root: RootEntry = {
-          name: "test",
           description: "Test root",
           default_hooks: ["hook-a"],
         };
@@ -991,15 +962,13 @@ describe("ClaudeAdapter", () => {
 
         const artifacts = emptyArtifacts();
         artifacts.hooks["my-hook"] = {
-          id: "my-hook",
           description: "My hook",
           path: resolve(hookSrcDir),
           references: ["code-standards"],
         };
         artifacts.references["code-standards"] = {
-          id: "code-standards",
           description: "Code standards",
-          file: resolve(refSrcDir, "CODE_STANDARDS.md"),
+          path: resolve(refSrcDir, "CODE_STANDARDS.md"),
         };
 
         const root: RootEntry = {

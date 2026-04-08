@@ -49,8 +49,8 @@ export class ClaudeAdapter implements AgentAdapter {
 
     const mcpConfig = this.translateMcpServers(mcpServers);
 
-    const pluginConfigs = Object.values(plugins).map((p) =>
-      this.translatePlugin(p)
+    const pluginConfigs = Object.entries(plugins).map(([id, p]) =>
+      this.translatePlugin(id, p)
     );
 
     const skillIds = root?.default_skills ?? [];
@@ -266,7 +266,7 @@ export class ClaudeAdapter implements AgentAdapter {
     ];
 
     for (const sub of subagentRoots) {
-      lines.push(`### ${sub.display_name || sub.name}`);
+      lines.push(`### ${sub.display_name || "Subagent"}`);
       lines.push("");
       lines.push(`**Description**: ${sub.description}`);
       if (sub.default_mcp_servers?.length) {
@@ -335,9 +335,9 @@ export class ClaudeAdapter implements AgentAdapter {
   }
 
   /** Translate an AIR plugin to Claude Code plugin format */
-  translatePlugin(plugin: PluginEntry): Record<string, unknown> {
+  translatePlugin(id: string, plugin: PluginEntry): Record<string, unknown> {
     return {
-      name: plugin.id,
+      name: id,
       description: plugin.description,
       ...(plugin.version && { version: plugin.version }),
     };
@@ -385,11 +385,11 @@ export class ClaudeAdapter implements AgentAdapter {
     for (const refId of refIds) {
       const ref = artifacts.references[refId];
       if (!ref) continue;
-      const refSourcePath = ref.file;
+      const refSourcePath = ref.path;
       if (existsSync(refSourcePath)) {
         const refTargetPath = join(
           refsTargetDir,
-          ref.file.split("/").pop() || ref.file
+          ref.path.split("/").pop() || ref.path
         );
         mkdirSync(dirname(refTargetPath), { recursive: true });
         copyFileSync(refSourcePath, refTargetPath);

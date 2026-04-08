@@ -19,10 +19,9 @@ References are registered in `references.json`:
 ```json
 {
   "git-workflow": {
-    "id": "git-workflow",
     "title": "Git Workflow",
     "description": "Standard git workflow, branch naming conventions, and PR processes",
-    "file": "references/GIT_WORKFLOW.md"
+    "path": "references/GIT_WORKFLOW.md"
   }
 }
 ```
@@ -31,10 +30,9 @@ References are registered in `references.json`:
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `id` | Yes | Unique identifier. Must match the key. |
 | `title` | No | Human-readable display name. |
 | `description` | Yes | What knowledge this reference contains. |
-| `file` | Yes | Relative path to the reference document (typically Markdown). |
+| `path` | Yes | Relative path to the reference document (typically Markdown). |
 
 ## Writing References
 
@@ -78,7 +76,6 @@ Skills declare their reference dependencies in `skills.json`:
 ```json
 {
   "deploy-staging": {
-    "id": "deploy-staging",
     "description": "Deploy to staging",
     "path": "skills/deploy-staging",
     "references": ["git-workflow", "staging-env"]

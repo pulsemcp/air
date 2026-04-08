@@ -167,7 +167,6 @@ describe("discoverArtifacts", () => {
     const dir = createGitRepo("https://github.com/acme/config.git", {
       "skills/skills.json": {
         "deploy-staging": {
-          id: "deploy-staging",
           description: "Deploy to staging",
           path: "skills/deploy-staging",
         },
@@ -187,16 +186,14 @@ describe("discoverArtifacts", () => {
     const dir = createGitRepo("https://github.com/acme/config.git", {
       "skills/skills.json": {
         "my-skill": {
-          id: "my-skill",
           description: "A skill",
           path: "skills/my-skill",
         },
       },
       "references/references.json": {
         "my-ref": {
-          id: "my-ref",
           description: "A reference",
-          file: "docs/ref.md",
+          path: "docs/ref.md",
         },
       },
       "mcp/mcp.json": {
@@ -254,14 +251,14 @@ describe("discoverArtifacts", () => {
   it("skips files in hidden directories (root and nested)", () => {
     const dir = createGitRepo("https://github.com/acme/config.git", {
       ".hidden/skills.json": {
-        s: { id: "s", description: "d", path: "p" },
+        s: { description: "d", path: "p" },
       },
       "path/.secret/mcp.json": {
         m: { type: "stdio", command: "echo" },
       },
       // This one should be discovered
       "skills/skills.json": {
-        s: { id: "s", description: "d", path: "p" },
+        s: { description: "d", path: "p" },
       },
     });
 
@@ -273,11 +270,11 @@ describe("discoverArtifacts", () => {
   it("skips files inside node_modules", () => {
     const dir = createGitRepo("https://github.com/acme/config.git", {
       "node_modules/some-pkg/skills.json": {
-        s: { id: "s", description: "d", path: "p" },
+        s: { description: "d", path: "p" },
       },
       // This one should be discovered
       "skills/skills.json": {
-        s: { id: "s", description: "d", path: "p" },
+        s: { description: "d", path: "p" },
       },
     });
 
@@ -289,10 +286,10 @@ describe("discoverArtifacts", () => {
   it("discovers multiple files of the same artifact type", () => {
     const dir = createGitRepo("https://github.com/acme/config.git", {
       "frontend/skills.json": {
-        s1: { id: "s1", description: "frontend skill", path: "p1" },
+        s1: { description: "frontend skill", path: "p1" },
       },
       "backend/skills.json": {
-        s2: { id: "s2", description: "backend skill", path: "p2" },
+        s2: { description: "backend skill", path: "p2" },
       },
     });
 
@@ -314,7 +311,6 @@ describe("initFromRepo", () => {
       {
         "skills/skills.json": {
           "deploy-staging": {
-            id: "deploy-staging",
             description: "Deploy to staging",
             path: "skills/deploy-staging",
           },
@@ -366,7 +362,7 @@ describe("initFromRepo", () => {
       "https://github.com/acme/config.git",
       {
         "skills/skills.json": {
-          s: { id: "s", description: "d", path: "p" },
+          s: { description: "d", path: "p" },
         },
       }
     );
@@ -389,7 +385,7 @@ describe("initFromRepo", () => {
       "https://github.com/acme/config.git",
       {
         "skills/skills.json": {
-          s: { id: "s", description: "d", path: "p" },
+          s: { description: "d", path: "p" },
         },
       }
     );
@@ -449,7 +445,7 @@ describe("initFromRepo", () => {
   it("throws InitFromRepoError with NO_GITHUB code for non-GitHub remote", () => {
     const dir = createGitRepo("https://gitlab.com/acme/repo.git", {
       "skills/skills.json": {
-        s: { id: "s", description: "d", path: "p" },
+        s: { description: "d", path: "p" },
       },
     });
 
@@ -481,7 +477,7 @@ describe("initFromRepo", () => {
       "https://github.com/acme/config.git",
       {
         "skills/skills.json": {
-          s: { id: "s", description: "d", path: "p" },
+          s: { description: "d", path: "p" },
         },
       }
     );
@@ -527,10 +523,10 @@ describe("initFromRepo", () => {
       "https://github.com/acme/config.git",
       {
         "frontend/skills.json": {
-          s1: { id: "s1", description: "frontend skill", path: "p1" },
+          s1: { description: "frontend skill", path: "p1" },
         },
         "backend/skills.json": {
-          s2: { id: "s2", description: "backend skill", path: "p2" },
+          s2: { description: "backend skill", path: "p2" },
         },
       }
     );
@@ -558,23 +554,22 @@ describe("initFromRepo", () => {
       "https://github.com/acme/full-config.git",
       {
         "skills/skills.json": {
-          s1: { id: "s1", description: "skill", path: "skills/s1" },
+          s1: { description: "skill", path: "skills/s1" },
         },
         "references/references.json": {
-          r1: { id: "r1", description: "ref", file: "docs/r1.md" },
+          r1: { description: "ref", path: "docs/r1.md" },
         },
         "mcp/mcp.json": {
           m1: { type: "stdio", command: "echo" },
         },
         "plugins/plugins.json": {
-          p1: { id: "p1", description: "plugin" },
+          p1: { description: "plugin" },
         },
         "roots/roots.json": {
-          root1: { name: "root1", description: "a root" },
+          root1: { description: "a root" },
         },
         "hooks/hooks.json": {
           h1: {
-            id: "h1",
             description: "hook",
             path: "hooks/h1",
           },
@@ -743,7 +738,7 @@ describe("smartInit", () => {
       "https://github.com/acme/config.git",
       {
         "skills/skills.json": {
-          s: { id: "s", description: "d", path: "p" },
+          s: { description: "d", path: "p" },
         },
       }
     );
@@ -783,7 +778,7 @@ describe("smartInit", () => {
       "https://github.com/acme/config.git",
       {
         "skills/skills.json": {
-          s: { id: "s", description: "d", path: "p" },
+          s: { description: "d", path: "p" },
         },
       }
     );

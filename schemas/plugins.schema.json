@@ -22,12 +22,6 @@
       "type": "object",
       "description": "A plugin — a named grouping of AIR primitives (skills, MCP servers, hooks) for bundling and distribution. All referenced artifacts must be defined in their respective index files.",
       "properties": {
-        "id": {
-          "type": "string",
-          "minLength": 1,
-          "pattern": "^[a-zA-Z0-9_-]+$",
-          "description": "Unique identifier for this plugin. Must match the key in the parent object."
-        },
         "title": {
           "type": "string",
           "minLength": 1,
@@ -119,7 +113,7 @@
           "description": "Keywords for discovery and categorization."
         }
       },
-      "required": ["id", "description"],
+      "required": ["description"],
       "additionalProperties": true
     }
   }

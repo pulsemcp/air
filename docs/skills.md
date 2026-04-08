@@ -18,7 +18,6 @@ Skills are registered in `skills.json`:
 ```json
 {
   "deploy-staging": {
-    "id": "deploy-staging",
     "title": "Deploy to Staging",
     "description": "Deploy the current PR branch to the staging environment for testing",
     "path": "skills/deploy-staging",
@@ -31,7 +30,6 @@ Skills are registered in `skills.json`:
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `id` | Yes | Unique identifier. Must match the key. |
 | `title` | No | Human-readable display name. |
 | `description` | Yes | What this skill does. Clear enough for anyone in the org. |
 | `path` | Yes | Relative path to the skill directory containing `SKILL.md`. |
@@ -108,13 +106,11 @@ Skills declare their reference dependencies via the `references` array in skills
 ```json
 {
   "deploy-staging": {
-    "id": "deploy-staging",
     "description": "Deploy to staging",
     "path": "skills/deploy-staging",
     "references": ["git-workflow", "staging-env"]
   },
   "create-pr": {
-    "id": "create-pr",
     "description": "Create a pull request",
     "path": "skills/create-pr",
     "references": ["git-workflow", "code-standards"]
