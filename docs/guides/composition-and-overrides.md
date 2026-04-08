@@ -121,7 +121,7 @@ github://owner/repo/path/to/file.json
 github://owner/repo@ref/path/to/file.json
 ```
 
-The `@ref` is appended to the repo name (preferred) to specify a branch, tag, or commit SHA. Without `@ref`, the default branch is used. The legacy syntax `github://owner/repo/path@ref` is also supported.
+The `@ref` is appended to the repo name (preferred) to specify a branch, tag, or commit SHA. Without `@ref`, the default branch is used. The legacy syntax `github://owner/repo/path/to/file.json@ref` is also supported.
 
 ### Authentication for private repos
 

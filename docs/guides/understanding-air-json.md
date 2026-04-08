@@ -53,7 +53,7 @@ Here's a complete `air.json` with all fields:
 | `roots` | string[] | Paths to roots index files. |
 | `hooks` | string[] | Paths to hooks index files. |
 
-No additional properties are allowed — `air.json` rejects any fields not listed above.
+Additional properties are allowed — you can add custom fields without causing validation errors, but AIR ignores unrecognized fields.
 
 ## Path resolution
 
