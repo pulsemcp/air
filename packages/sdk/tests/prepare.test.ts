@@ -47,6 +47,7 @@ describe("prepareSession", () => {
       "air.json": {
         name: "test",
         mcp: ["./mcp.json"],
+        roots: ["./roots.json"],
       },
       "mcp.json": {
         github: {
@@ -56,12 +57,20 @@ describe("prepareSession", () => {
           env: { TOKEN: "abc" },
         },
       },
+      "roots.json": {
+        default: {
+          name: "default",
+          description: "Default root",
+          default_mcp_servers: ["github"],
+        },
+      },
     });
 
     const target = createTemp({});
 
     const result = await prepareSession({
       config: join(catalog, "air.json"),
+      root: "default",
       target,
     });
 
@@ -81,6 +90,7 @@ describe("prepareSession", () => {
       "air.json": {
         name: "test",
         skills: ["./skills.json"],
+        roots: ["./roots.json"],
       },
       "skills.json": {
         "my-skill": {
@@ -90,12 +100,20 @@ describe("prepareSession", () => {
         },
       },
       "skills/my-skill/SKILL.md": "# My Skill\nDo the thing.",
+      "roots.json": {
+        default: {
+          name: "default",
+          description: "Default root",
+          default_skills: ["my-skill"],
+        },
+      },
     });
 
     const target = createTemp({});
 
     const result = await prepareSession({
       config: join(catalog, "air.json"),
+      root: "default",
       target,
     });
 
@@ -277,9 +295,13 @@ describe("prepareSession", () => {
           name: "test",
           extensions: ["./add-marker.js"],
           mcp: ["./mcp.json"],
+          roots: ["./roots.json"],
         },
         "mcp.json": {
           server: { type: "stdio", command: "npx", env: { KEY: "value" } },
+        },
+        "roots.json": {
+          default: { name: "default", description: "Default", default_mcp_servers: ["server"] },
         },
         // Local transform that adds a marker env var
         "add-marker.js": `
@@ -298,6 +320,7 @@ export default async function(config, context) {
 
       await prepareSession({
         config: join(catalog, "air.json"),
+        root: "default",
         target,
       });
 
@@ -312,9 +335,13 @@ export default async function(config, context) {
           name: "test",
           extensions: ["./first.js", "./second.js"],
           mcp: ["./mcp.json"],
+          roots: ["./roots.json"],
         },
         "mcp.json": {
           server: { type: "stdio", command: "npx", env: { ORDER: "" } },
+        },
+        "roots.json": {
+          default: { name: "default", description: "Default", default_mcp_servers: ["server"] },
         },
         "first.js": `
 export default async function(config, context) {
@@ -338,6 +365,7 @@ export default async function(config, context) {
 
       await prepareSession({
         config: join(catalog, "air.json"),
+        root: "default",
         target,
       });
 
@@ -350,9 +378,13 @@ export default async function(config, context) {
         "air.json": {
           name: "test",
           mcp: ["./mcp.json"],
+          roots: ["./roots.json"],
         },
         "mcp.json": {
           server: { type: "stdio", command: "npx", env: { TOKEN: "abc" } },
+        },
+        "roots.json": {
+          default: { name: "default", description: "Default", default_mcp_servers: ["server"] },
         },
       });
 
@@ -360,6 +392,7 @@ export default async function(config, context) {
 
       await prepareSession({
         config: join(catalog, "air.json"),
+        root: "default",
         target,
       });
 
@@ -378,6 +411,7 @@ export default async function(config, context) {
             name: "test",
             extensions: ["@pulsemcp/air-secrets-env"],
             mcp: ["./mcp.json"],
+            roots: ["./roots.json"],
           },
           "mcp.json": {
             server: {
@@ -386,12 +420,16 @@ export default async function(config, context) {
               env: { API_KEY: "${SDK_TEST_SECRET}" },
             },
           },
+          "roots.json": {
+            default: { name: "default", description: "Default", default_mcp_servers: ["server"] },
+          },
         });
 
         const target = createTemp({});
 
         await prepareSession({
           config: join(catalog, "air.json"),
+          root: "default",
           target,
         });
 
@@ -412,6 +450,7 @@ export default async function(config, context) {
           name: "test",
           extensions: ["@pulsemcp/air-secrets-file"],
           mcp: ["./mcp.json"],
+          roots: ["./roots.json"],
         },
         "mcp.json": {
           server: {
@@ -420,6 +459,9 @@ export default async function(config, context) {
             env: { API_KEY: "${FILE_SECRET}" },
           },
         },
+        "roots.json": {
+          default: { name: "default", description: "Default", default_mcp_servers: ["server"] },
+        },
         "secrets.json": { FILE_SECRET: "resolved-from-file" },
       });
 
@@ -427,6 +469,7 @@ export default async function(config, context) {
 
       await prepareSession({
         config: join(catalog, "air.json"),
+        root: "default",
         target,
         extensionOptions: { "secrets-file": join(catalog, "secrets.json") },
       });
@@ -448,6 +491,7 @@ export default async function(config, context) {
               "@pulsemcp/air-secrets-env",
             ],
             mcp: ["./mcp.json"],
+            roots: ["./roots.json"],
           },
           "mcp.json": {
             server: {
@@ -459,6 +503,9 @@ export default async function(config, context) {
               },
             },
           },
+          "roots.json": {
+            default: { name: "default", description: "Default", default_mcp_servers: ["server"] },
+          },
           "secrets.json": { FILE_KEY: "from-file" },
         });
 
@@ -466,6 +513,7 @@ export default async function(config, context) {
 
         await prepareSession({
           config: join(catalog, "air.json"),
+          root: "default",
           target,
           extensionOptions: { "secrets-file": join(catalog, "secrets.json") },
         });
@@ -505,6 +553,7 @@ export default async function(config, context) {
         "air.json": {
           name: "test",
           mcp: ["./mcp.json"],
+          roots: ["./roots.json"],
         },
         "mcp.json": {
           server: {
@@ -513,6 +562,9 @@ export default async function(config, context) {
             env: { TOKEN: "resolved-value" },
           },
         },
+        "roots.json": {
+          default: { name: "default", description: "Default", default_mcp_servers: ["server"] },
+        },
       });
 
       const target = createTemp({});
@@ -520,6 +572,7 @@ export default async function(config, context) {
       await expect(
         prepareSession({
           config: join(catalog, "air.json"),
+          root: "default",
           target,
         })
       ).resolves.toBeDefined();
@@ -530,6 +583,7 @@ export default async function(config, context) {
         "air.json": {
           name: "test",
           mcp: ["./mcp.json"],
+          roots: ["./roots.json"],
         },
         "mcp.json": {
           server: {
@@ -538,6 +592,9 @@ export default async function(config, context) {
             env: { TOKEN: "${MISSING_SECRET}" },
           },
         },
+        "roots.json": {
+          default: { name: "default", description: "Default", default_mcp_servers: ["server"] },
+        },
       });
 
       const target = createTemp({});
@@ -545,6 +602,7 @@ export default async function(config, context) {
       await expect(
         prepareSession({
           config: join(catalog, "air.json"),
+          root: "default",
           target,
         })
       ).rejects.toThrow("Unresolved variable");
@@ -555,6 +613,7 @@ export default async function(config, context) {
         "air.json": {
           name: "test",
           mcp: ["./mcp.json"],
+          roots: ["./roots.json"],
         },
         "mcp.json": {
           server: {
@@ -563,6 +622,9 @@ export default async function(config, context) {
             env: { A: "${MISSING_A}", B: "${MISSING_B}" },
           },
         },
+        "roots.json": {
+          default: { name: "default", description: "Default", default_mcp_servers: ["server"] },
+        },
       });
 
       const target = createTemp({});
@@ -570,6 +632,7 @@ export default async function(config, context) {
       await expect(
         prepareSession({
           config: join(catalog, "air.json"),
+          root: "default",
           target,
         })
       ).rejects.toThrow(/\$\{MISSING_A\}.*\$\{MISSING_B\}/);
@@ -580,6 +643,7 @@ export default async function(config, context) {
         "air.json": {
           name: "test",
           mcp: ["./mcp.json"],
+          roots: ["./roots.json"],
         },
         "mcp.json": {
           server: {
@@ -590,6 +654,9 @@ export default async function(config, context) {
             },
           },
         },
+        "roots.json": {
+          default: { name: "default", description: "Default", default_mcp_servers: ["server"] },
+        },
       });
 
       const target = createTemp({});
@@ -597,6 +664,7 @@ export default async function(config, context) {
       await expect(
         prepareSession({
           config: join(catalog, "air.json"),
+          root: "default",
           target,
         })
       ).rejects.toThrow("NESTED_SECRET");
@@ -607,6 +675,7 @@ export default async function(config, context) {
         "air.json": {
           name: "test",
           mcp: ["./mcp.json"],
+          roots: ["./roots.json"],
         },
         "mcp.json": {
           server: {
@@ -615,6 +684,9 @@ export default async function(config, context) {
             args: ["--token", "${ARRAY_SECRET}"],
           },
         },
+        "roots.json": {
+          default: { name: "default", description: "Default", default_mcp_servers: ["server"] },
+        },
       });
 
       const target = createTemp({});
@@ -622,6 +694,7 @@ export default async function(config, context) {
       await expect(
         prepareSession({
           config: join(catalog, "air.json"),
+          root: "default",
           target,
         })
       ).rejects.toThrow("ARRAY_SECRET");
@@ -632,6 +705,7 @@ export default async function(config, context) {
         "air.json": {
           name: "test",
           mcp: ["./mcp.json"],
+          roots: ["./roots.json"],
         },
         "mcp.json": {
           server: {
@@ -640,6 +714,9 @@ export default async function(config, context) {
             env: { TOKEN: "${UNRESOLVED}" },
           },
         },
+        "roots.json": {
+          default: { name: "default", description: "Default", default_mcp_servers: ["server"] },
+        },
       });
 
       const target = createTemp({});
@@ -647,6 +724,7 @@ export default async function(config, context) {
       await expect(
         prepareSession({
           config: join(catalog, "air.json"),
+          root: "default",
           target,
           skipValidation: true,
         })
@@ -663,6 +741,7 @@ export default async function(config, context) {
             name: "test",
             extensions: ["@pulsemcp/air-secrets-env"],
             mcp: ["./mcp.json"],
+            roots: ["./roots.json"],
           },
           "mcp.json": {
             server: {
@@ -670,6 +749,9 @@ export default async function(config, context) {
               command: "npx",
               env: { RESOLVED: "${SDK_TEST_VALIDATED}", MISSING: "${NOT_SET_VAR_12345}" },
             },
+          },
+          "roots.json": {
+            default: { name: "default", description: "Default", default_mcp_servers: ["server"] },
           },
         });
 
@@ -679,6 +761,7 @@ export default async function(config, context) {
         // but SDK_TEST_VALIDATED should have been resolved by the transform
         const err = await prepareSession({
           config: join(catalog, "air.json"),
+          root: "default",
           target,
         }).catch((e: Error) => e);
 

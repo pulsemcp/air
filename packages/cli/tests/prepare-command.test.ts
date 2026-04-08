@@ -66,6 +66,7 @@ describe("prepare command", () => {
       "air.json": {
         name: "test",
         mcp: ["./mcp.json"],
+        roots: ["./roots.json"],
       },
       "mcp.json": {
         github: {
@@ -75,12 +76,15 @@ describe("prepare command", () => {
           env: { TOKEN: "abc" },
         },
       },
+      "roots.json": {
+        default: { name: "default", description: "Default", default_mcp_servers: ["github"] },
+      },
     });
 
     const target = createTemp({});
 
     const result = tryRun(
-      `prepare --config ${join(catalog, "air.json")} --target ${target}`
+      `prepare --config ${join(catalog, "air.json")} --root default --target ${target}`
     );
     expect(result.exitCode).toBe(0);
 
@@ -103,6 +107,7 @@ describe("prepare command", () => {
       "air.json": {
         name: "test",
         skills: ["./skills.json"],
+        roots: ["./roots.json"],
       },
       "skills.json": {
         "my-skill": {
@@ -112,12 +117,15 @@ describe("prepare command", () => {
         },
       },
       "skills/my-skill/SKILL.md": "# My Skill\nDo the thing.",
+      "roots.json": {
+        default: { name: "default", description: "Default", default_skills: ["my-skill"] },
+      },
     });
 
     const target = createTemp({});
 
     const result = tryRun(
-      `prepare --config ${join(catalog, "air.json")} --target ${target}`
+      `prepare --config ${join(catalog, "air.json")} --root default --target ${target}`
     );
     expect(result.exitCode).toBe(0);
 
@@ -137,6 +145,7 @@ describe("prepare command", () => {
       "air.json": {
         name: "test",
         skills: ["./skills.json"],
+        roots: ["./roots.json"],
       },
       "skills.json": {
         "existing-skill": {
@@ -146,6 +155,9 @@ describe("prepare command", () => {
         },
       },
       "skills/existing-skill/SKILL.md": "# Catalog Version",
+      "roots.json": {
+        default: { name: "default", description: "Default", default_skills: ["existing-skill"] },
+      },
     });
 
     const target = createTemp({
@@ -153,7 +165,7 @@ describe("prepare command", () => {
     });
 
     const result = tryRun(
-      `prepare --config ${join(catalog, "air.json")} --target ${target}`
+      `prepare --config ${join(catalog, "air.json")} --root default --target ${target}`
     );
     expect(result.exitCode).toBe(0);
 
@@ -300,6 +312,7 @@ describe("prepare command", () => {
         name: "test",
         skills: ["./skills.json"],
         references: ["./references.json"],
+        roots: ["./roots.json"],
       },
       "skills.json": {
         deploy: {
@@ -318,12 +331,15 @@ describe("prepare command", () => {
       },
       "skills/deploy/SKILL.md": "# Deploy",
       "references/GIT_WORKFLOW.md": "# Git Workflow\nBranch naming...",
+      "roots.json": {
+        default: { name: "default", description: "Default", default_skills: ["deploy"] },
+      },
     });
 
     const target = createTemp({});
 
     const result = tryRun(
-      `prepare --config ${join(catalog, "air.json")} --target ${target}`
+      `prepare --config ${join(catalog, "air.json")} --root default --target ${target}`
     );
     expect(result.exitCode).toBe(0);
 
@@ -511,6 +527,7 @@ describe("prepare command", () => {
         name: "test",
         mcp: ["./mcp.json"],
         skills: ["./skills.json"],
+        roots: ["./roots.json"],
       },
       "mcp.json": {
         github: { type: "stdio", command: "npx", args: ["gh"] },
@@ -523,16 +540,19 @@ describe("prepare command", () => {
         },
       },
       "skills/my-skill/SKILL.md": "# Skill",
+      "roots.json": {
+        default: { name: "default", description: "Default", default_mcp_servers: ["github"], default_skills: ["my-skill"] },
+      },
     });
 
     const target = createTemp({});
 
     // Run prepare twice
     tryRun(
-      `prepare --config ${join(catalog, "air.json")} --target ${target}`
+      `prepare --config ${join(catalog, "air.json")} --root default --target ${target}`
     );
     const result = tryRun(
-      `prepare --config ${join(catalog, "air.json")} --target ${target}`
+      `prepare --config ${join(catalog, "air.json")} --root default --target ${target}`
     );
     expect(result.exitCode).toBe(0);
 
