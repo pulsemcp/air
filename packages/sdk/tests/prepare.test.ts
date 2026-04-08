@@ -163,6 +163,45 @@ describe("prepareSession", () => {
     expect(mcpJson.mcpServers.slack).toBeUndefined();
   });
 
+  it("defaults to empty artifacts when no root is provided (opt-in)", async () => {
+    const catalog = createTemp({
+      "air.json": {
+        name: "test",
+        mcp: ["./mcp.json"],
+        skills: ["./skills.json"],
+      },
+      "mcp.json": {
+        github: { type: "stdio", command: "npx", args: ["github-mcp"] },
+        slack: { type: "stdio", command: "npx", args: ["slack-mcp"] },
+      },
+      "skills.json": {
+        "skill-a": {
+          id: "skill-a",
+          description: "Skill A",
+          path: "skills/skill-a",
+        },
+      },
+      "skills/skill-a/SKILL.md": "# Skill A",
+    });
+
+    const target = createTemp({});
+
+    const result = await prepareSession({
+      config: join(catalog, "air.json"),
+      target,
+    });
+
+    // .mcp.json should have empty mcpServers (no root = no defaults)
+    const mcpJson = JSON.parse(
+      readFileSync(join(target, ".mcp.json"), "utf-8")
+    );
+    expect(mcpJson.mcpServers).toEqual({});
+
+    // No skills should be injected
+    expect(result.skillPaths).toEqual([]);
+    expect(existsSync(join(target, ".claude", "skills"))).toBe(false);
+  });
+
   it("supports skill overrides", async () => {
     const catalog = createTemp({
       "air.json": {
