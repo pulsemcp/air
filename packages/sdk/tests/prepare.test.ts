@@ -198,7 +198,7 @@ describe("prepareSession", () => {
     expect(mcpJson.mcpServers).toEqual({});
 
     // No skills should be injected
-    expect(result.skillPaths).toEqual([]);
+    expect(result.session.skillPaths).toEqual([]);
     expect(existsSync(join(target, ".claude", "skills"))).toBe(false);
   });
 
