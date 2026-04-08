@@ -82,7 +82,7 @@ When using `air prepare` without `--root`, AIR auto-detects the root by matching
 ```bash
 # If you're in a checkout of https://github.com/acme/web-app.git
 cd ~/code/web-app
-air prepare
+air prepare claude
 # stderr: Auto-detected root: web-app
 ```
 
@@ -139,7 +139,7 @@ By default, `air prepare` merges subagent roots' skills and MCP servers into the
 To opt out of this merging (e.g., when your orchestrator manages subagent composition externally):
 
 ```bash
-air prepare --no-subagent-merge
+air prepare claude --no-subagent-merge
 ```
 
 ## Non-invocable roots

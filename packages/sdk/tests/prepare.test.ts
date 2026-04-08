@@ -70,7 +70,7 @@ describe("prepareSession", () => {
 
     const result = await prepareSession({
       config: join(catalog, "air.json"),
-      root: "default",
+      adapter: "claude",
       target,
     });
 
@@ -113,7 +113,7 @@ describe("prepareSession", () => {
 
     const result = await prepareSession({
       config: join(catalog, "air.json"),
-      root: "default",
+      adapter: "claude",
       target,
     });
 
@@ -151,6 +151,7 @@ describe("prepareSession", () => {
 
     await prepareSession({
       config: join(catalog, "air.json"),
+      adapter: "claude",
       root: "web-app",
       target,
     });
@@ -242,6 +243,7 @@ describe("prepareSession", () => {
 
     await prepareSession({
       config: join(catalog, "air.json"),
+      adapter: "claude",
       root: "myroot",
       skills: ["skill-c"],
       target,
@@ -279,6 +281,7 @@ describe("prepareSession", () => {
 
     await prepareSession({
       config: join(catalog, "air.json"),
+      adapter: "claude",
       root: "myroot",
       mcpServers: ["slack"],
       target,
@@ -306,7 +309,7 @@ describe("prepareSession", () => {
 
   it("throws with missing air.json", async () => {
     await expect(
-      prepareSession({ config: "/nonexistent/air.json" })
+      prepareSession({ config: "/nonexistent/air.json", adapter: "claude" })
     ).rejects.toThrow();
   });
 
@@ -322,6 +325,7 @@ describe("prepareSession", () => {
     await expect(
       prepareSession({
         config: join(catalog, "air.json"),
+        adapter: "claude",
         root: "nonexistent",
       })
     ).rejects.toThrow("not found");
@@ -359,7 +363,7 @@ export default async function(config, context) {
 
       await prepareSession({
         config: join(catalog, "air.json"),
-        root: "default",
+        adapter: "claude",
         target,
       });
 
@@ -404,7 +408,7 @@ export default async function(config, context) {
 
       await prepareSession({
         config: join(catalog, "air.json"),
-        root: "default",
+        adapter: "claude",
         target,
       });
 
@@ -431,7 +435,7 @@ export default async function(config, context) {
 
       await prepareSession({
         config: join(catalog, "air.json"),
-        root: "default",
+        adapter: "claude",
         target,
       });
 
@@ -468,7 +472,7 @@ export default async function(config, context) {
 
         await prepareSession({
           config: join(catalog, "air.json"),
-          root: "default",
+          adapter: "claude",
           target,
         });
 
@@ -508,7 +512,7 @@ export default async function(config, context) {
 
       await prepareSession({
         config: join(catalog, "air.json"),
-        root: "default",
+        adapter: "claude",
         target,
         extensionOptions: { "secrets-file": join(catalog, "secrets.json") },
       });
@@ -552,7 +556,7 @@ export default async function(config, context) {
 
         await prepareSession({
           config: join(catalog, "air.json"),
-          root: "default",
+          adapter: "claude",
           target,
           extensionOptions: { "secrets-file": join(catalog, "secrets.json") },
         });
@@ -580,6 +584,7 @@ export default async function(config, context) {
       await expect(
         prepareSession({
           config: join(catalog, "air.json"),
+          adapter: "claude",
           target: createTemp({}),
         })
       ).rejects.toThrow("Failed to load extension");
@@ -611,7 +616,7 @@ export default async function(config, context) {
       await expect(
         prepareSession({
           config: join(catalog, "air.json"),
-          root: "default",
+          adapter: "claude",
           target,
         })
       ).resolves.toBeDefined();
@@ -641,7 +646,7 @@ export default async function(config, context) {
       await expect(
         prepareSession({
           config: join(catalog, "air.json"),
-          root: "default",
+          adapter: "claude",
           target,
         })
       ).rejects.toThrow("Unresolved variable");
@@ -671,7 +676,7 @@ export default async function(config, context) {
       await expect(
         prepareSession({
           config: join(catalog, "air.json"),
-          root: "default",
+          adapter: "claude",
           target,
         })
       ).rejects.toThrow(/\$\{MISSING_A\}.*\$\{MISSING_B\}/);
@@ -703,7 +708,7 @@ export default async function(config, context) {
       await expect(
         prepareSession({
           config: join(catalog, "air.json"),
-          root: "default",
+          adapter: "claude",
           target,
         })
       ).rejects.toThrow("NESTED_SECRET");
@@ -733,7 +738,7 @@ export default async function(config, context) {
       await expect(
         prepareSession({
           config: join(catalog, "air.json"),
-          root: "default",
+          adapter: "claude",
           target,
         })
       ).rejects.toThrow("ARRAY_SECRET");
@@ -763,7 +768,7 @@ export default async function(config, context) {
       await expect(
         prepareSession({
           config: join(catalog, "air.json"),
-          root: "default",
+          adapter: "claude",
           target,
           skipValidation: true,
         })
@@ -800,7 +805,7 @@ export default async function(config, context) {
         // but SDK_TEST_VALIDATED should have been resolved by the transform
         const err = await prepareSession({
           config: join(catalog, "air.json"),
-          root: "default",
+          adapter: "claude",
           target,
         }).catch((e: Error) => e);
 

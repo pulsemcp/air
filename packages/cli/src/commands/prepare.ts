@@ -41,6 +41,7 @@ export function prepareCommand(): Command {
     .description(
       "Prepare a target directory for an agent session (write .mcp.json, inject skills) without starting the agent"
     )
+    .argument("<adapter>", "Agent adapter to use (e.g., claude)")
     .option(
       "--config <path>",
       "Path to air.json (defaults to AIR_CONFIG env or ~/.air/air.json)"
@@ -50,11 +51,6 @@ export function prepareCommand(): Command {
       "--target <dir>",
       "Target directory to prepare (defaults to cwd)",
       process.cwd()
-    )
-    .option(
-      "--adapter <name>",
-      "Agent adapter to use (e.g., claude)",
-      "claude"
     )
     .option(
       "--skills <ids>",
@@ -74,11 +70,10 @@ export function prepareCommand(): Command {
     )
     .allowUnknownOption(true)
     .action(
-      async (options: {
+      async (adapter: string, options: {
         config?: string;
         root?: string;
         target: string;
-        adapter: string;
         skills?: string;
         mcpServers?: string;
         subagentMerge: boolean;
@@ -119,7 +114,7 @@ export function prepareCommand(): Command {
             config: options.config,
             root: options.root,
             target: options.target,
-            adapter: options.adapter,
+            adapter,
             skills: options.skills
               ? options.skills.split(",").map((s) => s.trim())
               : undefined,

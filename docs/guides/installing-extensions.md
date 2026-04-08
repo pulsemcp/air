@@ -84,7 +84,7 @@ Run `air install` when:
 ```bash
 # Typical CI setup
 air install --config /path/to/air.json
-air prepare --config /path/to/air.json --target /workspace
+air prepare claude --config /path/to/air.json --target /workspace
 ```
 
 ## Local extensions
