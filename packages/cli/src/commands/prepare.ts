@@ -128,7 +128,7 @@ export function prepareCommand(): Command {
           });
 
           if (result.rootAutoDetected && result.root) {
-            console.error(`Auto-detected root: ${result.root.name}`);
+            console.error(`Auto-detected root: ${result.root.display_name || result.root.description}`);
           }
 
           // Output structured JSON to stdout for orchestrator consumption

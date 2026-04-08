@@ -72,7 +72,6 @@ describe("startSession", () => {
       },
       "roots.json": {
         "web-app": {
-          name: "web-app",
           description: "Web app",
           default_mcp_servers: ["github"],
         },
@@ -84,7 +83,7 @@ describe("startSession", () => {
       root: "web-app",
     });
 
-    expect(result.root?.name).toBe("web-app");
+    expect(result.root?.description).toBe("Web app");
   });
 
   it("returns empty artifacts when no config exists", async () => {
