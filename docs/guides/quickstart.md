@@ -86,13 +86,32 @@ You should see output like:
 ✓ ~/.air/mcp/mcp.json is valid (schema: mcp)
 ```
 
-## 5. Install the agent adapter
+## 5. Add extensions
 
-AIR needs an adapter to translate its configuration into agent-specific formats. For Claude Code:
+AIR uses extensions for agent adapters and remote providers. Add the ones you need to the `extensions` array in `air.json`:
+
+```json
+{
+  "name": "my-config",
+  "extensions": [
+    "@pulsemcp/air-adapter-claude",
+    "@pulsemcp/air-provider-github"
+  ],
+  "skills": ["./skills/skills.json"],
+  "mcp": ["./mcp/mcp.json"]
+}
+```
+
+- **`@pulsemcp/air-adapter-claude`** — translates AIR config into Claude Code's format (`.mcp.json`, skills)
+- **`@pulsemcp/air-provider-github`** — resolves `github://` URIs so you can share config across repos
+
+Then install them:
 
 ```bash
-npm install -g @pulsemcp/air-adapter-claude
+air install
 ```
+
+This reads the `extensions` array and installs any missing npm packages. See [Installing Extensions](installing-extensions.md) for details.
 
 ## 6. Preview your session
 
