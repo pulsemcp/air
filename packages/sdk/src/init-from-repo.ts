@@ -13,6 +13,7 @@ import {
   getAllSchemaTypes,
   validateJson,
   type SchemaType,
+  type RootEntry,
 } from "@pulsemcp/air-core";
 import { initConfig } from "./init.js";
 
@@ -348,27 +349,24 @@ export function initFromRepo(
   // Auto-generate roots.json for the current repo
   const artifactIds = extractArtifactIds(discovered, repoRoot);
 
-  const rootEntry: Record<string, unknown> = {
+  const rootEntry: RootEntry = {
     name: configName,
     description: `Agent root for ${repo}.`,
     url: remoteUrl.trim(),
     default_branch: branch,
+    ...(artifactIds.skills?.length && { default_skills: artifactIds.skills }),
+    ...(artifactIds.mcp?.length && { default_mcp_servers: artifactIds.mcp }),
+    ...(artifactIds.plugins?.length && { default_plugins: artifactIds.plugins }),
+    ...(artifactIds.hooks?.length && { default_hooks: artifactIds.hooks }),
   };
-
-  if (artifactIds.skills?.length) {
-    rootEntry.default_skills = artifactIds.skills;
-  }
-  if (artifactIds.mcp?.length) {
-    rootEntry.default_mcp_servers = artifactIds.mcp;
-  }
-  if (artifactIds.hooks?.length) {
-    rootEntry.default_hooks = artifactIds.hooks;
-  }
 
   const rootsDir = resolve(airDir, "roots");
   mkdirSync(rootsDir, { recursive: true });
 
-  const rootsJson = { [configName]: rootEntry };
+  const rootsJson: Record<string, unknown> = {
+    $schema: "https://raw.githubusercontent.com/pulsemcp/air/main/schemas/roots.schema.json",
+    [configName]: rootEntry,
+  };
   const rootsPath = resolve(rootsDir, "roots.json");
   writeFileSync(rootsPath, JSON.stringify(rootsJson, null, 2) + "\n");
 
@@ -439,6 +437,11 @@ export function smartInit(options?: InitFromRepoOptions): SmartInitResult {
       const targetPath = options?.path ?? getDefaultAirJsonPath();
       if (existsSync(targetPath)) {
         unlinkSync(targetPath);
+      }
+      // Clean up auto-generated roots.json from a previous repo-mode init
+      const rootsPath = resolve(dirname(targetPath), "roots", "roots.json");
+      if (existsSync(rootsPath)) {
+        unlinkSync(rootsPath);
       }
     }
 

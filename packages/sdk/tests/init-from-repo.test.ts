@@ -638,6 +638,9 @@ describe("initFromRepo", () => {
     const rootsJson = JSON.parse(
       readFileSync(result.generatedRootsPath, "utf-8")
     );
+    expect(rootsJson.$schema).toBe(
+      "https://raw.githubusercontent.com/pulsemcp/air/main/schemas/roots.schema.json"
+    );
     expect(rootsJson["my-project"]).toBeDefined();
     expect(rootsJson["my-project"].name).toBe("my-project");
     expect(rootsJson["my-project"].description).toBe(
@@ -669,6 +672,12 @@ describe("initFromRepo", () => {
           github: { type: "stdio", command: "npx", args: ["mcp"] },
           postgres: { type: "stdio", command: "pg" },
         },
+        "plugins/plugins.json": {
+          "code-quality": {
+            id: "code-quality",
+            description: "Code quality plugin",
+          },
+        },
         "hooks/hooks.json": {
           "lint-check": {
             id: "lint-check",
@@ -694,6 +703,7 @@ describe("initFromRepo", () => {
 
     expect(root.default_skills).toEqual(["deploy-staging", "review-pr"]);
     expect(root.default_mcp_servers).toEqual(["github", "postgres"]);
+    expect(root.default_plugins).toEqual(["code-quality"]);
     expect(root.default_hooks).toEqual(["lint-check"]);
   });
 
@@ -722,6 +732,7 @@ describe("initFromRepo", () => {
 
     expect(root.default_skills).toEqual(["s1"]);
     expect(root.default_mcp_servers).toBeUndefined();
+    expect(root.default_plugins).toBeUndefined();
     expect(root.default_hooks).toBeUndefined();
   });
 });
@@ -800,5 +811,23 @@ describe("smartInit", () => {
     expect(result.mode).toBe("blank");
     const content = JSON.parse(readFileSync(airJsonPath, "utf-8"));
     expect(content.name).toBe("my-config");
+  });
+
+  it("cleans up stale roots.json when falling back to blank with --force", () => {
+    const dir = makeTempDir();
+    const airJsonPath = resolve(dir, "air.json");
+
+    // Simulate a previous repo-mode init that created roots.json
+    writeFileSync(airJsonPath, '{"name":"old"}');
+    const rootsDir = resolve(dir, "roots");
+    mkdirSync(rootsDir, { recursive: true });
+    const rootsPath = resolve(rootsDir, "roots.json");
+    writeFileSync(rootsPath, '{"old-root":{"name":"old-root","description":"stale"}}');
+
+    const result = smartInit({ cwd: dir, path: airJsonPath, force: true });
+
+    expect(result.mode).toBe("blank");
+    // Stale roots.json should be cleaned up
+    expect(existsSync(rootsPath)).toBe(false);
   });
 });
