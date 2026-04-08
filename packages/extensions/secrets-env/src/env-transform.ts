@@ -1,13 +1,14 @@
 import type { McpConfig, TransformContext } from "@pulsemcp/air-core";
 
-const ENV_VAR_PATTERN = /\$\{([^}]+)\}/g;
+const ENV_VAR_PATTERN = /\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-(.*?))?\}/g;
 
 /**
- * Transform that resolves ${VAR} patterns from process.env.
+ * Transform that resolves ${VAR} and ${VAR:-default} patterns from process.env.
  *
  * Recursively walks all string values in the MCP config and replaces
  * ${VAR} patterns with the corresponding environment variable value.
- * Unresolvable patterns (not in process.env) are left as-is.
+ * Supports bash-style defaults: ${VAR:-fallback} uses fallback when VAR is unset.
+ * For plain ${VAR}, unresolvable patterns are left as-is.
  */
 export async function envTransform(
   config: McpConfig,
@@ -31,9 +32,11 @@ function resolveObject(
 
 function resolveValue(value: unknown): unknown {
   if (typeof value === "string") {
-    return value.replace(ENV_VAR_PATTERN, (match, varName) => {
+    return value.replace(ENV_VAR_PATTERN, (match, varName, defaultValue) => {
       const envVal = process.env[varName];
-      return envVal !== undefined ? envVal : match;
+      if (envVal !== undefined) return envVal;
+      if (defaultValue !== undefined) return defaultValue;
+      return match;
     });
   }
   if (Array.isArray(value)) {
