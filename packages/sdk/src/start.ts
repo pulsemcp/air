@@ -1,5 +1,7 @@
+import { resolve, dirname } from "path";
 import {
   getAirJsonPath,
+  loadAirConfig,
   resolveArtifacts,
   emptyArtifacts,
   type ResolvedArtifacts,
@@ -8,6 +10,7 @@ import {
   type StartCommand,
 } from "@pulsemcp/air-core";
 import { findAdapter, listAvailableAdapters } from "./adapter-registry.js";
+import { loadExtensions } from "./extension-loader.js";
 
 export interface StartSessionOptions {
   /** Root to activate by name. */
@@ -59,9 +62,19 @@ export async function startSession(
   }
 
   const airJsonPath = options?.config || getAirJsonPath();
-  const artifacts = airJsonPath
-    ? await resolveArtifacts(airJsonPath)
-    : emptyArtifacts();
+  let artifacts: ResolvedArtifacts;
+
+  if (airJsonPath) {
+    const airConfig = loadAirConfig(airJsonPath);
+    const airJsonDir = dirname(resolve(airJsonPath));
+    const loaded = await loadExtensions(airConfig.extensions || [], airJsonDir);
+    const providers = loaded.providers
+      .map((ext) => ext.provider!)
+      .filter(Boolean);
+    artifacts = await resolveArtifacts(airJsonPath, { providers });
+  } else {
+    artifacts = emptyArtifacts();
+  }
 
   let root: RootEntry | undefined;
   if (options?.root) {
