@@ -67,11 +67,13 @@ export type { ValidateFileOptions, ValidateFileResult } from "./validate.js";
 export { initConfig } from "./init.js";
 export type { InitConfigOptions, InitConfigResult } from "./init.js";
 
-export { initFromRepo } from "./init-from-repo.js";
+export { initFromRepo, smartInit, InitFromRepoError } from "./init-from-repo.js";
 export type {
   InitFromRepoOptions,
   InitFromRepoResult,
+  InitFromRepoErrorCode,
   DiscoveredArtifact,
+  SmartInitResult,
 } from "./init-from-repo.js";
 
 export { listArtifacts, VALID_ARTIFACT_TYPES } from "./list.js";

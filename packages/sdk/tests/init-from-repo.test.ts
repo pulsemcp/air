@@ -9,8 +9,10 @@ import {
   writeFileSync,
 } from "fs";
 import { tmpdir } from "os";
-import { initFromRepo } from "../src/init-from-repo.js";
 import {
+  initFromRepo,
+  smartInit,
+  InitFromRepoError,
   parseGitHubRemote,
   detectDefaultBranch,
   discoverArtifacts,
@@ -118,6 +120,44 @@ describe("parseGitHubRemote", () => {
 describe("detectDefaultBranch", () => {
   it("falls back to main when no remote HEAD is set", () => {
     const dir = createGitRepo("https://github.com/acme/repo.git");
+    expect(detectDefaultBranch(dir)).toBe("main");
+  });
+
+  it("returns branch from symbolic-ref when remote HEAD is set", () => {
+    const dir = createGitRepo("https://github.com/acme/repo.git");
+    // Set up a fake remote HEAD pointing to main
+    execSync(
+      "git symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main",
+      { cwd: dir, stdio: "pipe" }
+    );
+    // Create the ref so it resolves
+    execSync("git update-ref refs/remotes/origin/main HEAD", {
+      cwd: dir,
+      stdio: "pipe",
+    });
+    expect(detectDefaultBranch(dir)).toBe("main");
+  });
+
+  it("detects master via probe when symbolic-ref fails", () => {
+    const dir = createGitRepo("https://github.com/acme/repo.git");
+    // Create only an origin/master ref (no origin/main)
+    execSync("git update-ref refs/remotes/origin/master HEAD", {
+      cwd: dir,
+      stdio: "pipe",
+    });
+    expect(detectDefaultBranch(dir)).toBe("master");
+  });
+
+  it("prefers main over master when both exist", () => {
+    const dir = createGitRepo("https://github.com/acme/repo.git");
+    execSync("git update-ref refs/remotes/origin/main HEAD", {
+      cwd: dir,
+      stdio: "pipe",
+    });
+    execSync("git update-ref refs/remotes/origin/master HEAD", {
+      cwd: dir,
+      stdio: "pipe",
+    });
     expect(detectDefaultBranch(dir)).toBe("main");
   });
 });
@@ -230,6 +270,22 @@ describe("discoverArtifacts", () => {
     expect(artifacts[0].repoPath).toBe("skills/skills.json");
   });
 
+  it("skips files inside node_modules", () => {
+    const dir = createGitRepo("https://github.com/acme/config.git", {
+      "node_modules/some-pkg/skills.json": {
+        s: { id: "s", description: "d", path: "p" },
+      },
+      // This one should be discovered
+      "skills/skills.json": {
+        s: { id: "s", description: "d", path: "p" },
+      },
+    });
+
+    const artifacts = discoverArtifacts(dir, "acme/config", "main");
+    expect(artifacts).toHaveLength(1);
+    expect(artifacts[0].repoPath).toBe("skills/skills.json");
+  });
+
   it("discovers multiple files of the same artifact type", () => {
     const dir = createGitRepo("https://github.com/acme/config.git", {
       "frontend/skills.json": {
@@ -304,7 +360,7 @@ describe("initFromRepo", () => {
     expect(airJson.hooks).toBeUndefined();
   });
 
-  it("throws when air.json already exists without --force", () => {
+  it("throws InitFromRepoError with EXISTS code when air.json already exists", () => {
     const repoDir = createGitRepo(
       "https://github.com/acme/config.git",
       {
@@ -318,9 +374,13 @@ describe("initFromRepo", () => {
     const airJsonPath = resolve(outputDir, "air.json");
     writeFileSync(airJsonPath, "{}");
 
-    expect(() =>
-      initFromRepo({ cwd: repoDir, path: airJsonPath })
-    ).toThrow("already exists");
+    try {
+      initFromRepo({ cwd: repoDir, path: airJsonPath });
+      expect.unreachable("should have thrown");
+    } catch (err) {
+      expect(err).toBeInstanceOf(InitFromRepoError);
+      expect((err as InitFromRepoError).code).toBe("EXISTS");
+    }
   });
 
   it("overwrites existing air.json with --force", () => {
@@ -349,16 +409,20 @@ describe("initFromRepo", () => {
     expect(airJson.skills).toBeDefined();
   });
 
-  it("throws when not in a git repo", () => {
+  it("throws InitFromRepoError with NO_GIT code when not in a git repo", () => {
     const dir = makeTempDir();
     const airJsonPath = resolve(dir, "output", "air.json");
 
-    expect(() =>
-      initFromRepo({ cwd: dir, path: airJsonPath })
-    ).toThrow("Not inside a git repository");
+    try {
+      initFromRepo({ cwd: dir, path: airJsonPath });
+      expect.unreachable("should have thrown");
+    } catch (err) {
+      expect(err).toBeInstanceOf(InitFromRepoError);
+      expect((err as InitFromRepoError).code).toBe("NO_GIT");
+    }
   });
 
-  it("throws when no git remote is configured", () => {
+  it("throws InitFromRepoError with NO_REMOTE code when no git remote", () => {
     const dir = makeTempDir();
     execSync("git init", { cwd: dir, stdio: "pipe" });
     execSync(
@@ -372,12 +436,16 @@ describe("initFromRepo", () => {
     });
 
     const airJsonPath = resolve(makeTempDir(), "air.json");
-    expect(() =>
-      initFromRepo({ cwd: dir, path: airJsonPath })
-    ).toThrow("No git remote");
+    try {
+      initFromRepo({ cwd: dir, path: airJsonPath });
+      expect.unreachable("should have thrown");
+    } catch (err) {
+      expect(err).toBeInstanceOf(InitFromRepoError);
+      expect((err as InitFromRepoError).code).toBe("NO_REMOTE");
+    }
   });
 
-  it("throws when remote is not a GitHub URL", () => {
+  it("throws InitFromRepoError with NO_GITHUB code for non-GitHub remote", () => {
     const dir = createGitRepo("https://gitlab.com/acme/repo.git", {
       "skills/skills.json": {
         s: { id: "s", description: "d", path: "p" },
@@ -385,18 +453,26 @@ describe("initFromRepo", () => {
     });
 
     const airJsonPath = resolve(makeTempDir(), "air.json");
-    expect(() =>
-      initFromRepo({ cwd: dir, path: airJsonPath })
-    ).toThrow("Could not parse GitHub");
+    try {
+      initFromRepo({ cwd: dir, path: airJsonPath });
+      expect.unreachable("should have thrown");
+    } catch (err) {
+      expect(err).toBeInstanceOf(InitFromRepoError);
+      expect((err as InitFromRepoError).code).toBe("NO_GITHUB");
+    }
   });
 
-  it("throws when no artifact files are found", () => {
+  it("throws InitFromRepoError with NO_ARTIFACTS code when no artifacts found", () => {
     const dir = createGitRepo("https://github.com/acme/empty-repo.git");
     const airJsonPath = resolve(makeTempDir(), "air.json");
 
-    expect(() =>
-      initFromRepo({ cwd: dir, path: airJsonPath })
-    ).toThrow("No AIR artifact index files");
+    try {
+      initFromRepo({ cwd: dir, path: airJsonPath });
+      expect.unreachable("should have thrown");
+    } catch (err) {
+      expect(err).toBeInstanceOf(InitFromRepoError);
+      expect((err as InitFromRepoError).code).toBe("NO_ARTIFACTS");
+    }
   });
 
   it("creates parent directories for output path", () => {
@@ -521,5 +597,82 @@ describe("initFromRepo", () => {
     expect(airJson.plugins).toBeDefined();
     expect(airJson.roots).toBeDefined();
     expect(airJson.hooks).toBeDefined();
+  });
+});
+
+describe("smartInit", () => {
+  it("returns repo mode when inside a GitHub repo with artifacts", () => {
+    const repoDir = createGitRepo(
+      "https://github.com/acme/config.git",
+      {
+        "skills/skills.json": {
+          s: { id: "s", description: "d", path: "p" },
+        },
+      }
+    );
+
+    const airJsonPath = resolve(makeTempDir(), "air.json");
+    const result = smartInit({ cwd: repoDir, path: airJsonPath });
+
+    expect(result.mode).toBe("repo");
+    if (result.mode === "repo") {
+      expect(result.repo).toBe("acme/config");
+      expect(result.discovered).toHaveLength(1);
+    }
+  });
+
+  it("falls back to blank mode when not in a git repo", () => {
+    const dir = makeTempDir();
+    const airJsonPath = resolve(dir, "output", "air.json");
+
+    const result = smartInit({ cwd: dir, path: airJsonPath });
+
+    expect(result.mode).toBe("blank");
+    expect(existsSync(airJsonPath)).toBe(true);
+  });
+
+  it("falls back to blank mode when no artifacts found", () => {
+    const dir = createGitRepo("https://github.com/acme/empty.git");
+    const airJsonPath = resolve(makeTempDir(), "air.json");
+
+    const result = smartInit({ cwd: dir, path: airJsonPath });
+
+    expect(result.mode).toBe("blank");
+    expect(existsSync(airJsonPath)).toBe(true);
+  });
+
+  it("throws EXISTS error when config exists without force", () => {
+    const repoDir = createGitRepo(
+      "https://github.com/acme/config.git",
+      {
+        "skills/skills.json": {
+          s: { id: "s", description: "d", path: "p" },
+        },
+      }
+    );
+
+    const outputDir = makeTempDir();
+    const airJsonPath = resolve(outputDir, "air.json");
+    writeFileSync(airJsonPath, "{}");
+
+    try {
+      smartInit({ cwd: repoDir, path: airJsonPath });
+      expect.unreachable("should have thrown");
+    } catch (err) {
+      expect(err).toBeInstanceOf(InitFromRepoError);
+      expect((err as InitFromRepoError).code).toBe("EXISTS");
+    }
+  });
+
+  it("overwrites existing config with --force in blank fallback", () => {
+    const dir = makeTempDir();
+    const airJsonPath = resolve(dir, "air.json");
+    writeFileSync(airJsonPath, '{"name":"old"}');
+
+    const result = smartInit({ cwd: dir, path: airJsonPath, force: true });
+
+    expect(result.mode).toBe("blank");
+    const content = JSON.parse(readFileSync(airJsonPath, "utf-8"));
+    expect(content.name).toBe("my-config");
   });
 });

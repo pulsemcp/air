@@ -1,5 +1,11 @@
-import { execFileSync, execSync } from "child_process";
-import { readFileSync, existsSync, writeFileSync, mkdirSync } from "fs";
+import { execFileSync } from "child_process";
+import {
+  readFileSync,
+  existsSync,
+  writeFileSync,
+  mkdirSync,
+  unlinkSync,
+} from "fs";
 import { resolve, dirname } from "path";
 import {
   getDefaultAirJsonPath,
@@ -8,11 +14,34 @@ import {
   validateJson,
   type SchemaType,
 } from "@pulsemcp/air-core";
+import { initConfig } from "./init.js";
 
 /** Artifact types that map to air.json properties (all schema types except "air"). */
 const ARTIFACT_TYPES = getAllSchemaTypes().filter(
   (t): t is Exclude<SchemaType, "air"> => t !== "air"
 );
+
+/** Error codes for `initFromRepo` failures. */
+export type InitFromRepoErrorCode =
+  | "EXISTS"
+  | "NO_GIT"
+  | "NO_REMOTE"
+  | "NO_GITHUB"
+  | "NO_ARTIFACTS";
+
+/**
+ * Typed error thrown by `initFromRepo` for classifiable failure conditions.
+ * Consumers can switch on `code` instead of matching error messages.
+ */
+export class InitFromRepoError extends Error {
+  constructor(
+    message: string,
+    public readonly code: InitFromRepoErrorCode
+  ) {
+    super(message);
+    this.name = "InitFromRepoError";
+  }
+}
 
 export interface InitFromRepoOptions {
   /** Working directory (must be inside a git repo). Defaults to process.cwd(). */
@@ -51,7 +80,7 @@ export interface InitFromRepoResult {
  * Get the git repository root directory.
  */
 function getRepoRoot(cwd: string): string {
-  return execSync("git rev-parse --show-toplevel", {
+  return execFileSync("git", ["rev-parse", "--show-toplevel"], {
     cwd,
     stdio: ["pipe", "pipe", "pipe"],
     encoding: "utf-8",
@@ -105,11 +134,15 @@ function getRemoteUrl(cwd: string, remote = "origin"): string {
 export function detectDefaultBranch(cwd: string): string {
   // Try symbolic-ref (works when remote HEAD is set)
   try {
-    const ref = execSync("git symbolic-ref refs/remotes/origin/HEAD", {
-      cwd,
-      stdio: ["pipe", "pipe", "pipe"],
-      encoding: "utf-8",
-    }).trim();
+    const ref = execFileSync(
+      "git",
+      ["symbolic-ref", "refs/remotes/origin/HEAD"],
+      {
+        cwd,
+        stdio: ["pipe", "pipe", "pipe"],
+        encoding: "utf-8",
+      }
+    ).trim();
     const branch = ref.replace(/^refs\/remotes\/origin\//, "");
     if (branch) return branch;
   } catch {
@@ -119,7 +152,7 @@ export function detectDefaultBranch(cwd: string): string {
   // Probe common branch names
   for (const branch of ["main", "master"]) {
     try {
-      execSync(`git rev-parse --verify origin/${branch}`, {
+      execFileSync("git", ["rev-parse", "--verify", `origin/${branch}`], {
         cwd,
         stdio: ["pipe", "pipe", "pipe"],
         encoding: "utf-8",
@@ -147,7 +180,7 @@ export function discoverArtifacts(
 ): DiscoveredArtifact[] {
   let output: string;
   try {
-    output = execSync("git ls-files -- '*.json'", {
+    output = execFileSync("git", ["ls-files", "--", "*.json"], {
       cwd: repoRoot,
       stdio: ["pipe", "pipe", "pipe"],
       encoding: "utf-8",
@@ -160,7 +193,6 @@ export function discoverArtifacts(
 
   const jsonFiles = output.split("\n").filter(Boolean);
   const discovered: DiscoveredArtifact[] = [];
-  const [owner, repoName] = repo.split("/");
 
   for (const file of jsonFiles) {
     // Skip files in node_modules or hidden directories (root or nested)
@@ -186,7 +218,7 @@ export function discoverArtifacts(
     discovered.push({
       type: schemaType,
       repoPath: file,
-      uri: `github://${owner}/${repoName}@${branch}/${file}`,
+      uri: `github://${repo}@${branch}/${file}`,
     });
   }
 
@@ -214,7 +246,10 @@ export function initFromRepo(
   // Check for existing config
   const overwritten = existsSync(airJsonPath);
   if (overwritten && !force) {
-    throw new Error(`${airJsonPath} already exists.`);
+    throw new InitFromRepoError(
+      `${airJsonPath} already exists.`,
+      "EXISTS"
+    );
   }
 
   // Get repo root
@@ -222,9 +257,10 @@ export function initFromRepo(
   try {
     repoRoot = getRepoRoot(cwd);
   } catch {
-    throw new Error(
+    throw new InitFromRepoError(
       "Not inside a git repository. Run this command from within a git repo " +
-        "that contains AIR artifact index files."
+        "that contains AIR artifact index files.",
+      "NO_GIT"
     );
   }
 
@@ -233,20 +269,31 @@ export function initFromRepo(
   try {
     remoteUrl = getRemoteUrl(cwd);
   } catch {
-    throw new Error(
+    throw new InitFromRepoError(
       "No git remote named 'origin' found. " +
-        "Add a GitHub remote with: git remote add origin <url>"
+        "Add a GitHub remote with: git remote add origin <url>",
+      "NO_REMOTE"
     );
   }
 
-  const repo = parseGitHubRemote(remoteUrl);
+  let repo: string;
+  try {
+    repo = parseGitHubRemote(remoteUrl);
+  } catch (err) {
+    throw new InitFromRepoError(
+      err instanceof Error ? err.message : String(err),
+      "NO_GITHUB"
+    );
+  }
+
   const branch = detectDefaultBranch(cwd);
   const discovered = discoverArtifacts(repoRoot, repo, branch);
 
   if (discovered.length === 0) {
-    throw new Error(
+    throw new InitFromRepoError(
       "No AIR artifact index files found in this repository.\n" +
-        "Expected files like skills.json, mcp.json, references.json, etc."
+        "Expected files like skills.json, mcp.json, references.json, etc.",
+      "NO_ARTIFACTS"
     );
   }
 
@@ -287,4 +334,45 @@ export function initFromRepo(
     discovered,
     overwritten,
   };
+}
+
+/** Result from `smartInit` — discriminated by `mode`. */
+export type SmartInitResult =
+  | ({ mode: "repo" } & InitFromRepoResult)
+  | {
+      mode: "blank";
+      airJsonPath: string;
+      airDir: string;
+    };
+
+/**
+ * High-level init that tries repo-based discovery first and falls back to
+ * blank scaffolding when no git context or artifacts are available.
+ *
+ * @throws InitFromRepoError with code "EXISTS" if config exists and force is false.
+ * @throws Error for unexpected failures.
+ */
+export function smartInit(options?: InitFromRepoOptions): SmartInitResult {
+  const force = options?.force ?? false;
+
+  try {
+    const result = initFromRepo(options);
+    return { mode: "repo", ...result };
+  } catch (err) {
+    if (!(err instanceof InitFromRepoError)) throw err;
+
+    // Config already exists — don't silently fall back
+    if (err.code === "EXISTS") throw err;
+
+    // Fallback conditions: no git, no remote, non-GitHub remote, no artifacts
+    if (force) {
+      const targetPath = options?.path ?? getDefaultAirJsonPath();
+      if (existsSync(targetPath)) {
+        unlinkSync(targetPath);
+      }
+    }
+
+    const result = initConfig({ path: options?.path });
+    return { mode: "blank", ...result };
+  }
 }
