@@ -41,7 +41,6 @@ export function exampleSkill(
   overrides: Record<string, unknown> = {}
 ) {
   return {
-    id,
     title: `${id} Skill`,
     description: `Description for ${id}`,
     path: `skills/${id}`,
@@ -81,7 +80,6 @@ export function examplePlugin(
   overrides: Record<string, unknown> = {}
 ) {
   return {
-    id,
     title: `${id} Plugin`,
     description: `Description for ${id}`,
     ...overrides,
@@ -93,7 +91,6 @@ export function exampleRoot(
   overrides: Record<string, unknown> = {}
 ) {
   return {
-    name,
     display_name: `${name} Root`,
     description: `Description for ${name}`,
     url: `https://github.com/test/${name}.git`,
@@ -110,7 +107,6 @@ export function exampleHook(
   overrides: Record<string, unknown> = {}
 ) {
   return {
-    id,
     title: `${id} Hook`,
     description: `Description for ${id}`,
     path: `hooks/${id}`,
@@ -123,10 +119,9 @@ export function exampleReference(
   overrides: Record<string, unknown> = {}
 ) {
   return {
-    id,
     title: `${id} Reference`,
     description: `Description for ${id}`,
-    file: `references/${id}.md`,
+    path: `references/${id}.md`,
     ...overrides,
   };
 }

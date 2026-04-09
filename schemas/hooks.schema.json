@@ -22,12 +22,6 @@
       "type": "object",
       "description": "A hook that runs a command in response to an agent lifecycle event. The hook's runtime definition (event, command, args, etc.) lives in a HOOK.json file within the directory referenced by path.",
       "properties": {
-        "id": {
-          "type": "string",
-          "minLength": 1,
-          "pattern": "^[a-zA-Z0-9_-]+$",
-          "description": "Unique identifier for this hook. Must match the key in the parent object."
-        },
         "title": {
           "type": "string",
           "minLength": 1,
@@ -52,7 +46,7 @@
           "description": "IDs of reference documents this hook depends on."
         }
       },
-      "required": ["id", "description", "path"],
+      "required": ["description", "path"],
       "additionalProperties": true
     }
   }

@@ -19,7 +19,6 @@ Plugins are registered in `plugins.json`. Each entry declares which AIR artifact
 ```json
 {
   "code-quality": {
-    "id": "code-quality",
     "title": "Code Quality Suite",
     "description": "Linting, formatting, and static analysis tools bundled with coding standards skills",
     "version": "1.2.0",
@@ -46,20 +45,17 @@ Plugins can compose other plugins using the `plugins` array. This allows buildin
 ```json
 {
   "code-quality": {
-    "id": "code-quality",
     "description": "Linting and formatting tools",
     "skills": ["lint-fix", "format-check"],
     "mcp_servers": ["eslint-server"],
     "hooks": ["lint-pre-commit"]
   },
   "database-tools": {
-    "id": "database-tools",
     "description": "Database management tools",
     "skills": ["db-migrate", "db-seed"],
     "mcp_servers": ["postgres-server"]
   },
   "full-stack-dev": {
-    "id": "full-stack-dev",
     "description": "Everything for full-stack development",
     "plugins": ["code-quality", "database-tools"],
     "skills": ["deploy"],
@@ -85,7 +81,6 @@ After resolution, `full-stack-dev` expands to:
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `id` | Yes | Unique identifier. Must match the key. |
 | `title` | No | Human-readable display name. |
 | `description` | Yes | What this plugin provides. |
 | `version` | No | Semantic version (e.g., `"1.2.0"`). |
@@ -102,7 +97,7 @@ After resolution, `full-stack-dev` expands to:
 
 ## Translation Layers
 
-AIR plugins are agent-agnostic. At session start, they're translated to agent-specific formats via adapter extensions. The adapter receives the plugin metadata (`id`, `description`, `version`) and the resolved artifact references, then determines how to activate them in the target agent.
+AIR plugins are agent-agnostic. At session start, they're translated to agent-specific formats via adapter extensions. The adapter receives the plugin metadata (`description`, `version`) and the resolved artifact references, then determines how to activate them in the target agent.
 
 ### Claude Code
 
@@ -137,7 +132,7 @@ You can mix both in the same `air.json`. A common pattern is to start with plugi
 
 AIR's plugin model diverges from the emerging plugin standards in deliberate ways. This section tracks those deviations to inform potential alignment with or contributions back to those standards.
 
-**Areas of alignment**: AIR shares the same core metadata model as both standards — `name`/`id`, `version`, `description`, `author`, `homepage`, `repository`, `license`, `keywords` are nearly identical across all three. Skills (SKILL.md), hooks, and MCP server configs are conceptually equivalent. This shared foundation suggests convergence is feasible.
+**Areas of alignment**: AIR shares the same core metadata model as both standards — `description`, `version`, `author`, `homepage`, `repository`, `license`, `keywords` are nearly identical across all three. (AIR uses the JSON object key as the identifier rather than an explicit `id` field.) Skills (SKILL.md), hooks, and MCP server configs are conceptually equivalent. This shared foundation suggests convergence is feasible.
 
 ### Open Plugins
 

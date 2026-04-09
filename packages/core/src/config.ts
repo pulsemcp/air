@@ -40,7 +40,7 @@ function getScheme(path: string): string | null {
 }
 
 /**
- * Resolve relative `path` and `file` fields in artifact entries to absolute paths.
+ * Resolve relative `path` fields in artifact entries to absolute paths.
  * sourceDir is the directory containing the index file (local or remote clone).
  */
 function resolveEntryPaths<T>(
@@ -55,10 +55,6 @@ function resolveEntryPaths<T>(
     if (typeof e.path === "string" && !e.path.startsWith("/")) {
       updated.path = resolve(sourceDir, e.path as string);
     }
-    if (typeof e.file === "string" && !e.file.startsWith("/")) {
-      updated.file = resolve(sourceDir, e.file as string);
-    }
-
     resolved[key] = updated as T;
   }
   return resolved;
@@ -69,7 +65,7 @@ function resolveEntryPaths<T>(
  * Local paths are resolved relative to baseDir.
  * URI paths (with schemes) are delegated to the matching CatalogProvider.
  *
- * After loading, relative `path` and `file` fields in entries are resolved
+ * After loading, relative `path` fields in entries are resolved
  * to absolute paths, so downstream consumers don't need source directory context.
  */
 async function loadAndMerge<T>(
@@ -144,7 +140,7 @@ export interface ResolveOptions {
  * Each artifact property is an array of paths; files merge in order.
  * Remote URIs are delegated to the matching CatalogProvider.
  *
- * All `path` and `file` fields in resolved entries are absolute paths,
+ * All `path` fields in resolved entries are absolute paths,
  * making artifacts self-contained regardless of source location.
  */
 export async function resolveArtifacts(

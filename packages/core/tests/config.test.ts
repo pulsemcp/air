@@ -75,12 +75,12 @@ describe("resolveArtifacts", () => {
 
     const artifacts = await resolveArtifacts(join(dir, "air.json"));
 
-    expect(artifacts.skills["my-skill"].id).toBe("my-skill");
+    expect(artifacts.skills["my-skill"].description).toBe("Description for my-skill");
     expect(artifacts.mcp["my-server"].type).toBe("stdio");
-    expect(artifacts.roots["my-root"].name).toBe("my-root");
-    expect(artifacts.references["my-ref"].id).toBe("my-ref");
-    expect(artifacts.plugins["my-plugin"].id).toBe("my-plugin");
-    expect(artifacts.hooks["my-hook"].id).toBe("my-hook");
+    expect(artifacts.roots["my-root"].description).toBe("Description for my-root");
+    expect(artifacts.references["my-ref"].description).toBe("Description for my-ref");
+    expect(artifacts.plugins["my-plugin"].description).toBe("Description for my-plugin");
+    expect(artifacts.hooks["my-hook"].description).toBe("Description for my-hook");
   });
 
   it("merges multiple files for the same artifact type", async () => {
@@ -343,11 +343,11 @@ describe("absolute path resolution", () => {
 
     const artifacts = await resolveArtifacts(join(dir, "air.json"));
 
-    // ref.file should be resolved to an absolute path
-    expect(artifacts.references["my-ref"].file).toBe(
+    // ref.path should be resolved to an absolute path
+    expect(artifacts.references["my-ref"].path).toBe(
       join(dir, "references/my-ref.md")
     );
-    expect(artifacts.references["my-ref"].file.startsWith("/")).toBe(true);
+    expect(artifacts.references["my-ref"].path.startsWith("/")).toBe(true);
   });
 
   it("preserves already-absolute paths", async () => {

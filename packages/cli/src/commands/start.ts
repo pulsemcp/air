@@ -72,7 +72,7 @@ function printDryRun(
   console.log(`Agent: ${agent}`);
 
   if (root) {
-    console.log(`Root: ${root.name} \u2014 ${root.description}`);
+    console.log(`Root: ${root.display_name || root.description}`);
   }
 
   const mcpIds = root?.default_mcp_servers || Object.keys(artifacts.mcp);

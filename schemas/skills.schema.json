@@ -22,12 +22,6 @@
       "type": "object",
       "description": "A reusable, invocable unit of work for an AI agent.",
       "properties": {
-        "id": {
-          "type": "string",
-          "minLength": 1,
-          "pattern": "^[a-zA-Z0-9_-]+$",
-          "description": "Unique identifier for this skill. Must match the key in the parent object."
-        },
         "title": {
           "type": "string",
           "minLength": 1,
@@ -52,7 +46,7 @@
           "description": "IDs of reference documents this skill depends on. Keeps references DRY across skills."
         }
       },
-      "required": ["id", "description", "path"],
+      "required": ["description", "path"],
       "additionalProperties": true
     }
   }

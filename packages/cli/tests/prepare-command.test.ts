@@ -111,7 +111,6 @@ describe("prepare command", () => {
       },
       "skills.json": {
         "my-skill": {
-          id: "my-skill",
           description: "A test skill",
           path: "skills/my-skill",
         },
@@ -149,7 +148,6 @@ describe("prepare command", () => {
       },
       "skills.json": {
         "existing-skill": {
-          id: "existing-skill",
           description: "Catalog version",
           path: "skills/existing-skill",
         },
@@ -194,7 +192,6 @@ describe("prepare command", () => {
       },
       "roots.json": {
         "web-app": {
-          name: "web-app",
           description: "Web app root",
           default_mcp_servers: ["github", "postgres"],
         },
@@ -225,17 +222,14 @@ describe("prepare command", () => {
       },
       "skills.json": {
         "skill-a": {
-          id: "skill-a",
           description: "Skill A",
           path: "skills/skill-a",
         },
         "skill-b": {
-          id: "skill-b",
           description: "Skill B",
           path: "skills/skill-b",
         },
         "skill-c": {
-          id: "skill-c",
           description: "Skill C",
           path: "skills/skill-c",
         },
@@ -245,7 +239,6 @@ describe("prepare command", () => {
       "skills/skill-c/SKILL.md": "# C",
       "roots.json": {
         myroot: {
-          name: "myroot",
           description: "Test root",
           default_skills: ["skill-a", "skill-b"],
         },
@@ -284,7 +277,6 @@ describe("prepare command", () => {
       },
       "roots.json": {
         myroot: {
-          name: "myroot",
           description: "Test",
           default_mcp_servers: ["github"],
         },
@@ -316,7 +308,6 @@ describe("prepare command", () => {
       },
       "skills.json": {
         deploy: {
-          id: "deploy",
           description: "Deploy skill",
           path: "skills/deploy",
           references: ["git-workflow"],
@@ -324,9 +315,8 @@ describe("prepare command", () => {
       },
       "references.json": {
         "git-workflow": {
-          id: "git-workflow",
           description: "Git workflow guide",
-          file: "references/GIT_WORKFLOW.md",
+          path: "references/GIT_WORKFLOW.md",
         },
       },
       "skills/deploy/SKILL.md": "# Deploy",
@@ -406,17 +396,14 @@ describe("prepare command", () => {
       },
       "skills.json": {
         "onboard-server": {
-          id: "onboard-server",
           description: "Onboard a server",
           path: "skills/onboard-server",
         },
         "validate-config": {
-          id: "validate-config",
           description: "Validate config",
           path: "skills/validate-config",
         },
         "find-source": {
-          id: "find-source",
           description: "Find canonical source",
           path: "skills/find-source",
         },
@@ -426,7 +413,6 @@ describe("prepare command", () => {
       "skills/find-source/SKILL.md": "# Find Source",
       "roots.json": {
         "server-onboarding": {
-          name: "server-onboarding",
           display_name: "Server Onboarding",
           description: "Onboard MCP servers to PulseMCP",
           default_mcp_servers: ["ao-mcp"],
@@ -434,7 +420,6 @@ describe("prepare command", () => {
           default_subagent_roots: ["onboarding-configs", "onboarding-research"],
         },
         "onboarding-configs": {
-          name: "onboarding-configs",
           display_name: "Onboarding: Configs",
           description: "Prepare server configs",
           default_mcp_servers: ["pg-prod"],
@@ -443,7 +428,6 @@ describe("prepare command", () => {
           user_invocable: false,
         },
         "onboarding-research": {
-          name: "onboarding-research",
           display_name: "Onboarding: Research",
           description: "Research server sources",
           default_mcp_servers: ["web-search"],
@@ -498,13 +482,11 @@ describe("prepare command", () => {
       },
       "roots.json": {
         "server-onboarding": {
-          name: "server-onboarding",
           description: "Onboard servers",
           default_mcp_servers: ["ao-mcp"],
           default_subagent_roots: ["sub-db"],
         },
         "sub-db": {
-          name: "sub-db",
           description: "DB subagent",
           default_mcp_servers: ["pg-prod"],
         },
@@ -546,7 +528,6 @@ describe("prepare command", () => {
       },
       "skills.json": {
         "my-skill": {
-          id: "my-skill",
           description: "Test",
           path: "skills/my-skill",
         },

@@ -19,7 +19,6 @@ Roots are registered in `roots.json`:
 ```json
 {
   "web-app": {
-    "name": "web-app",
     "display_name": "Web Application",
     "description": "Main web app — Rails backend, React frontend",
     "url": "https://github.com/acme/web-app.git",
@@ -37,7 +36,6 @@ Roots are registered in `roots.json`:
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `name` | Yes | Unique identifier. Must match the key. |
 | `display_name` | No | Human-readable name. |
 | `description` | Yes | What this root is for. Clear to anyone in the org. |
 | `url` | No | Git repository URL. |
@@ -56,7 +54,6 @@ For monorepos, use the `subdirectory` field to point to a specific path within t
 ```json
 {
   "api-service": {
-    "name": "api-service",
     "description": "API service within the platform monorepo",
     "url": "https://github.com/acme/platform.git",
     "subdirectory": "services/api",

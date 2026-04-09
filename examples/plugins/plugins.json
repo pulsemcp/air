@@ -1,6 +1,5 @@
 {
   "code-quality": {
-    "id": "code-quality",
     "title": "Code Quality Suite",
     "description": "Linting, formatting, and static analysis tools bundled with coding standards skills",
     "version": "1.2.0",
@@ -17,7 +16,6 @@
     "keywords": ["linting", "formatting", "eslint", "prettier"]
   },
   "deploy-toolkit": {
-    "id": "deploy-toolkit",
     "title": "Deployment Toolkit",
     "description": "End-to-end deployment skills, hooks, and CI/CD MCP server for staging and production environments",
     "version": "2.0.1",
@@ -31,7 +29,6 @@
     "keywords": ["deploy", "ci-cd", "staging", "production"]
   },
   "full-stack-dev": {
-    "id": "full-stack-dev",
     "title": "Full-Stack Developer Suite",
     "description": "Everything for full-stack development: code quality, deployment, and monitoring",
     "version": "1.0.0",

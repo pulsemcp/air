@@ -20,7 +20,7 @@ describe("expandPlugins", () => {
     const artifacts = emptyArtifacts();
     artifacts.plugins = {
       "simple": {
-        id: "simple",
+
         description: "A simple plugin",
         skills: ["lint"],
         mcp_servers: ["eslint-server"],
@@ -39,7 +39,7 @@ describe("expandPlugins", () => {
     const artifacts = emptyArtifacts();
     artifacts.plugins = {
       "simple": {
-        id: "simple",
+
         description: "A simple plugin",
         plugins: [],
         skills: ["lint"],
@@ -55,14 +55,14 @@ describe("expandPlugins", () => {
     const artifacts = emptyArtifacts();
     artifacts.plugins = {
       "base": {
-        id: "base",
+
         description: "Base plugin",
         skills: ["lint", "format"],
         mcp_servers: ["eslint-server"],
         hooks: ["pre-commit"],
       },
       "extended": {
-        id: "extended",
+
         description: "Extended plugin",
         plugins: ["base"],
         skills: ["deploy"],
@@ -90,20 +90,20 @@ describe("expandPlugins", () => {
     const artifacts = emptyArtifacts();
     artifacts.plugins = {
       "c": {
-        id: "c",
+
         description: "Plugin C",
         skills: ["skill-c"],
         hooks: ["hook-c"],
       },
       "b": {
-        id: "b",
+
         description: "Plugin B",
         plugins: ["c"],
         skills: ["skill-b"],
         mcp_servers: ["server-b"],
       },
       "a": {
-        id: "a",
+
         description: "Plugin A",
         plugins: ["b"],
         skills: ["skill-a"],
@@ -134,25 +134,25 @@ describe("expandPlugins", () => {
     const artifacts = emptyArtifacts();
     artifacts.plugins = {
       "shared": {
-        id: "shared",
+
         description: "Shared plugin",
         skills: ["common-skill"],
         mcp_servers: ["common-server"],
       },
       "child-a": {
-        id: "child-a",
+
         description: "Child A",
         plugins: ["shared"],
         skills: ["skill-a"],
       },
       "child-b": {
-        id: "child-b",
+
         description: "Child B",
         plugins: ["shared"],
         skills: ["skill-b"],
       },
       "parent": {
-        id: "parent",
+
         description: "Parent plugin",
         plugins: ["child-a", "child-b"],
         skills: ["common-skill"], // Also directly declares common-skill
@@ -179,12 +179,12 @@ describe("expandPlugins", () => {
     const artifacts = emptyArtifacts();
     artifacts.plugins = {
       "child": {
-        id: "child",
+
         description: "Child plugin",
         skills: ["shared-skill", "child-only"],
       },
       "parent": {
-        id: "parent",
+
         description: "Parent plugin",
         plugins: ["child"],
         skills: ["shared-skill", "parent-only"],
@@ -203,12 +203,12 @@ describe("expandPlugins", () => {
     const artifacts = emptyArtifacts();
     artifacts.plugins = {
       "a": {
-        id: "a",
+
         description: "Plugin A",
         plugins: ["b"],
       },
       "b": {
-        id: "b",
+
         description: "Plugin B",
         plugins: ["a"],
       },
@@ -223,7 +223,7 @@ describe("expandPlugins", () => {
     const artifacts = emptyArtifacts();
     artifacts.plugins = {
       "self": {
-        id: "self",
+
         description: "Self-referencing plugin",
         plugins: ["self"],
       },
@@ -238,19 +238,19 @@ describe("expandPlugins", () => {
     const artifacts = emptyArtifacts();
     artifacts.plugins = {
       "a": {
-        id: "a",
+
         description: "Plugin A",
         plugins: ["b"],
         skills: ["skill-a"],
       },
       "b": {
-        id: "b",
+
         description: "Plugin B",
         plugins: ["c"],
         skills: ["skill-b"],
       },
       "c": {
-        id: "c",
+
         description: "Plugin C",
         plugins: ["a"],
         skills: ["skill-c"],
@@ -266,7 +266,7 @@ describe("expandPlugins", () => {
     const artifacts = emptyArtifacts();
     artifacts.plugins = {
       "parent": {
-        id: "parent",
+
         description: "Parent plugin",
         plugins: ["nonexistent"],
       },
@@ -279,10 +279,10 @@ describe("expandPlugins", () => {
 
   it("does not modify non-plugin artifact types", () => {
     const artifacts = emptyArtifacts();
-    artifacts.skills = { "my-skill": { id: "my-skill", description: "test", path: "/test" } };
+    artifacts.skills = { "my-skill": { description: "test", path: "/test" } };
     artifacts.plugins = {
       "simple": {
-        id: "simple",
+
         description: "A plugin",
         skills: ["my-skill"],
       },
@@ -301,17 +301,17 @@ describe("expandPlugins", () => {
     const artifacts = emptyArtifacts();
     artifacts.plugins = {
       "first": {
-        id: "first",
+
         description: "First plugin",
         skills: ["skill-1"],
       },
       "second": {
-        id: "second",
+
         description: "Second plugin",
         skills: ["skill-2"],
       },
       "combined": {
-        id: "combined",
+
         description: "Combined plugin",
         plugins: ["first", "second"],
         skills: ["skill-3"],
@@ -332,11 +332,11 @@ describe("expandPlugins", () => {
     const artifacts = emptyArtifacts();
     artifacts.plugins = {
       "empty-child": {
-        id: "empty-child",
+
         description: "Child with no primitives",
       },
       "parent": {
-        id: "parent",
+
         description: "Parent that includes empty child",
         plugins: ["empty-child"],
       },
@@ -353,12 +353,12 @@ describe("expandPlugins", () => {
     const artifacts = emptyArtifacts();
     artifacts.plugins = {
       "child": {
-        id: "child",
+
         description: "Child plugin",
         skills: ["child-skill"],
       },
       "parent": {
-        id: "parent",
+
         description: "Parent plugin",
         version: "2.0.0",
         plugins: ["child"],
@@ -391,13 +391,13 @@ describe("resolveArtifacts with plugin composition", () => {
       },
       "plugins.json": {
         "base": {
-          id: "base",
+  
           description: "Base plugin",
           skills: ["lint", "format"],
           mcp_servers: ["eslint-server"],
         },
         "full-stack": {
-          id: "full-stack",
+
           description: "Full stack plugin",
           plugins: ["base"],
           skills: ["deploy"],
@@ -452,12 +452,12 @@ describe("resolveArtifacts with plugin composition", () => {
       },
       "plugins.json": {
         "a": {
-          id: "a",
+  
           description: "Plugin A",
           plugins: ["b"],
         },
         "b": {
-          id: "b",
+  
           description: "Plugin B",
           plugins: ["a"],
         },
@@ -478,7 +478,7 @@ describe("resolveArtifacts with plugin composition", () => {
       },
       "base-plugins.json": {
         "code-quality": {
-          id: "code-quality",
+
           description: "Code quality tools",
           skills: ["lint", "format"],
           mcp_servers: ["eslint-server"],
@@ -486,7 +486,7 @@ describe("resolveArtifacts with plugin composition", () => {
       },
       "composite-plugins.json": {
         "full-stack": {
-          id: "full-stack",
+
           description: "Full stack plugin",
           plugins: ["code-quality"],
           skills: ["deploy"],
@@ -514,7 +514,6 @@ describe("mergeArtifacts with plugin composition", () => {
     const base = emptyArtifacts();
     base.plugins = {
       "code-quality": {
-        id: "code-quality",
         description: "Code quality tools",
         skills: ["lint"],
       },
@@ -523,7 +522,6 @@ describe("mergeArtifacts with plugin composition", () => {
     const override = emptyArtifacts();
     override.plugins = {
       "full-stack": {
-        id: "full-stack",
         description: "Full stack plugin",
         plugins: ["code-quality"],
         skills: ["deploy"],

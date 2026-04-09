@@ -15,8 +15,8 @@ Hooks let you attach behavior to agent lifecycle events:
 
 Hooks use a two-layer structure, like skills:
 
-1. **Index** (`hooks.json`) — lightweight catalog entries with id, description, and a path
-2. **Directory** (`hooks/{id}/`) — contains the runtime definition (`HOOK.json`) and any associated scripts
+1. **Index** (`hooks.json`) — lightweight catalog entries with description and a path
+2. **Directory** (`hooks/{name}/`) — contains the runtime definition (`HOOK.json`) and any associated scripts
 
 This separation keeps the index scannable while allowing hooks to bundle scripts and configuration together in an isolated directory.
 
@@ -27,13 +27,11 @@ Hooks are registered in `hooks.json`:
 ```json
 {
   "notify-session-start": {
-    "id": "notify-session-start",
     "title": "Session Start Notification",
     "description": "Post to Slack when an agent session starts",
     "path": "hooks/notify-session-start"
   },
   "lint-pre-commit": {
-    "id": "lint-pre-commit",
     "title": "Pre-Commit Lint Check",
     "description": "Run linting on staged files before allowing a commit",
     "path": "hooks/lint-pre-commit"
@@ -45,7 +43,6 @@ Hooks are registered in `hooks.json`:
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `id` | Yes | Unique identifier. Must match the key. |
 | `title` | No | Human-readable display name. |
 | `description` | Yes | What this hook does. |
 | `path` | Yes | Relative path to the hook directory containing `HOOK.json`. |
