@@ -12,9 +12,13 @@ Without roots, every session gets every artifact. That works for simple setups, 
 
 Roots solve this by defining per-project defaults.
 
+## Auto-generated roots
+
+When you run `air init` inside a git repo, a root entry is automatically generated at `~/.air/roots/roots.json`. It captures the repo's GitHub URL, default branch, and populates `default_skills`, `default_mcp_servers`, and `default_hooks` from the artifacts discovered in the repo. This makes the repo immediately usable as a root with `air start --root <name>`.
+
 ## Defining a root
 
-Add entries to `~/.air/roots/roots.json`:
+Add or edit entries in `~/.air/roots/roots.json`:
 
 ```json
 {

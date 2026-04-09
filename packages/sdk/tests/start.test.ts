@@ -122,6 +122,41 @@ describe("startSession", () => {
     expect(result.agentAvailable).toBeUndefined();
   });
 
+  it("loads extensions and passes providers to resolveArtifacts", async () => {
+    const mockExtensionCode = `
+export default {
+  name: "mock-provider",
+  provider: {
+    scheme: "mock",
+    async resolve(uri) {
+      return {
+        "remote-server": {
+          type: "stdio",
+          command: "npx",
+          args: ["-y", "@mcp/remote"],
+        },
+      };
+    },
+  },
+};
+`;
+    const catalog = createTemp({
+      "air.json": {
+        name: "test",
+        extensions: ["./mock-provider.mjs"],
+        mcp: ["mock://some-org/some-repo/mcp.json"],
+      },
+      "mock-provider.mjs": mockExtensionCode,
+    });
+
+    const result = await startSession("claude", {
+      config: join(catalog, "air.json"),
+    });
+
+    expect(result.artifacts.mcp["remote-server"]).toBeDefined();
+    expect(result.artifacts.mcp["remote-server"].command).toBe("npx");
+  });
+
   it("throws for unknown adapter", async () => {
     await expect(startSession("nonexistent")).rejects.toThrow(
       "No adapter found"

@@ -26,7 +26,7 @@ air --version
 air init
 ```
 
-When run inside a git repo that contains AIR artifact index files (skills.json, mcp.json, etc.), `air init` **discovers them automatically**, detects the GitHub remote and default branch, and generates an `air.json` with `github://` resolver URIs. This is the fastest way to get started with an existing repo.
+When run inside a git repo that contains AIR artifact index files (skills.json, mcp.json, etc.), `air init` **discovers them automatically**, detects the GitHub remote and default branch, and generates an `air.json` with `github://` resolver URIs. It also **auto-generates a `roots.json`** entry for the current repo, populated with `default_skills`, `default_mcp_servers`, and `default_hooks` from the discovered artifacts. This makes the repo immediately usable as a root with `air start --root <name>`. This is the fastest way to get started with an existing repo.
 
 When no artifacts are found (or you're not in a git repo), it falls back to creating a blank scaffolding:
 
