@@ -169,7 +169,7 @@ describe("ClaudeAdapter", () => {
   });
 
   describe("generateConfig", () => {
-    it("uses all artifacts when no root is specified", () => {
+    it("defaults to empty artifacts when no root is specified (opt-in)", () => {
       const artifacts = emptyArtifacts();
       artifacts.skills["a"] = {
         id: "a",
@@ -187,8 +187,8 @@ describe("ClaudeAdapter", () => {
       };
 
       const config = adapter.generateConfig(artifacts);
-      expect(config.skillPaths).toEqual(["skills/a", "skills/b"]);
-      expect(config.mcpConfig).toBeDefined();
+      expect(config.skillPaths).toEqual([]);
+      expect(config.mcpConfig).toEqual({ mcpServers: {} });
     });
 
     it("filters by root defaults when root is specified", () => {
@@ -279,7 +279,13 @@ describe("ClaudeAdapter", () => {
         env: { TOKEN: "literal-value" },
       };
 
-      const result = await adapter.prepareSession(artifacts, dir);
+      const root: RootEntry = {
+        name: "test",
+        description: "Test",
+        default_mcp_servers: ["github"],
+      };
+
+      const result = await adapter.prepareSession(artifacts, dir, { root });
 
       const mcpPath = join(dir, ".mcp.json");
       expect(result.configFiles).toContain(mcpPath);
@@ -303,7 +309,13 @@ describe("ClaudeAdapter", () => {
         headers: { Authorization: "Bearer token" },
       };
 
-      await adapter.prepareSession(artifacts, dir);
+      const root: RootEntry = {
+        name: "test",
+        description: "Test",
+        default_mcp_servers: ["granola", "events"],
+      };
+
+      await adapter.prepareSession(artifacts, dir, { root });
 
       const mcpJson = JSON.parse(readFileSync(join(dir, ".mcp.json"), "utf-8"));
       expect(mcpJson.mcpServers.granola.type).toBe("http");
@@ -321,7 +333,13 @@ describe("ClaudeAdapter", () => {
         env: { API_KEY: "${MY_SECRET}", OTHER: "${ANOTHER_VAR}" },
       };
 
-      await adapter.prepareSession(artifacts, dir);
+      const root: RootEntry = {
+        name: "test",
+        description: "Test",
+        default_mcp_servers: ["server"],
+      };
+
+      await adapter.prepareSession(artifacts, dir, { root });
 
       const mcpJson = JSON.parse(
         readFileSync(join(dir, ".mcp.json"), "utf-8")
@@ -348,7 +366,13 @@ describe("ClaudeAdapter", () => {
         path: resolve(skillSrcDir),
       };
 
-      const result = await adapter.prepareSession(artifacts, dir);
+      const root: RootEntry = {
+        name: "test",
+        description: "Test",
+        default_skills: ["deploy"],
+      };
+
+      const result = await adapter.prepareSession(artifacts, dir, { root });
 
       const injectedSkill = join(dir, ".claude", "skills", "deploy", "SKILL.md");
       expect(existsSync(injectedSkill)).toBe(true);
@@ -385,7 +409,13 @@ describe("ClaudeAdapter", () => {
         file: resolve(refSrcDir, "GIT_WORKFLOW.md"),
       };
 
-      await adapter.prepareSession(artifacts, dir);
+      const root: RootEntry = {
+        name: "test",
+        description: "Test",
+        default_skills: ["deploy"],
+      };
+
+      await adapter.prepareSession(artifacts, dir, { root });
 
       const refPath = join(
         dir,
@@ -419,7 +449,13 @@ describe("ClaudeAdapter", () => {
         path: resolve(catalogSkillDir),
       };
 
-      const result = await adapter.prepareSession(artifacts, dir);
+      const root: RootEntry = {
+        name: "test",
+        description: "Test",
+        default_skills: ["deploy"],
+      };
+
+      const result = await adapter.prepareSession(artifacts, dir, { root });
 
       // Local version should be preserved
       const content = readFileSync(
@@ -699,7 +735,13 @@ describe("ClaudeAdapter", () => {
           path: resolve(hookSrcDir),
         };
 
-        const result = await adapter.prepareSession(artifacts, dir);
+        const root: RootEntry = {
+          name: "test",
+          description: "Test",
+          default_hooks: ["lint-pre-commit"],
+        };
+
+        const result = await adapter.prepareSession(artifacts, dir, { root });
 
         const hookJson = join(dir, ".claude", "hooks", "lint-pre-commit", "HOOK.json");
         const hookScript = join(dir, ".claude", "hooks", "lint-pre-commit", "run.sh");
@@ -735,7 +777,13 @@ describe("ClaudeAdapter", () => {
           path: resolve(catalogHookDir),
         };
 
-        const result = await adapter.prepareSession(artifacts, dir);
+        const root: RootEntry = {
+          name: "test",
+          description: "Test",
+          default_hooks: ["my-hook"],
+        };
+
+        const result = await adapter.prepareSession(artifacts, dir, { root });
 
         // Local version should be preserved
         const content = JSON.parse(
@@ -800,7 +848,13 @@ describe("ClaudeAdapter", () => {
           file: resolve(refSrcDir, "CODE_STANDARDS.md"),
         };
 
-        await adapter.prepareSession(artifacts, dir);
+        const root: RootEntry = {
+          name: "test",
+          description: "Test",
+          default_hooks: ["my-hook"],
+        };
+
+        await adapter.prepareSession(artifacts, dir, { root });
 
         const refPath = join(dir, ".claude", "hooks", "my-hook", "references", "CODE_STANDARDS.md");
         expect(existsSync(refPath)).toBe(true);
@@ -814,6 +868,108 @@ describe("ClaudeAdapter", () => {
         const result = await adapter.prepareSession(artifacts, dir);
 
         expect(result.hookPaths).toEqual([]);
+      });
+    });
+
+    describe("opt-in defaults", () => {
+      it("loads no artifacts when no root is provided", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+
+        // Add artifacts that should NOT be loaded without explicit root defaults
+        artifacts.mcp["github"] = { type: "stdio", command: "gh" };
+        artifacts.mcp["slack"] = { type: "stdio", command: "slack" };
+
+        const skillSrcDir = join(dir, "..", "skills", "deploy");
+        mkdirSync(skillSrcDir, { recursive: true });
+        writeFileSync(join(skillSrcDir, "SKILL.md"), "# Deploy");
+        artifacts.skills["deploy"] = {
+          id: "deploy",
+          description: "Deploy",
+          path: resolve(skillSrcDir),
+        };
+
+        const hookSrcDir = join(dir, "..", "hooks", "my-hook");
+        mkdirSync(hookSrcDir, { recursive: true });
+        writeFileSync(join(hookSrcDir, "HOOK.json"), JSON.stringify({ event: "pre_commit" }));
+        artifacts.hooks["my-hook"] = {
+          id: "my-hook",
+          description: "My hook",
+          path: resolve(hookSrcDir),
+        };
+
+        artifacts.plugins["quality"] = {
+          id: "quality",
+          description: "Quality plugin",
+        };
+
+        const result = await adapter.prepareSession(artifacts, dir);
+
+        // .mcp.json should have empty mcpServers
+        const mcpJson = JSON.parse(readFileSync(join(dir, ".mcp.json"), "utf-8"));
+        expect(mcpJson.mcpServers).toEqual({});
+
+        // No skills should be injected
+        expect(existsSync(join(dir, ".claude", "skills", "deploy"))).toBe(false);
+        expect(result.skillPaths).toEqual([]);
+
+        // No hooks should be injected
+        expect(existsSync(join(dir, ".claude", "hooks", "my-hook"))).toBe(false);
+        expect(result.hookPaths).toEqual([]);
+      });
+
+      it("loads no artifacts when root has no default_* fields", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+        artifacts.mcp["github"] = { type: "stdio", command: "gh" };
+
+        const skillSrcDir = join(dir, "..", "skills", "deploy");
+        mkdirSync(skillSrcDir, { recursive: true });
+        writeFileSync(join(skillSrcDir, "SKILL.md"), "# Deploy");
+        artifacts.skills["deploy"] = {
+          id: "deploy",
+          description: "Deploy",
+          path: resolve(skillSrcDir),
+        };
+
+        const root: RootEntry = {
+          name: "minimal",
+          description: "A root with no default_* fields",
+        };
+
+        const result = await adapter.prepareSession(artifacts, dir, { root });
+
+        const mcpJson = JSON.parse(readFileSync(join(dir, ".mcp.json"), "utf-8"));
+        expect(mcpJson.mcpServers).toEqual({});
+        expect(existsSync(join(dir, ".claude", "skills", "deploy"))).toBe(false);
+        expect(result.skillPaths).toEqual([]);
+        expect(result.hookPaths).toEqual([]);
+      });
+
+      it("respects CLI overrides even without root defaults", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+        artifacts.mcp["github"] = { type: "stdio", command: "gh" };
+        artifacts.mcp["slack"] = { type: "stdio", command: "slack" };
+
+        const skillSrcDir = join(dir, "..", "skills", "deploy");
+        mkdirSync(skillSrcDir, { recursive: true });
+        writeFileSync(join(skillSrcDir, "SKILL.md"), "# Deploy");
+        artifacts.skills["deploy"] = {
+          id: "deploy",
+          description: "Deploy",
+          path: resolve(skillSrcDir),
+        };
+
+        const result = await adapter.prepareSession(artifacts, dir, {
+          mcpServerOverrides: ["github"],
+          skillOverrides: ["deploy"],
+        });
+
+        const mcpJson = JSON.parse(readFileSync(join(dir, ".mcp.json"), "utf-8"));
+        expect(mcpJson.mcpServers["github"]).toBeDefined();
+        expect(mcpJson.mcpServers["slack"]).toBeUndefined();
+        expect(result.skillPaths).toHaveLength(1);
       });
     });
   });
