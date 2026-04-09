@@ -346,7 +346,9 @@ export function initFromRepo(
   const repoName = repo.split("/")[1] || "my-config";
   const configName = repoName.replace(/[^a-zA-Z0-9_-]/g, "-");
 
-  // Auto-generate roots.json for the current repo
+  // Auto-generate roots.json for the current repo.
+  // Write to the repo directory (not ~/.air/) so it can be committed and
+  // referenced via github:// URI, consistent with other artifact types.
   const artifactIds = extractArtifactIds(discovered, repoRoot);
 
   const rootEntry: RootEntry = {
@@ -360,30 +362,42 @@ export function initFromRepo(
     ...(artifactIds.hooks?.length && { default_hooks: artifactIds.hooks }),
   };
 
-  const rootsDir = resolve(airDir, "roots");
-  mkdirSync(rootsDir, { recursive: true });
+  // Determine path for generated roots.json in the repo
+  const rootsRelPath = "roots/roots.json";
+  const rootsPath = resolve(repoRoot, rootsRelPath);
+  const hasExistingRoots = existsSync(rootsPath);
 
-  const rootsJson: Record<string, unknown> = {
-    $schema: "https://raw.githubusercontent.com/pulsemcp/air/main/schemas/roots.schema.json",
-    [configName]: rootEntry,
-  };
-  const rootsPath = resolve(rootsDir, "roots.json");
-  writeFileSync(rootsPath, JSON.stringify(rootsJson, null, 2) + "\n");
+  // Only write if the repo doesn't already have a roots.json at this path
+  if (!hasExistingRoots) {
+    mkdirSync(resolve(repoRoot, "roots"), { recursive: true });
+    const rootsJson: Record<string, unknown> = {
+      $schema: "https://raw.githubusercontent.com/pulsemcp/air/main/schemas/roots.schema.json",
+      [configName]: rootEntry,
+    };
+    writeFileSync(rootsPath, JSON.stringify(rootsJson, null, 2) + "\n");
+  }
 
-  // Build air.json — include auto-generated roots.json first, then discovered
+  // Add github:// URI for the generated roots to the grouped artifacts
+  const generatedRootsUri = `github://${repo}@${branch}/${rootsRelPath}`;
+  if (!hasExistingRoots) {
+    if (!grouped.roots) grouped.roots = [];
+    // Prepend so discovered roots from other locations can override
+    grouped.roots.unshift(generatedRootsUri);
+  }
+
+  // Build air.json — all artifact types use github:// URIs consistently
   const airJson: Record<string, unknown> = {
     name: configName,
-    extensions: ["@pulsemcp/air-provider-github"],
+    extensions: [
+      "@pulsemcp/air-adapter-claude",
+      "@pulsemcp/air-provider-github",
+      "@pulsemcp/air-secrets-env",
+      "@pulsemcp/air-secrets-file",
+    ],
   };
 
   for (const type of ARTIFACT_TYPES) {
-    if (type === "roots") {
-      // Combine auto-generated local roots with any discovered roots
-      airJson.roots = [
-        "./roots/roots.json",
-        ...(grouped.roots || []),
-      ];
-    } else if (grouped[type]) {
+    if (grouped[type]) {
       airJson[type] = grouped[type];
     }
   }

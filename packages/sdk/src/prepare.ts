@@ -94,14 +94,16 @@ export async function prepareSession(
 
   // Find adapter: prefer extension-provided, fall back to registry
   const adapterName = options.adapter;
+  const airJsonDir = dirname(resolve(airJsonPath));
+  const searchDirs = [airJsonDir];
   let adapter =
     loaded.adapters.find((ext) => ext.adapter?.name === adapterName)?.adapter ??
     null;
   if (!adapter) {
-    adapter = await findAdapter(adapterName);
+    adapter = await findAdapter(adapterName, { searchDirs });
   }
   if (!adapter) {
-    const available = await listAvailableAdapters();
+    const available = await listAvailableAdapters({ searchDirs });
     const availableMsg =
       available.length > 0
         ? `Available: ${available.join(", ")}`

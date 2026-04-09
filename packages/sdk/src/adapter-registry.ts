@@ -1,3 +1,7 @@
+import { createRequire } from "module";
+import { readFileSync } from "fs";
+import { join, resolve } from "path";
+import { pathToFileURL } from "url";
 import type { AgentAdapter, AirExtension } from "@pulsemcp/air-core";
 
 /**
@@ -8,47 +12,140 @@ const KNOWN_ADAPTERS: { name: string; packageName: string }[] = [
   { name: "claude", packageName: "@pulsemcp/air-adapter-claude" },
 ];
 
-/**
- * Find an adapter by agent name.
- * Returns null if the adapter package isn't installed.
- */
-export async function findAdapter(
-  name: string
-): Promise<AgentAdapter | null> {
-  // Check known adapters first
-  for (const known of KNOWN_ADAPTERS) {
-    if (known.name === name) {
-      try {
-        const mod = await import(known.packageName);
-        const ext = mod.default as AirExtension | undefined;
-        return ext?.adapter ?? null;
-      } catch {
-        return null;
-      }
-    }
-  }
+export interface FindAdapterOptions {
+  /**
+   * Additional directories to search for adapter packages.
+   * Typically the directory containing air.json (e.g. ~/.air/) so that
+   * packages installed via `air install` are discoverable.
+   */
+  searchDirs?: string[];
+}
 
-  // Try convention-based package name: @pulsemcp/air-adapter-{name}
+/**
+ * Resolve the ESM entry point for a package installed in dir/node_modules.
+ * Reads the package.json `exports` field to find the `import` condition.
+ * Returns the absolute path to the entry file, or null if not resolvable.
+ */
+function resolveEsmEntry(
+  packageName: string,
+  dir: string
+): string | null {
   try {
-    const mod = await import(`@pulsemcp/air-adapter-${name}`);
-    const ext = mod.default as AirExtension | undefined;
-    return ext?.adapter ?? null;
+    const packageDir = join(dir, "node_modules", packageName);
+    const pkgJson = JSON.parse(
+      readFileSync(join(packageDir, "package.json"), "utf-8")
+    );
+    const exports = pkgJson.exports;
+    let entry: string | undefined;
+    if (typeof exports === "string") {
+      entry = exports;
+    } else if (exports?.["."]?.import) {
+      entry = exports["."].import;
+    } else if (exports?.import) {
+      entry = exports.import;
+    } else if (pkgJson.module) {
+      entry = pkgJson.module;
+    }
+    if (entry) return resolve(packageDir, entry);
+    return null;
   } catch {
     return null;
   }
 }
 
 /**
- * List all available adapter names (installed packages only).
+ * Try to import a package by name, optionally searching additional directories.
+ * Returns the default export or null if the package isn't found.
+ *
+ * Uses createRequire for CJS packages and falls back to direct ESM entry
+ * resolution for packages that only define `exports.import`.
  */
-export async function listAvailableAdapters(): Promise<string[]> {
+async function tryImportPackage(
+  packageName: string,
+  searchDirs?: string[]
+): Promise<AirExtension | null> {
+  // Try each search directory first (e.g. ~/.air/node_modules/)
+  if (searchDirs) {
+    for (const dir of searchDirs) {
+      try {
+        const req = createRequire(join(dir, "__placeholder.js"));
+        const resolved = req.resolve(packageName);
+        const mod = await import(pathToFileURL(resolved).href);
+        return (mod.default as AirExtension) ?? null;
+      } catch (err: unknown) {
+        // For ESM-only packages, CJS resolution fails with
+        // ERR_PACKAGE_PATH_NOT_EXPORTED. Try resolving the ESM entry directly.
+        const code = (err as NodeJS.ErrnoException)?.code;
+        if (code === "ERR_PACKAGE_PATH_NOT_EXPORTED") {
+          const esmEntry = resolveEsmEntry(packageName, dir);
+          if (esmEntry) {
+            try {
+              const mod = await import(pathToFileURL(esmEntry).href);
+              return (mod.default as AirExtension) ?? null;
+            } catch {
+              // Fall through to next directory or SDK-local
+            }
+          }
+        }
+        // Not found in this directory, try next
+      }
+    }
+  }
+
+  // Fall back to SDK-local resolution
+  try {
+    const mod = await import(packageName);
+    return (mod.default as AirExtension) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Find an adapter by agent name.
+ * Returns null if the adapter package isn't installed.
+ *
+ * Pass `searchDirs` to also look in directories outside the normal
+ * Node resolution chain (e.g. the ~/.air/ directory where `air install`
+ * places packages).
+ */
+export async function findAdapter(
+  name: string,
+  options?: FindAdapterOptions
+): Promise<AgentAdapter | null> {
+  const { searchDirs } = options ?? {};
+
+  // Check known adapters first
+  for (const known of KNOWN_ADAPTERS) {
+    if (known.name === name) {
+      const ext = await tryImportPackage(known.packageName, searchDirs);
+      return ext?.adapter ?? null;
+    }
+  }
+
+  // Try convention-based package name: @pulsemcp/air-adapter-{name}
+  const ext = await tryImportPackage(
+    `@pulsemcp/air-adapter-${name}`,
+    searchDirs
+  );
+  return ext?.adapter ?? null;
+}
+
+/**
+ * List all available adapter names (installed packages only).
+ *
+ * Pass `searchDirs` to also look in directories outside the normal
+ * Node resolution chain.
+ */
+export async function listAvailableAdapters(
+  options?: FindAdapterOptions
+): Promise<string[]> {
+  const { searchDirs } = options ?? {};
   const available: string[] = [];
   for (const known of KNOWN_ADAPTERS) {
-    try {
-      await import(known.packageName);
+    const ext = await tryImportPackage(known.packageName, searchDirs);
+    if (ext) {
       available.push(known.name);
-    } catch {
-      // Not installed
     }
   }
   return available;

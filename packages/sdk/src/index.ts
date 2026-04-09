@@ -55,7 +55,11 @@ export type {
 } from "@pulsemcp/air-core";
 
 // Adapter registry
-export { findAdapter, listAvailableAdapters } from "./adapter-registry.js";
+export {
+  findAdapter,
+  listAvailableAdapters,
+  type FindAdapterOptions,
+} from "./adapter-registry.js";
 
 // Root detection
 export { normalizeGitUrl, detectRoot } from "./root-detection.js";
