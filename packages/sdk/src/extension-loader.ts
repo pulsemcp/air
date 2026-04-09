@@ -1,4 +1,5 @@
-import { resolve } from "path";
+import { createRequire } from "module";
+import { join, resolve } from "path";
 import { pathToFileURL } from "url";
 import type { AirExtension, PrepareTransform } from "@pulsemcp/air-core";
 
@@ -61,7 +62,30 @@ async function loadSingleExtension(
       const fileUrl = pathToFileURL(absPath).href;
       mod = await import(fileUrl);
     } else {
-      mod = await import(specifier);
+      // Try resolving npm packages from the project directory (airJsonDir)
+      // first, then fall back to the SDK's own resolution.  When the CLI is
+      // installed globally, `air install` puts packages under
+      // <airJsonDir>/node_modules/ which Node's default resolution from the
+      // SDK bundle would never find.  The fallback covers the local
+      // development / workspace case where packages live in the SDK's own
+      // node_modules tree.
+      try {
+        const projectRequire = createRequire(
+          join(airJsonDir, "__placeholder.js")
+        );
+        const resolved = projectRequire.resolve(specifier);
+        mod = await import(pathToFileURL(resolved).href);
+      } catch (projectErr: unknown) {
+        // Only fall back to SDK-local resolution when the package wasn't
+        // found in the project directory.  Re-throw other errors (e.g.
+        // syntax errors in the resolved module) so they aren't masked.
+        const code = (projectErr as NodeJS.ErrnoException)?.code;
+        if (code === "MODULE_NOT_FOUND" || code === "ERR_MODULE_NOT_FOUND") {
+          mod = await import(specifier);
+        } else {
+          throw projectErr;
+        }
+      }
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
