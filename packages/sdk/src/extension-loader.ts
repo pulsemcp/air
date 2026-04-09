@@ -2,6 +2,7 @@ import { createRequire } from "module";
 import { join, resolve } from "path";
 import { pathToFileURL } from "url";
 import type { AirExtension, PrepareTransform } from "@pulsemcp/air-core";
+import { resolveEsmEntry } from "./esm-resolve.js";
 
 export interface LoadedExtensions {
   /** Extensions that provide an adapter */
@@ -76,11 +77,23 @@ async function loadSingleExtension(
         const resolved = projectRequire.resolve(specifier);
         mod = await import(pathToFileURL(resolved).href);
       } catch (projectErr: unknown) {
-        // Only fall back to SDK-local resolution when the package wasn't
-        // found in the project directory.  Re-throw other errors (e.g.
-        // syntax errors in the resolved module) so they aren't masked.
+        // Only fall back when the package wasn't found or can't be resolved
+        // via CJS resolution.  Re-throw other errors (e.g. syntax errors in
+        // the resolved module) so they aren't masked.
         const code = (projectErr as NodeJS.ErrnoException)?.code;
-        if (code === "MODULE_NOT_FOUND" || code === "ERR_MODULE_NOT_FOUND") {
+        if (code === "ERR_PACKAGE_PATH_NOT_EXPORTED") {
+          // CJS resolution can't resolve ESM-only packages.  Try resolving
+          // the ESM entry point directly from the package.json exports.
+          const esmEntry = resolveEsmEntry(specifier, airJsonDir);
+          if (esmEntry) {
+            mod = await import(pathToFileURL(esmEntry).href);
+          } else {
+            mod = await import(specifier);
+          }
+        } else if (
+          code === "MODULE_NOT_FOUND" ||
+          code === "ERR_MODULE_NOT_FOUND"
+        ) {
           mod = await import(specifier);
         } else {
           throw projectErr;

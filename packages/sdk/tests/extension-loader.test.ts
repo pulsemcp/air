@@ -109,4 +109,37 @@ export default async function(config) {
       loadExtensions(["@nonexistent/air-extension-12345"], projectDir)
     ).rejects.toThrow("Failed to load extension");
   });
+
+  it("resolves ESM-only packages (exports without main/require)", async () => {
+    // Simulate a package that only defines ESM exports (no "main" field,
+    // only "exports" with "import" condition). createRequire().resolve()
+    // throws ERR_PACKAGE_PATH_NOT_EXPORTED for such packages; the loader
+    // should fall back to SDK-local import() instead of propagating the error.
+    const projectDir = createTemp({
+      "node_modules/@fake/esm-only/package.json": JSON.stringify({
+        name: "@fake/esm-only",
+        version: "1.0.0",
+        type: "module",
+        exports: {
+          ".": {
+            import: "./index.js",
+          },
+        },
+      }),
+      "node_modules/@fake/esm-only/index.js": `
+export default {
+  name: "@fake/esm-only",
+  transform: {
+    transform: async (config) => config,
+  },
+};
+`,
+    });
+
+    const result = await loadExtensions(["@fake/esm-only"], projectDir);
+
+    expect(result.all).toHaveLength(1);
+    expect(result.all[0].name).toBe("@fake/esm-only");
+    expect(result.transforms).toHaveLength(1);
+  });
 });

@@ -20,7 +20,9 @@ Here's a complete `air.json` with all fields:
   "description": "Acme Corp engineering team AI agent configuration",
   "extensions": [
     "@pulsemcp/air-adapter-claude",
-    "@pulsemcp/air-provider-github"
+    "@pulsemcp/air-provider-github",
+    "@pulsemcp/air-secrets-env",
+    "@pulsemcp/air-secrets-file"
   ],
   "skills": ["./skills/skills.json"],
   "references": ["./references/references.json"],
@@ -140,7 +142,9 @@ The `extensions` array lists packages that extend AIR's functionality:
 {
   "extensions": [
     "@pulsemcp/air-adapter-claude",
-    "@pulsemcp/air-provider-github"
+    "@pulsemcp/air-provider-github",
+    "@pulsemcp/air-secrets-env",
+    "@pulsemcp/air-secrets-file"
   ]
 }
 ```

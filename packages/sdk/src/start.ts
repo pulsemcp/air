@@ -48,9 +48,40 @@ export async function startSession(
   agent: string,
   options?: StartSessionOptions
 ): Promise<StartSessionResult> {
-  const adapter = await findAdapter(agent);
+  const airJsonPath = options?.config || getAirJsonPath();
+  const airJsonDir = airJsonPath ? dirname(resolve(airJsonPath)) : undefined;
+  const searchDirs = airJsonDir ? [airJsonDir] : undefined;
+
+  // Load extensions first so extension-provided adapters are found
+  let artifacts: ResolvedArtifacts;
+  let adapter = null;
+
+  if (airJsonPath) {
+    const airConfig = loadAirConfig(airJsonPath);
+    const loaded = await loadExtensions(
+      airConfig.extensions || [],
+      airJsonDir!
+    );
+
+    // Check extension-provided adapters first
+    adapter =
+      loaded.adapters.find((ext) => ext.adapter?.name === agent)?.adapter ??
+      null;
+
+    const providers = loaded.providers
+      .map((ext) => ext.provider!)
+      .filter(Boolean);
+    artifacts = await resolveArtifacts(airJsonPath, { providers });
+  } else {
+    artifacts = emptyArtifacts();
+  }
+
+  // Fall back to registry lookup with search dirs
   if (!adapter) {
-    const available = await listAvailableAdapters();
+    adapter = await findAdapter(agent, { searchDirs });
+  }
+  if (!adapter) {
+    const available = await listAvailableAdapters({ searchDirs });
     const availableMsg =
       available.length > 0
         ? `Available: ${available.join(", ")}`
@@ -59,21 +90,6 @@ export async function startSession(
       `No adapter found for "${agent}". ${availableMsg}.\n` +
         `Install an adapter: npm install @pulsemcp/air-adapter-${agent}`
     );
-  }
-
-  const airJsonPath = options?.config || getAirJsonPath();
-  let artifacts: ResolvedArtifacts;
-
-  if (airJsonPath) {
-    const airConfig = loadAirConfig(airJsonPath);
-    const airJsonDir = dirname(resolve(airJsonPath));
-    const loaded = await loadExtensions(airConfig.extensions || [], airJsonDir);
-    const providers = loaded.providers
-      .map((ext) => ext.provider!)
-      .filter(Boolean);
-    artifacts = await resolveArtifacts(airJsonPath, { providers });
-  } else {
-    artifacts = emptyArtifacts();
   }
 
   let root: RootEntry | undefined;

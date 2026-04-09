@@ -26,7 +26,7 @@ air --version
 air init
 ```
 
-When run inside a git repo that contains AIR artifact index files (skills.json, mcp.json, etc.), `air init` **discovers them automatically**, detects the GitHub remote and default branch, and generates an `air.json` with `github://` resolver URIs. It also **auto-generates a `roots.json`** entry for the current repo, populated with `default_skills`, `default_mcp_servers`, and `default_hooks` from the discovered artifacts. This makes the repo immediately usable as a root with `air start --root <name>`. This is the fastest way to get started with an existing repo.
+When run inside a git repo that contains AIR artifact index files (skills.json, mcp.json, etc.), `air init` **discovers them automatically**, detects the GitHub remote and default branch, and generates an `air.json` with `github://` resolver URIs for all artifact types — including roots. It also **auto-generates a `roots.json`** in the repo directory (if one doesn't already exist) with a root entry for the current repo, populated with `default_skills`, `default_mcp_servers`, and `default_hooks` from the discovered artifacts. The generated `air.json` includes all officially maintained extensions by default, giving you a batteries-included setup. This is the fastest way to get started with an existing repo.
 
 When no artifacts are found (or you're not in a git repo), it falls back to creating a blank scaffolding:
 
@@ -86,26 +86,27 @@ You should see output like:
 ✓ ~/.air/mcp/mcp.json is valid (schema: mcp)
 ```
 
-## 5. Add extensions
+## 5. Install extensions
 
-AIR uses extensions for agent adapters and remote providers. Add the ones you need to the `extensions` array in `air.json`:
+When run from a git repo, `air init` automatically includes all officially maintained extensions in the generated `air.json`:
 
 ```json
 {
-  "name": "my-config",
   "extensions": [
     "@pulsemcp/air-adapter-claude",
-    "@pulsemcp/air-provider-github"
-  ],
-  "skills": ["./skills/skills.json"],
-  "mcp": ["./mcp/mcp.json"]
+    "@pulsemcp/air-provider-github",
+    "@pulsemcp/air-secrets-env",
+    "@pulsemcp/air-secrets-file"
+  ]
 }
 ```
 
 - **`@pulsemcp/air-adapter-claude`** — translates AIR config into Claude Code's format (`.mcp.json`, skills)
 - **`@pulsemcp/air-provider-github`** — resolves `github://` URIs so you can share config across repos
+- **`@pulsemcp/air-secrets-env`** — resolves `${VAR}` patterns from environment variables
+- **`@pulsemcp/air-secrets-file`** — resolves `${VAR}` patterns from a JSON secrets file
 
-Then install them:
+Install them:
 
 ```bash
 air install

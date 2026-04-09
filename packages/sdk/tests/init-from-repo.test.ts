@@ -342,15 +342,22 @@ describe("initFromRepo", () => {
     // Verify generated air.json content
     const airJson = JSON.parse(readFileSync(airJsonPath, "utf-8"));
     expect(airJson.name).toBe("air-config");
-    expect(airJson.extensions).toEqual(["@pulsemcp/air-provider-github"]);
+    expect(airJson.extensions).toEqual([
+      "@pulsemcp/air-adapter-claude",
+      "@pulsemcp/air-provider-github",
+      "@pulsemcp/air-secrets-env",
+      "@pulsemcp/air-secrets-file",
+    ]);
     expect(airJson.skills).toEqual([
       "github://acme/air-config@main/skills/skills.json",
     ]);
     expect(airJson.mcp).toEqual([
       "github://acme/air-config@main/mcp/mcp.json",
     ]);
-    // roots always includes the auto-generated roots.json
-    expect(airJson.roots).toEqual(["./roots/roots.json"]);
+    // roots uses github:// URI like other artifacts
+    expect(airJson.roots).toEqual([
+      "github://acme/air-config@main/roots/roots.json",
+    ]);
     // Should not include empty artifact types
     expect(airJson.references).toBeUndefined();
     expect(airJson.plugins).toBeUndefined();
@@ -593,11 +600,10 @@ describe("initFromRepo", () => {
     expect(airJson.roots).toBeDefined();
     expect(airJson.hooks).toBeDefined();
 
-    // Auto-generated roots.json should be first, discovered roots.json after
-    expect(airJson.roots[0]).toBe("./roots/roots.json");
-    expect(airJson.roots).toContain(
-      "github://acme/full-config@main/roots/roots.json"
-    );
+    // When repo already has roots.json, only the discovered github:// URI is used
+    expect(airJson.roots).toEqual([
+      "github://acme/full-config@main/roots/roots.json",
+    ]);
   });
 
   it("auto-generates roots.json for the current repo", () => {
@@ -622,10 +628,10 @@ describe("initFromRepo", () => {
       path: airJsonPath,
     });
 
-    // Verify result fields
+    // Verify result fields — roots.json is now written to the repo directory
     expect(result.generatedRootName).toBe("my-project");
     expect(result.generatedRootsPath).toBe(
-      resolve(outputDir, "roots", "roots.json")
+      resolve(repoDir, "roots", "roots.json")
     );
 
     // Verify roots.json file was created

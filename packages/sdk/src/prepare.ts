@@ -82,13 +82,15 @@ export async function prepareSession(
     );
   }
 
+  const airJsonDir = dirname(resolve(airJsonPath));
+  const searchDirs = [airJsonDir];
+
   // Use pre-loaded extensions or load from air.json
   let loaded: LoadedExtensions;
   if (options.extensions) {
     loaded = options.extensions;
   } else {
     const airConfig = loadAirConfig(airJsonPath);
-    const airJsonDir = dirname(resolve(airJsonPath));
     loaded = await loadExtensions(airConfig.extensions || [], airJsonDir);
   }
 
@@ -98,10 +100,10 @@ export async function prepareSession(
     loaded.adapters.find((ext) => ext.adapter?.name === adapterName)?.adapter ??
     null;
   if (!adapter) {
-    adapter = await findAdapter(adapterName);
+    adapter = await findAdapter(adapterName, { searchDirs });
   }
   if (!adapter) {
-    const available = await listAvailableAdapters();
+    const available = await listAvailableAdapters({ searchDirs });
     const availableMsg =
       available.length > 0
         ? `Available: ${available.join(", ")}`

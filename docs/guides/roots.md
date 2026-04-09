@@ -14,11 +14,11 @@ Roots solve this by defining per-project defaults.
 
 ## Auto-generated roots
 
-When you run `air init` inside a git repo, a root entry is automatically generated at `~/.air/roots/roots.json`. It captures the repo's GitHub URL, default branch, and populates `default_skills`, `default_mcp_servers`, and `default_hooks` from the artifacts discovered in the repo. This makes the repo immediately usable as a root with `air start --root <name>`.
+When you run `air init` inside a git repo, a root entry is automatically generated at `roots/roots.json` within the repo directory (if one doesn't already exist there). It captures the repo's GitHub URL, default branch, and populates `default_skills`, `default_mcp_servers`, and `default_hooks` from the artifacts discovered in the repo. The generated `air.json` references it via a `github://` URI, consistent with how other artifact types are referenced. Commit and push the generated `roots.json` to make it resolvable via the `github://` URI.
 
 ## Defining a root
 
-Add or edit entries in `~/.air/roots/roots.json`:
+Add or edit entries in your roots index file:
 
 ```json
 {
