@@ -1,8 +1,8 @@
 import { createRequire } from "module";
-import { readFileSync } from "fs";
 import { join, resolve } from "path";
 import { pathToFileURL } from "url";
 import type { AirExtension, PrepareTransform } from "@pulsemcp/air-core";
+import { resolveEsmEntry } from "./esm-resolve.js";
 
 export interface LoadedExtensions {
   /** Extensions that provide an adapter */
@@ -47,43 +47,6 @@ export async function loadExtensions(
   return result;
 }
 
-/**
- * Resolve the ESM entry point for a package installed in airJsonDir/node_modules.
- * Reads the package.json `exports` field to find the `import` condition.
- * Returns the absolute path to the entry file, or null if not resolvable.
- */
-function resolveEsmEntryFromProject(
-  specifier: string,
-  airJsonDir: string
-): string | null {
-  try {
-    const packageDir = join(airJsonDir, "node_modules", specifier);
-    const pkgJson = JSON.parse(
-      readFileSync(join(packageDir, "package.json"), "utf-8")
-    );
-
-    // Check exports field (most common for ESM-only packages)
-    const exports = pkgJson.exports;
-    let entry: string | undefined;
-    if (typeof exports === "string") {
-      entry = exports;
-    } else if (exports?.["."]?.import) {
-      entry = exports["."].import;
-    } else if (exports?.import) {
-      entry = exports.import;
-    } else if (pkgJson.module) {
-      entry = pkgJson.module;
-    }
-
-    if (entry) {
-      return resolve(packageDir, entry);
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
 async function loadSingleExtension(
   specifier: string,
   airJsonDir: string
@@ -121,7 +84,7 @@ async function loadSingleExtension(
         if (code === "ERR_PACKAGE_PATH_NOT_EXPORTED") {
           // CJS resolution can't resolve ESM-only packages.  Try resolving
           // the ESM entry point directly from the package.json exports.
-          const esmEntry = resolveEsmEntryFromProject(specifier, airJsonDir);
+          const esmEntry = resolveEsmEntry(specifier, airJsonDir);
           if (esmEntry) {
             mod = await import(pathToFileURL(esmEntry).href);
           } else {

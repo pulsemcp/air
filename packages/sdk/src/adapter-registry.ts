@@ -1,8 +1,8 @@
 import { createRequire } from "module";
-import { readFileSync } from "fs";
-import { join, resolve } from "path";
+import { join } from "path";
 import { pathToFileURL } from "url";
 import type { AgentAdapter, AirExtension } from "@pulsemcp/air-core";
+import { resolveEsmEntry } from "./esm-resolve.js";
 
 /**
  * Known adapter packages. The SDK tries to dynamically import each one.
@@ -19,38 +19,6 @@ export interface FindAdapterOptions {
    * packages installed via `air install` are discoverable.
    */
   searchDirs?: string[];
-}
-
-/**
- * Resolve the ESM entry point for a package installed in dir/node_modules.
- * Reads the package.json `exports` field to find the `import` condition.
- * Returns the absolute path to the entry file, or null if not resolvable.
- */
-function resolveEsmEntry(
-  packageName: string,
-  dir: string
-): string | null {
-  try {
-    const packageDir = join(dir, "node_modules", packageName);
-    const pkgJson = JSON.parse(
-      readFileSync(join(packageDir, "package.json"), "utf-8")
-    );
-    const exports = pkgJson.exports;
-    let entry: string | undefined;
-    if (typeof exports === "string") {
-      entry = exports;
-    } else if (exports?.["."]?.import) {
-      entry = exports["."].import;
-    } else if (exports?.import) {
-      entry = exports.import;
-    } else if (pkgJson.module) {
-      entry = pkgJson.module;
-    }
-    if (entry) return resolve(packageDir, entry);
-    return null;
-  } catch {
-    return null;
-  }
 }
 
 /**

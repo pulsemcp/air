@@ -82,20 +82,20 @@ export async function prepareSession(
     );
   }
 
+  const airJsonDir = dirname(resolve(airJsonPath));
+  const searchDirs = [airJsonDir];
+
   // Use pre-loaded extensions or load from air.json
   let loaded: LoadedExtensions;
   if (options.extensions) {
     loaded = options.extensions;
   } else {
     const airConfig = loadAirConfig(airJsonPath);
-    const airJsonDir = dirname(resolve(airJsonPath));
     loaded = await loadExtensions(airConfig.extensions || [], airJsonDir);
   }
 
   // Find adapter: prefer extension-provided, fall back to registry
   const adapterName = options.adapter;
-  const airJsonDir = dirname(resolve(airJsonPath));
-  const searchDirs = [airJsonDir];
   let adapter =
     loaded.adapters.find((ext) => ext.adapter?.name === adapterName)?.adapter ??
     null;
