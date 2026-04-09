@@ -84,7 +84,7 @@ describe("prepare command", () => {
     const target = createTemp({});
 
     const result = tryRun(
-      `prepare --config ${join(catalog, "air.json")} --root default --target ${target}`
+      `prepare claude --config ${join(catalog, "air.json")} --root default --target ${target}`
     );
     expect(result.exitCode).toBe(0);
 
@@ -125,7 +125,7 @@ describe("prepare command", () => {
     const target = createTemp({});
 
     const result = tryRun(
-      `prepare --config ${join(catalog, "air.json")} --root default --target ${target}`
+      `prepare claude --config ${join(catalog, "air.json")} --root default --target ${target}`
     );
     expect(result.exitCode).toBe(0);
 
@@ -165,7 +165,7 @@ describe("prepare command", () => {
     });
 
     const result = tryRun(
-      `prepare --config ${join(catalog, "air.json")} --root default --target ${target}`
+      `prepare claude --config ${join(catalog, "air.json")} --root default --target ${target}`
     );
     expect(result.exitCode).toBe(0);
 
@@ -204,7 +204,7 @@ describe("prepare command", () => {
     const target = createTemp({});
 
     const result = tryRun(
-      `prepare --config ${join(catalog, "air.json")} --root web-app --target ${target}`
+      `prepare claude --config ${join(catalog, "air.json")} --root web-app --target ${target}`
     );
     expect(result.exitCode).toBe(0);
 
@@ -256,7 +256,7 @@ describe("prepare command", () => {
 
     // Override to only use skill-c (ignoring root defaults)
     const result = tryRun(
-      `prepare --config ${join(catalog, "air.json")} --root myroot --skills skill-c --target ${target}`
+      `prepare claude --config ${join(catalog, "air.json")} --root myroot --skills skill-c --target ${target}`
     );
     expect(result.exitCode).toBe(0);
 
@@ -295,7 +295,7 @@ describe("prepare command", () => {
 
     // Override to only use slack (ignoring root's default of github)
     const result = tryRun(
-      `prepare --config ${join(catalog, "air.json")} --root myroot --mcp-servers slack --target ${target}`
+      `prepare claude --config ${join(catalog, "air.json")} --root myroot --mcp-servers slack --target ${target}`
     );
     expect(result.exitCode).toBe(0);
 
@@ -339,7 +339,7 @@ describe("prepare command", () => {
     const target = createTemp({});
 
     const result = tryRun(
-      `prepare --config ${join(catalog, "air.json")} --root default --target ${target}`
+      `prepare claude --config ${join(catalog, "air.json")} --root default --target ${target}`
     );
     expect(result.exitCode).toBe(0);
 
@@ -355,9 +355,21 @@ describe("prepare command", () => {
     expect(readFileSync(refPath, "utf-8")).toContain("Branch naming");
   });
 
+  it("fails when adapter argument is missing", () => {
+    const catalog = createTemp({
+      "air.json": { name: "test" },
+    });
+
+    const result = tryRun(
+      `prepare --config ${join(catalog, "air.json")}`
+    );
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("missing required argument");
+  });
+
   it("fails gracefully with missing air.json", () => {
     const result = tryRun(
-      `prepare --config /nonexistent/air.json --target /tmp`
+      `prepare claude --config /nonexistent/air.json --target /tmp`
     );
     expect(result.exitCode).not.toBe(0);
   });
@@ -372,7 +384,7 @@ describe("prepare command", () => {
     });
 
     const result = tryRun(
-      `prepare --config ${join(catalog, "air.json")} --root nonexistent`
+      `prepare claude --config ${join(catalog, "air.json")} --root nonexistent`
     );
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain("not found");
@@ -445,7 +457,7 @@ describe("prepare command", () => {
     const target = createTemp({});
 
     const result = tryRun(
-      `prepare --config ${join(catalog, "air.json")} --root server-onboarding --target ${target}`
+      `prepare claude --config ${join(catalog, "air.json")} --root server-onboarding --target ${target}`
     );
     expect(result.exitCode).toBe(0);
 
@@ -502,7 +514,7 @@ describe("prepare command", () => {
     const target = createTemp({});
 
     const result = tryRun(
-      `prepare --config ${join(catalog, "air.json")} --root server-onboarding --no-subagent-merge --target ${target}`
+      `prepare claude --config ${join(catalog, "air.json")} --root server-onboarding --no-subagent-merge --target ${target}`
     );
     expect(result.exitCode).toBe(0);
 
@@ -549,10 +561,10 @@ describe("prepare command", () => {
 
     // Run prepare twice
     tryRun(
-      `prepare --config ${join(catalog, "air.json")} --root default --target ${target}`
+      `prepare claude --config ${join(catalog, "air.json")} --root default --target ${target}`
     );
     const result = tryRun(
-      `prepare --config ${join(catalog, "air.json")} --root default --target ${target}`
+      `prepare claude --config ${join(catalog, "air.json")} --root default --target ${target}`
     );
     expect(result.exitCode).toBe(0);
 

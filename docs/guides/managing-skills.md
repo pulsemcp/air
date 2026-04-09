@@ -179,7 +179,7 @@ When you run `air start` or `air prepare`, the adapter:
 With `air prepare`, you can override which skills are activated:
 
 ```bash
-air prepare --skills deploy-staging,initial-pr-review
+air prepare claude --skills deploy-staging,initial-pr-review
 ```
 
 This activates only the listed skills, ignoring root defaults.

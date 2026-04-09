@@ -151,7 +151,7 @@ Transforms receive a context object with:
 Extensions can declare CLI options that appear on `air prepare`. For example, a secrets extension might add `--secrets-file`:
 
 ```bash
-air prepare --secrets-file /path/to/secrets.env
+air prepare claude --secrets-file /path/to/secrets.env
 ```
 
 The flag's value is passed to the transform via `context.options`.

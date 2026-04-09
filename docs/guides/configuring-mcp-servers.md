@@ -185,7 +185,7 @@ The `title` and `description` fields are stripped during translation (they're AI
 Override which servers are activated with `air prepare`:
 
 ```bash
-air prepare --mcp-servers github,postgres
+air prepare claude --mcp-servers github,postgres
 ```
 
 This activates only the listed servers, ignoring root defaults.

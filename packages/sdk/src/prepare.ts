@@ -24,8 +24,8 @@ export interface PrepareSessionOptions {
   root?: string;
   /** Target directory to prepare. Defaults to process.cwd(). */
   target?: string;
-  /** Agent adapter name. Defaults to "claude". */
-  adapter?: string;
+  /** Agent adapter name (e.g., "claude"). Required. */
+  adapter: string;
   /** Skill IDs to activate (overrides root defaults). */
   skills?: string[];
   /** MCP server IDs to activate (overrides root defaults). */
@@ -73,9 +73,9 @@ export interface PrepareSessionResult {
  * @throws Error if the adapter is not found, air.json is not found, or the specified root doesn't exist.
  */
 export async function prepareSession(
-  options?: PrepareSessionOptions
+  options: PrepareSessionOptions
 ): Promise<PrepareSessionResult> {
-  const airJsonPath = options?.config || getAirJsonPath();
+  const airJsonPath = options.config ?? getAirJsonPath();
   if (!airJsonPath) {
     throw new Error(
       "No air.json found. Specify a config path or set AIR_CONFIG env var."
@@ -84,7 +84,7 @@ export async function prepareSession(
 
   // Use pre-loaded extensions or load from air.json
   let loaded: LoadedExtensions;
-  if (options?.extensions) {
+  if (options.extensions) {
     loaded = options.extensions;
   } else {
     const airConfig = loadAirConfig(airJsonPath);
@@ -93,7 +93,7 @@ export async function prepareSession(
   }
 
   // Find adapter: prefer extension-provided, fall back to registry
-  const adapterName = options?.adapter ?? "claude";
+  const adapterName = options.adapter;
   let adapter =
     loaded.adapters.find((ext) => ext.adapter?.name === adapterName)?.adapter ??
     null;
@@ -121,7 +121,7 @@ export async function prepareSession(
   let root: RootEntry | undefined;
   let rootAutoDetected = false;
 
-  if (options?.root) {
+  if (options.root) {
     root = artifacts.roots[options.root];
     if (!root) {
       throw new Error(
@@ -129,7 +129,7 @@ export async function prepareSession(
       );
     }
   } else {
-    const targetDir = resolve(options?.target ?? process.cwd());
+    const targetDir = resolve(options.target ?? process.cwd());
     root = detectRoot(artifacts.roots, targetDir);
     if (root) {
       rootAutoDetected = true;
@@ -139,12 +139,12 @@ export async function prepareSession(
   // Adapter writes .mcp.json and injects skills (no secret resolution)
   const session = await adapter.prepareSession(
     artifacts,
-    options?.target ?? process.cwd(),
+    options.target ?? process.cwd(),
     {
       root,
-      skillOverrides: options?.skills,
-      mcpServerOverrides: options?.mcpServers,
-      skipSubagentMerge: options?.skipSubagentMerge,
+      skillOverrides: options.skills,
+      mcpServerOverrides: options.mcpServers,
+      skipSubagentMerge: options.skipSubagentMerge,
     }
   );
 
@@ -157,15 +157,15 @@ export async function prepareSession(
     await runTransforms({
       transforms: loaded.transforms,
       mcpConfigPath,
-      targetDir: options?.target ?? process.cwd(),
+      targetDir: options.target ?? process.cwd(),
       root,
       artifacts,
-      extensionOptions: options?.extensionOptions ?? {},
+      extensionOptions: options.extensionOptions ?? {},
     });
   }
 
   // Final validation: ensure no unresolved ${VAR} patterns remain
-  if (!options?.skipValidation && mcpConfigPath) {
+  if (!options.skipValidation && mcpConfigPath) {
     const config: McpConfig = JSON.parse(
       readFileSync(mcpConfigPath, "utf-8")
     );

@@ -73,10 +73,10 @@ This activates only the MCP servers, skills, plugins, and hooks listed in the ro
 `air prepare` writes agent configuration to a target directory without starting the agent. It's designed for orchestrators and CI/CD pipelines.
 
 ```bash
-air prepare
+air prepare claude
 ```
 
-By default, it prepares the current directory. Use `--target` to specify a different directory.
+The adapter argument is required — it specifies which agent adapter to use (e.g., `claude`). Use `--target` to specify a different directory (defaults to cwd).
 
 ### What it does
 
@@ -94,12 +94,13 @@ By default, it prepares the current directory. Use `--target` to specify a diffe
 
 ### Options
 
+Required argument: `<adapter>` — the agent adapter to use (e.g., `claude`).
+
 | Flag | Description |
 |------|-------------|
 | `--config <path>` | Path to air.json (default: `~/.air/air.json` or `AIR_CONFIG`) |
 | `--root <name>` | Root to activate (auto-detected from cwd if omitted) |
 | `--target <dir>` | Directory to prepare (default: current directory) |
-| `--adapter <name>` | Agent adapter (default: `"claude"`) |
 | `--skills <ids>` | Comma-separated skill IDs (overrides root defaults) |
 | `--mcp-servers <ids>` | Comma-separated MCP server IDs (overrides root defaults) |
 | `--no-subagent-merge` | Skip merging subagent roots' artifacts |
@@ -145,7 +146,7 @@ Detection priority:
 Override which skills or MCP servers are activated, regardless of root defaults:
 
 ```bash
-air prepare --skills deploy-staging --mcp-servers github,postgres-prod
+air prepare claude --skills deploy-staging --mcp-servers github,postgres-prod
 ```
 
 ## How roots, adapters, and providers interact
@@ -177,7 +178,7 @@ Artifacts resolved → Adapter translates → Transforms modify → Session read
 ```bash
 # Install extensions, prepare the workspace, then run the agent
 air install --config /path/to/air.json
-air prepare --config /path/to/air.json --target /workspace --root my-project
+air prepare claude --config /path/to/air.json --target /workspace --root my-project
 claude --session-dir /workspace
 ```
 
@@ -185,8 +186,8 @@ claude --session-dir /workspace
 
 ```bash
 # Prepare different roots for different agents
-air prepare --root frontend --target /workspace/frontend
-air prepare --root backend --target /workspace/backend
+air prepare claude --root frontend --target /workspace/frontend
+air prepare claude --root backend --target /workspace/backend
 ```
 
 ### Local development
