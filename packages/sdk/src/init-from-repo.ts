@@ -350,7 +350,7 @@ export function initFromRepo(
   const artifactIds = extractArtifactIds(discovered, repoRoot);
 
   const rootEntry: RootEntry = {
-    name: configName,
+    display_name: configName,
     description: `Agent root for ${repo}.`,
     url: remoteUrl.trim(),
     default_branch: branch,

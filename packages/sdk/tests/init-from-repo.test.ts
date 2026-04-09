@@ -637,7 +637,7 @@ describe("initFromRepo", () => {
       "https://raw.githubusercontent.com/pulsemcp/air/main/schemas/roots.schema.json"
     );
     expect(rootsJson["my-project"]).toBeDefined();
-    expect(rootsJson["my-project"].name).toBe("my-project");
+    expect(rootsJson["my-project"].display_name).toBe("my-project");
     expect(rootsJson["my-project"].description).toBe(
       "Agent root for acme/my-project."
     );

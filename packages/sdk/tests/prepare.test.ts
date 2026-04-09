@@ -191,6 +191,7 @@ describe("prepareSession", () => {
       config: join(catalog, "air.json"),
       adapter: "claude",
       target,
+      adapter: "claude",
     });
 
     // .mcp.json should have empty mcpServers (no root = no defaults)
