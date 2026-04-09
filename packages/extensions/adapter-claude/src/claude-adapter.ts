@@ -40,11 +40,11 @@ export class ClaudeAdapter implements AgentAdapter {
     _workDir?: string
   ): AgentSessionConfig {
     const mcpServers = root?.default_mcp_servers
-      ? this.filterByIds(artifacts.mcp, root.default_mcp_servers)
+      ? this.filterByIds(artifacts.mcp, root.default_mcp_servers, "MCP server")
       : {};
 
     const plugins = root?.default_plugins
-      ? this.filterByIds(artifacts.plugins, root.default_plugins)
+      ? this.filterByIds(artifacts.plugins, root.default_plugins, "plugin")
       : {};
 
     const mcpConfig = this.translateMcpServers(mcpServers);
@@ -54,9 +54,10 @@ export class ClaudeAdapter implements AgentAdapter {
     );
 
     const skillIds = root?.default_skills ?? [];
-    const skillPaths = skillIds
-      .filter((id) => artifacts.skills[id])
-      .map((id) => artifacts.skills[id].path);
+    if (root?.default_skills) {
+      this.validateIds(artifacts.skills, skillIds, "skill");
+    }
+    const skillPaths = skillIds.map((id) => artifacts.skills[id].path);
 
     return {
       agent: "claude",
@@ -114,23 +115,25 @@ export class ClaudeAdapter implements AgentAdapter {
     }
 
     const mcpServers = mcpServerIds?.length
-      ? this.filterByIds(artifacts.mcp, mcpServerIds)
+      ? this.filterByIds(artifacts.mcp, mcpServerIds, "MCP server")
       : {};
 
     const plugins = root?.default_plugins
-      ? this.filterByIds(artifacts.plugins, root.default_plugins)
+      ? this.filterByIds(artifacts.plugins, root.default_plugins, "plugin")
       : {};
 
-    // 2. Write .mcp.json (${VAR} patterns are left as-is for transforms to resolve)
+    // 2. Validate skill IDs
+    this.validateIds(artifacts.skills, skillIds, "skill");
+
+    // 3. Write .mcp.json (${VAR} patterns are left as-is for transforms to resolve)
     const mcpConfig = this.translateMcpServers(mcpServers);
     const mcpConfigPath = join(targetDir, ".mcp.json");
     writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig, null, 2) + "\n");
     configFiles.push(mcpConfigPath);
 
-    // 3. Inject skills + references into .claude/skills/
+    // 4. Inject skills + references into .claude/skills/
     for (const skillId of skillIds) {
       const skill = artifacts.skills[skillId];
-      if (!skill) continue;
 
       const skillTargetDir = join(targetDir, ".claude", "skills", skillId);
 
@@ -150,11 +153,13 @@ export class ClaudeAdapter implements AgentAdapter {
       }
     }
 
-    // 4. Inject path-based hooks into .claude/hooks/
+    // 5. Validate and inject path-based hooks into .claude/hooks/
     const hookIds = root?.default_hooks ?? [];
+    if (root?.default_hooks) {
+      this.validateIds(artifacts.hooks, hookIds, "hook");
+    }
     for (const hookId of hookIds) {
       const hook = artifacts.hooks[hookId];
-      if (!hook) continue;
 
       const hookTargetDir = join(targetDir, ".claude", "hooks", hookId);
 
@@ -174,14 +179,17 @@ export class ClaudeAdapter implements AgentAdapter {
       }
     }
 
-    // 5. Generate ephemeral subagent context for system prompt
+    // 6. Generate ephemeral subagent context for system prompt
     let subagentContext: string | undefined;
     if (subagentRoots.length > 0) {
       subagentContext = this.buildSubagentContext(subagentRoots);
     }
 
-    // 6. Build start command (include --append-system-prompt if subagent context exists)
-    const config = this.generateConfig(artifacts, root, targetDir);
+    // 7. Build start command (include --append-system-prompt if subagent context exists)
+    // Pass undefined as root — prepareSession already handled all filtering/validation above.
+    // Passing root here would cause generateConfig to re-validate with the original (pre-merge)
+    // root defaults, which is both redundant and fragile.
+    const config = this.generateConfig(artifacts, undefined, targetDir);
     const startCommand = this.buildStartCommand({
       ...config,
       workDir: targetDir,
@@ -335,15 +343,32 @@ export class ClaudeAdapter implements AgentAdapter {
     };
   }
 
+  /** Throw if any IDs don't exist in the available map. */
+  private validateIds<T>(
+    all: Record<string, T>,
+    ids: string[],
+    artifactType: string
+  ): void {
+    const unknown = ids.filter((id) => !all[id]);
+    if (unknown.length > 0) {
+      const available = Object.keys(all);
+      const availableMsg =
+        available.length > 0 ? `Available: ${available.join(", ")}` : "None available";
+      throw new Error(
+        `Unknown ${artifactType} ID(s): ${unknown.join(", ")}. ${availableMsg}`
+      );
+    }
+  }
+
   private filterByIds<T>(
     all: Record<string, T>,
-    ids: string[]
+    ids: string[],
+    artifactType: string
   ): Record<string, T> {
+    this.validateIds(all, ids, artifactType);
     const filtered: Record<string, T> = {};
     for (const id of ids) {
-      if (all[id]) {
-        filtered[id] = all[id];
-      }
+      filtered[id] = all[id];
     }
     return filtered;
   }
