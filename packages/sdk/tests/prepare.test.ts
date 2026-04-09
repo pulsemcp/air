@@ -71,6 +71,7 @@ describe("prepareSession", () => {
     const result = await prepareSession({
       config: join(catalog, "air.json"),
       adapter: "claude",
+      root: "default",
       target,
     });
 
@@ -114,6 +115,7 @@ describe("prepareSession", () => {
     const result = await prepareSession({
       config: join(catalog, "air.json"),
       adapter: "claude",
+      root: "default",
       target,
     });
 
@@ -189,6 +191,7 @@ describe("prepareSession", () => {
 
     const result = await prepareSession({
       config: join(catalog, "air.json"),
+      adapter: "claude",
       target,
     });
 
@@ -364,6 +367,7 @@ export default async function(config, context) {
       await prepareSession({
         config: join(catalog, "air.json"),
         adapter: "claude",
+        root: "default",
         target,
       });
 
@@ -409,6 +413,7 @@ export default async function(config, context) {
       await prepareSession({
         config: join(catalog, "air.json"),
         adapter: "claude",
+        root: "default",
         target,
       });
 
@@ -436,6 +441,7 @@ export default async function(config, context) {
       await prepareSession({
         config: join(catalog, "air.json"),
         adapter: "claude",
+        root: "default",
         target,
       });
 
@@ -473,6 +479,7 @@ export default async function(config, context) {
         await prepareSession({
           config: join(catalog, "air.json"),
           adapter: "claude",
+          root: "default",
           target,
         });
 
@@ -513,6 +520,7 @@ export default async function(config, context) {
       await prepareSession({
         config: join(catalog, "air.json"),
         adapter: "claude",
+        root: "default",
         target,
         extensionOptions: { "secrets-file": join(catalog, "secrets.json") },
       });
@@ -557,6 +565,7 @@ export default async function(config, context) {
         await prepareSession({
           config: join(catalog, "air.json"),
           adapter: "claude",
+          root: "default",
           target,
           extensionOptions: { "secrets-file": join(catalog, "secrets.json") },
         });
@@ -647,6 +656,7 @@ export default async function(config, context) {
         prepareSession({
           config: join(catalog, "air.json"),
           adapter: "claude",
+          root: "default",
           target,
         })
       ).rejects.toThrow("Unresolved variable");
@@ -677,6 +687,7 @@ export default async function(config, context) {
         prepareSession({
           config: join(catalog, "air.json"),
           adapter: "claude",
+          root: "default",
           target,
         })
       ).rejects.toThrow(/\$\{MISSING_A\}.*\$\{MISSING_B\}/);
@@ -709,6 +720,7 @@ export default async function(config, context) {
         prepareSession({
           config: join(catalog, "air.json"),
           adapter: "claude",
+          root: "default",
           target,
         })
       ).rejects.toThrow("NESTED_SECRET");
@@ -739,6 +751,7 @@ export default async function(config, context) {
         prepareSession({
           config: join(catalog, "air.json"),
           adapter: "claude",
+          root: "default",
           target,
         })
       ).rejects.toThrow("ARRAY_SECRET");
@@ -806,6 +819,7 @@ export default async function(config, context) {
         const err = await prepareSession({
           config: join(catalog, "air.json"),
           adapter: "claude",
+          root: "default",
           target,
         }).catch((e: Error) => e);
 
