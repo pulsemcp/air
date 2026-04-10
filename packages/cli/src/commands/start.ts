@@ -46,24 +46,19 @@ export function startCommand(): Command {
           process.exit(1);
         }
 
-        // Auto-detect root if not specified
+        // Resolve root: use explicit option, fall back to auto-detection
         let root = result.root;
         let rootId = options.root;
         let rootAutoDetected = false;
-        if (!options.root && !root) {
-          root = detectRoot(result.artifacts.roots, process.cwd());
-          if (root) {
+        if (!options.root) {
+          const detected = detectRoot(result.artifacts.roots, process.cwd());
+          if (detected) {
+            root = detected;
             rootAutoDetected = true;
-            // Find the key for the detected root
             rootId = Object.entries(result.artifacts.roots).find(
-              ([, v]) => v === root
+              ([, v]) => v === detected
             )?.[0];
           }
-        } else if (!options.root && root) {
-          rootAutoDetected = true;
-          rootId = Object.entries(result.artifacts.roots).find(
-            ([, v]) => v === root
-          )?.[0];
         }
 
         // Dry run

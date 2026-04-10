@@ -7,13 +7,16 @@ import {
   getAllSelectionSummary,
 } from "./types.js";
 
-/** Number of fixed lines: header(3) + tab bar(2) + footer(varies) */
+/** Number of fixed lines: header(3) + tab bar(2) */
 const HEADER_LINES = 5;
-const FOOTER_LINES = 8; // search + separator + summary lines + legend + padding
+/** Fixed footer lines: scroll indicator(1) + search bar(1) + separator(1) + legend blank(1) + legend(1) + trailing blank(1) = 6 */
+const FIXED_FOOTER_LINES = 6;
 
-export function getViewportHeight(): number {
+export function getViewportHeight(tabCount: number): number {
   const rows = process.stdout.rows || 24;
-  return Math.max(rows - HEADER_LINES - FOOTER_LINES, 3);
+  // Footer varies: 6 fixed lines + one summary line per tab
+  const footerLines = FIXED_FOOTER_LINES + tabCount;
+  return Math.max(rows - HEADER_LINES - footerLines, 3);
 }
 
 export function render(state: TuiState, viewportHeight: number): string[] {
@@ -40,10 +43,8 @@ export function render(state: TuiState, viewportHeight: number): string[] {
 
     if (i === state.activeTab) {
       tabParts.push(chalk.bold.inverse(` ${label} (${countStr}) `));
-    } else if (!isOverridable) {
-      tabParts.push(chalk.dim(` ${label} (${countStr}) `));
     } else {
-      tabParts.push(chalk.dim(` ${label}`) + chalk.dim(` (${countStr}) `));
+      tabParts.push(chalk.dim(` ${label} (${countStr}) `));
     }
   }
   lines.push("  " + tabParts.join(" "));
@@ -59,7 +60,7 @@ export function render(state: TuiState, viewportHeight: number): string[] {
   const scrollOffset = activeCat ? state.scrollOffsets[activeCat] : 0;
 
   if (activeCat && !isOverridable) {
-    lines.push(chalk.dim("  (read-only — override not yet supported)"));
+    lines.push(chalk.dim("  (read-only \u2014 override not yet supported)"));
   }
 
   if (visibleItems.length === 0) {
@@ -119,10 +120,10 @@ export function render(state: TuiState, viewportHeight: number): string[] {
       lines.push(`  ${prefix} ${chalk.dim(label)}: ${chalk.dim("(none)")}`);
     } else {
       const ids = s.selected.join(", ");
-      const availableWidth = maxWidth - label.length - 6;
+      const availableWidth = Math.max(maxWidth - label.length - 6, 0);
       const display =
         ids.length > availableWidth
-          ? ids.slice(0, availableWidth - 3) + "..."
+          ? ids.slice(0, Math.max(availableWidth - 3, 0)) + "..."
           : ids;
       lines.push(`  ${prefix} ${chalk.white(label)}: ${chalk.green(display)}`);
     }
@@ -163,7 +164,7 @@ function renderItem(
   let id: string;
   let desc: string;
   if (!isOverridable) {
-    id = item.selected ? chalk.dim(item.id) : chalk.dim(item.id);
+    id = chalk.dim(item.id);
     desc = chalk.dim(` — ${truncate(item.description, 60)}`);
   } else if (item.selected) {
     id = chalk.white(item.id);

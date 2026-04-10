@@ -29,7 +29,7 @@ function padLine(line: string, width: number): string {
  * alternate screen buffer so the main scrollback is untouched.
  */
 function draw(state: TuiState): void {
-  const viewportHeight = getViewportHeight();
+  const viewportHeight = getViewportHeight(state.tabs.length);
   const lines = render(state, viewportHeight);
   const cols = process.stdout.columns || 80;
   const rows = process.stdout.rows || 24;
@@ -52,7 +52,7 @@ function clampScroll(state: TuiState): void {
   const cat = state.tabs[state.activeTab];
   if (!cat) return;
   const visible = getVisibleItems(state);
-  const viewportHeight = getViewportHeight();
+  const viewportHeight = getViewportHeight(state.tabs.length);
 
   if (state.cursors[cat] >= visible.length) {
     state.cursors[cat] = Math.max(0, visible.length - 1);
@@ -92,24 +92,37 @@ export async function runInteractiveSelector(
     process.stdout.write("\x1B[?1049h");
     draw(state);
 
+    const onResize = () => draw(state);
+    process.stdout.on("resize", onResize);
+
     const cleanup = () => {
       process.stdin.removeListener("keypress", onKeypress);
+      process.stdout.removeListener("resize", onResize);
+      process.removeListener("SIGTERM", onSignal);
+      process.removeListener("SIGHUP", onSignal);
       process.stdin.setRawMode(wasRaw ?? false);
       process.stdin.pause();
       // Leave alternate screen buffer — restores original terminal content
       process.stdout.write("\x1B[?25h\x1B[?1049l");
     };
 
+    const onSignal = () => {
+      cleanup();
+      resolve(null);
+    };
+    process.on("SIGTERM", onSignal);
+    process.on("SIGHUP", onSignal);
+
     const onKeypress = (
       str: string | undefined,
       key: readline.Key
     ) => {
+      try {
       if (!key) return;
 
       const activeCat = state.tabs[state.activeTab];
-      const isOverridable = activeCat
-        ? OVERRIDABLE_CATEGORIES.has(activeCat)
-        : false;
+      if (!activeCat) return;
+      const isOverridable = OVERRIDABLE_CATEGORIES.has(activeCat);
 
       // ── Search mode input handling ──
       if (state.searchActive) {
@@ -270,6 +283,10 @@ export async function runInteractiveSelector(
         items[idx].selected = true;
         draw(state);
         return;
+      }
+      } catch {
+        cleanup();
+        resolve(null);
       }
     };
 
