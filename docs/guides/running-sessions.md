@@ -2,6 +2,10 @@
 
 AIR provides two commands for launching agent sessions: `air start` for interactive use and `air prepare` for programmatic/orchestrator use.
 
+## Before you start
+
+AIR manages configuration **per-session** — it assembles everything from `air.json` and writes it fresh each time. To avoid conflicts and duplication, disable any user-scoped agent configuration before running sessions (e.g., user-level MCP servers in `~/.claude/.mcp.json`, global tool settings). AIR-managed config should be the single source of truth. See the [Quickstart](quickstart.md#how-air-manages-configuration) for details.
+
 ## air start — interactive sessions
 
 `air start` is the primary command for starting an agent session interactively:

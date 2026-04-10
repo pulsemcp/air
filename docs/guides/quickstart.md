@@ -7,6 +7,15 @@ Get from zero to a working AIR setup in under five minutes.
 - Node.js 18 or later
 - npm
 - An AI coding agent (e.g., [Claude Code](https://docs.anthropic.com/en/docs/claude-code))
+- **A repository with at least one artifact index file.** AIR manages configuration that already exists — the CLI reads from JSON index files (e.g., `skills/skills.json`, `mcp/mcp.json`) that define your artifacts. You need at least one index file with at least one entry for any of the [artifact types](../concepts.md#artifact-types) before AIR has anything to work with. See the [examples/](../../examples/) directory for reference.
+
+## How AIR manages configuration
+
+AIR uses **per-session, project-level configuration**. Every time you start a session, AIR assembles the active configuration from your `air.json` and its referenced index files — nothing is persisted into the agent's own user-level config.
+
+This means you should **disable or remove any user-scoped agent configuration** you may already have (e.g., user-level MCP servers in `~/.claude/.mcp.json`, global tool settings). If left in place, user-level config will be active alongside AIR-managed config, which leads to duplication, conflicts, and config that isn't version-controlled or shared with your team. The goal is for `air.json` and its artifact indexes to be the single source of truth for every session.
+
+See [Per-Session Configuration](../concepts.md#4-per-session-configuration) in the design principles for more detail.
 
 ## 1. Install the CLI
 
