@@ -1,9 +1,13 @@
+import { spawn } from "child_process";
 import { Command } from "commander";
 import {
   startSession,
+  prepareSession,
+  detectRoot,
   type ResolvedArtifacts,
   type RootEntry,
 } from "@pulsemcp/air-sdk";
+import { runInteractiveSelector } from "../tui/interactive-selector.js";
 
 export function startCommand(): Command {
   const cmd = new Command("start")
@@ -15,6 +19,7 @@ export function startCommand(): Command {
       "--skip-confirmation",
       "Don't prompt for confirmation before starting"
     )
+    .allowUnknownOption(true)
     .action(
       async (
         agent: string,
@@ -22,8 +27,12 @@ export function startCommand(): Command {
           root?: string;
           dryRun?: boolean;
           skipConfirmation?: boolean;
-        }
+        },
       ) => {
+        const dashDashIdx = process.argv.indexOf("--");
+        const passthroughArgs =
+          dashDashIdx !== -1 ? process.argv.slice(dashDashIdx + 1) : [];
+
         let result;
         try {
           result = await startSession(agent, {
@@ -37,9 +46,29 @@ export function startCommand(): Command {
           process.exit(1);
         }
 
+        // Auto-detect root if not specified
+        let root = result.root;
+        let rootId = options.root;
+        let rootAutoDetected = false;
+        if (!options.root && !root) {
+          root = detectRoot(result.artifacts.roots, process.cwd());
+          if (root) {
+            rootAutoDetected = true;
+            // Find the key for the detected root
+            rootId = Object.entries(result.artifacts.roots).find(
+              ([, v]) => v === root
+            )?.[0];
+          }
+        } else if (!options.root && root) {
+          rootAutoDetected = true;
+          rootId = Object.entries(result.artifacts.roots).find(
+            ([, v]) => v === root
+          )?.[0];
+        }
+
         // Dry run
         if (options.dryRun) {
-          printDryRun(agent, result.artifacts, result.root);
+          printDryRun(agent, result.artifacts, root);
           process.exit(0);
         }
 
@@ -51,12 +80,65 @@ export function startCommand(): Command {
           process.exit(1);
         }
 
-        printDryRun(agent, result.artifacts, result.root);
+        // Interactive TUI or skip
+        let selectedSkills: string[] | undefined;
+        let selectedMcpServers: string[] | undefined;
 
-        console.log(`\nStarting ${result.adapterDisplayName}...`);
-        console.log(
-          `Command: ${result.startCommand.command} ${result.startCommand.args.join(" ")}`
-        );
+        const isTTY = process.stdout.isTTY && process.stdin.isTTY;
+
+        if (isTTY && !options.skipConfirmation) {
+          const tuiResult = await runInteractiveSelector(
+            result.artifacts,
+            root,
+            rootId,
+            rootAutoDetected
+          );
+
+          if (!tuiResult) {
+            process.exit(0);
+          }
+
+          selectedSkills = tuiResult.skills;
+          selectedMcpServers = tuiResult.mcpServers;
+        }
+
+        // Prepare session (write .mcp.json, inject skills, etc.)
+        let prepared;
+        try {
+          prepared = await prepareSession({
+            root: rootId,
+            target: process.cwd(),
+            adapter: agent,
+            skills: selectedSkills,
+            mcpServers: selectedMcpServers,
+          });
+        } catch (err) {
+          const message =
+            err instanceof Error ? err.message : "Unknown error";
+          console.error(`Error preparing session: ${message}`);
+          process.exit(1);
+        }
+
+        // Spawn the agent
+        const startCmd = prepared.session.startCommand;
+        const args = [...startCmd.args, ...passthroughArgs];
+        const env = { ...process.env, ...startCmd.env };
+        const cwd = startCmd.cwd || process.cwd();
+
+        const child = spawn(startCmd.command, args, {
+          stdio: "inherit",
+          env,
+          cwd,
+        });
+
+        child.on("error", (err) => {
+          console.error(`Failed to start ${agent}: ${err.message}`);
+          process.exit(1);
+        });
+
+        child.on("exit", (code) => {
+          process.exit(code ?? 0);
+        });
       }
     );
 
