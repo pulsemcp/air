@@ -4,7 +4,7 @@ MCP (Model Context Protocol) servers provide tools and data to AI agents. AIR ma
 
 ## User-level MCP servers and AIR
 
-AIR manages MCP server configuration per-session. If you already have user-scoped MCP servers configured in your agent (e.g., in `~/.claude/.mcp.json`), you should migrate them into AIR index files and remove the user-level config. Otherwise both will be active during sessions, leading to duplicated servers, version conflicts, and configuration that isn't shared with your team or version-controlled. See the [Quickstart](quickstart.md#how-air-manages-configuration) for more context.
+If you already have user-scoped MCP servers configured in your agent (e.g., Claude Code's `~/.claude/.mcp.json`), migrate them into AIR index files and remove the user-level config before starting sessions. See [How AIR manages configuration](quickstart.md#how-air-manages-configuration) for why this matters and how to migrate.
 
 ## Defining MCP servers
 

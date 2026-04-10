@@ -7,13 +7,13 @@ Get from zero to a working AIR setup in under five minutes.
 - Node.js 18 or later
 - npm
 - An AI coding agent (e.g., [Claude Code](https://docs.anthropic.com/en/docs/claude-code))
-- **A repository with at least one artifact index file.** AIR manages configuration that already exists — the CLI reads from JSON index files (e.g., `skills/skills.json`, `mcp/mcp.json`) that define your artifacts. You need at least one index file with at least one entry for any of the [artifact types](../concepts.md#artifact-types) before AIR has anything to work with. See the [examples/](../../examples/) directory for reference.
+- **A repository (recommended).** `air init` works best when run inside a git repo that already has artifact index files (e.g., `skills/skills.json`, `mcp/mcp.json`) — it discovers them automatically and generates a fully wired `air.json`. Without pre-existing artifacts, it falls back to blank scaffolding you can populate manually. See [examples/air.json](../../examples/air.json) for the expected format and [artifact types](../concepts.md#artifact-types) for what kinds of artifacts you can define.
 
 ## How AIR manages configuration
 
-AIR uses **per-session, project-level configuration**. Every time you start a session, AIR assembles the active configuration from your `air.json` and its referenced index files — nothing is persisted into the agent's own user-level config.
+AIR uses **per-session configuration**. Every time you start a session, AIR assembles the active configuration from your `air.json` and its referenced index files — nothing is persisted into the agent's own user-level config.
 
-This means you should **disable or remove any user-scoped agent configuration** you may already have (e.g., user-level MCP servers in `~/.claude/.mcp.json`, global tool settings). If left in place, user-level config will be active alongside AIR-managed config, which leads to duplication, conflicts, and config that isn't version-controlled or shared with your team. The goal is for `air.json` and its artifact indexes to be the single source of truth for every session.
+This means you should **disable or remove any user-scoped agent configuration** you may already have (e.g., user-level MCP servers such as Claude Code's `~/.claude/.mcp.json`, or global tool settings). If left in place, user-level config will be active alongside AIR-managed config, which leads to duplication, conflicts, and config that isn't version-controlled or shared with your team. To migrate, move your existing server definitions into an AIR MCP index file (see [Configuring MCP Servers](configuring-mcp-servers.md)), then remove the user-level config. The goal is for `air.json` and its artifact indexes to be the single source of truth for every session.
 
 See [Per-Session Configuration](../concepts.md#4-per-session-configuration) in the design principles for more detail.
 
