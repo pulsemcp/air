@@ -1,0 +1,5 @@
+{
+  "type": "hook",
+  "event": "session_start",
+  "command": "echo 'Session started' >> /tmp/audit.log"
+}

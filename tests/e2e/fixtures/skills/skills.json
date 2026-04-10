@@ -1,0 +1,40 @@
+{
+  "deploy": {
+    "title": "Deploy to Staging",
+    "description": "Deploy the current branch to the staging environment, run smoke tests, and report status.",
+    "path": "deploy",
+    "references": ["git-workflow", "deploy-checklist"]
+  },
+  "incident-response": {
+    "title": "Incident Response",
+    "description": "Triage production incidents — gather logs, identify root cause, and coordinate the fix.",
+    "path": "incident-response",
+    "references": ["runbook"]
+  },
+  "query-builder": {
+    "title": "Query Builder",
+    "description": "Build and optimize SQL queries for the analytics data warehouse.",
+    "path": "query-builder"
+  },
+  "provision-env": {
+    "title": "Provision Environment",
+    "description": "Provision cloud infrastructure using Terraform — VPCs, databases, and compute resources.",
+    "path": "provision-env"
+  },
+  "component-review": {
+    "title": "Component Review",
+    "description": "Review React components for accessibility, design system compliance, and performance.",
+    "path": "component-review",
+    "references": ["design-guide"]
+  },
+  "lint-fix": {
+    "title": "Lint & Fix",
+    "description": "Run ESLint with auto-fix on staged files and report remaining issues.",
+    "path": "lint-fix"
+  },
+  "format-check": {
+    "title": "Format Check",
+    "description": "Check code formatting with Prettier and fix any violations.",
+    "path": "format-check"
+  }
+}

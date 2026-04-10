@@ -1,0 +1,5 @@
+{
+  "type": "hook",
+  "event": "pre_commit",
+  "command": "npx eslint --fix ."
+}

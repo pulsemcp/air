@@ -1,0 +1,39 @@
+{
+  "platform-orchestrator": {
+    "display_name": "Platform Orchestrator",
+    "description": "Main platform engineering root — orchestrates deployments, incident response, and delegates to data and infra subagents.",
+    "url": "https://github.com/acme/platform.git",
+    "default_branch": "main",
+    "default_mcp_servers": ["github-server", "postgres-db"],
+    "default_skills": ["deploy", "incident-response", "lint-fix", "format-check"],
+    "default_plugins": ["platform-quality"],
+    "default_hooks": ["session-audit", "lint-check"],
+    "default_subagent_roots": ["data-pipeline", "infra-agent"]
+  },
+  "data-pipeline": {
+    "display_name": "Data Pipeline Agent",
+    "description": "ETL pipeline management — query building, data validation, and warehouse operations.",
+    "subdirectory": "subagents/data",
+    "user_invocable": false,
+    "default_mcp_servers": ["analytics-api"],
+    "default_skills": ["query-builder"]
+  },
+  "infra-agent": {
+    "display_name": "Infrastructure Agent",
+    "description": "Infrastructure provisioning — Terraform plans, environment setup, and resource management.",
+    "subdirectory": "subagents/infra",
+    "user_invocable": false,
+    "default_mcp_servers": ["terraform-server"],
+    "default_skills": ["provision-env"]
+  },
+  "frontend-app": {
+    "display_name": "Frontend Application",
+    "description": "React frontend — component development, design system integration, and UI reviews.",
+    "url": "https://github.com/acme/frontend.git",
+    "default_branch": "main",
+    "default_mcp_servers": ["github-server", "design-system"],
+    "default_skills": ["component-review", "lint-fix", "format-check"],
+    "default_plugins": ["platform-quality"],
+    "default_hooks": ["lint-check"]
+  }
+}

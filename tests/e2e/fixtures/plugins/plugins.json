@@ -1,0 +1,9 @@
+{
+  "platform-quality": {
+    "title": "Platform Quality Suite",
+    "description": "Linting, formatting, and pre-commit checks — standard quality gates for all platform repos.",
+    "version": "1.0.0",
+    "skills": ["lint-fix", "format-check"],
+    "hooks": ["lint-check"]
+  }
+}

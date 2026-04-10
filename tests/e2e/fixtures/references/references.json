@@ -1,0 +1,22 @@
+{
+  "git-workflow": {
+    "title": "Git Workflow",
+    "description": "Standard git workflow — branch naming, PR conventions, and merge strategy.",
+    "path": "GIT_WORKFLOW.md"
+  },
+  "deploy-checklist": {
+    "title": "Deploy Checklist",
+    "description": "Pre-deploy and post-deploy verification steps for staging and production.",
+    "path": "DEPLOY_CHECKLIST.md"
+  },
+  "runbook": {
+    "title": "Incident Runbook",
+    "description": "Step-by-step incident response procedures — escalation paths, rollback steps, and communication templates.",
+    "path": "RUNBOOK.md"
+  },
+  "design-guide": {
+    "title": "Design System Guide",
+    "description": "Component patterns, accessibility requirements, and design token usage.",
+    "path": "DESIGN_GUIDE.md"
+  }
+}
