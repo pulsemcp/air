@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.15] - 2026-04-10
+
+### Added
+- Interactive terminal UI for `air start claude` with tab-based artifact browsing, per-item toggle, search filtering, and cross-artifact selection summary (#59)
+- `--skip-confirmation` flag to bypass TUI and launch agent directly
+- `--` passthrough args support to forward arguments to the agent process
+- Automatic TTY detection with non-interactive fallback
+
 ## [0.0.14] - 2026-04-09
 
 ### Fixed
