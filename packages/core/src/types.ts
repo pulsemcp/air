@@ -152,6 +152,16 @@ export interface PrepareSessionOptions {
    */
   mcpServerOverrides?: string[];
   /**
+   * Override the root's default_hooks — only activate these specific hooks.
+   * When set, this replaces root.default_hooks entirely.
+   */
+  hookOverrides?: string[];
+  /**
+   * Override the root's default_plugins — only activate these specific plugins.
+   * When set, this replaces root.default_plugins entirely.
+   */
+  pluginOverrides?: string[];
+  /**
    * Skip merging subagent roots' artifacts into the parent session.
    * When true, default_subagent_roots is ignored during preparation.
    * Orchestrators that manage subagent composition externally (e.g., via
