@@ -1094,6 +1094,167 @@ describe("ClaudeAdapter", () => {
         expect(mcpJson.mcpServers["slack"]).toBeUndefined();
         expect(result.skillPaths).toHaveLength(1);
       });
+
+      it("respects hookOverrides over root defaults", async () => {
+        const dir = createTempDir();
+
+        // Create two hook sources
+        const hookADir = join(dir, "..", "hooks", "hook-a");
+        mkdirSync(hookADir, { recursive: true });
+        writeFileSync(join(hookADir, "HOOK.json"), JSON.stringify({ event: "pre_commit", command: "a" }));
+
+        const hookBDir = join(dir, "..", "hooks", "hook-b");
+        mkdirSync(hookBDir, { recursive: true });
+        writeFileSync(join(hookBDir, "HOOK.json"), JSON.stringify({ event: "post_commit", command: "b" }));
+
+        const artifacts = emptyArtifacts();
+        artifacts.hooks["hook-a"] = { description: "Hook A", path: resolve(hookADir) };
+        artifacts.hooks["hook-b"] = { description: "Hook B", path: resolve(hookBDir) };
+
+        const root: RootEntry = {
+          description: "Test root",
+          default_hooks: ["hook-a", "hook-b"],
+        };
+
+        // Override: only activate hook-b
+        const result = await adapter.prepareSession(artifacts, dir, {
+          root,
+          hookOverrides: ["hook-b"],
+        });
+
+        expect(existsSync(join(dir, ".claude", "hooks", "hook-a"))).toBe(false);
+        expect(existsSync(join(dir, ".claude", "hooks", "hook-b", "HOOK.json"))).toBe(true);
+        expect(result.hookPaths).toHaveLength(1);
+      });
+
+      it("respects hookOverrides even without root defaults", async () => {
+        const dir = createTempDir();
+
+        const hookDir = join(dir, "..", "hooks", "hook-a");
+        mkdirSync(hookDir, { recursive: true });
+        writeFileSync(join(hookDir, "HOOK.json"), JSON.stringify({ event: "pre_commit", command: "a" }));
+
+        const artifacts = emptyArtifacts();
+        artifacts.hooks["hook-a"] = { description: "Hook A", path: resolve(hookDir) };
+
+        const result = await adapter.prepareSession(artifacts, dir, {
+          hookOverrides: ["hook-a"],
+        });
+
+        expect(existsSync(join(dir, ".claude", "hooks", "hook-a", "HOOK.json"))).toBe(true);
+        expect(result.hookPaths).toHaveLength(1);
+      });
+
+      it("respects pluginOverrides over root defaults", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+        artifacts.plugins["quality"] = { description: "Quality plugin" };
+        artifacts.plugins["security"] = { description: "Security plugin" };
+
+        const root: RootEntry = {
+          description: "Test root",
+          default_plugins: ["quality", "security"],
+        };
+
+        // Override: only activate security — should not throw for valid IDs
+        // and should reject unknown plugin IDs (validated via filterByIds)
+        await adapter.prepareSession(artifacts, dir, {
+          root,
+          pluginOverrides: ["security"],
+        });
+
+        // Verify that an unknown plugin in the override is rejected
+        await expect(
+          adapter.prepareSession(artifacts, dir, {
+            root,
+            pluginOverrides: ["nonexistent"],
+          })
+        ).rejects.toThrow(/Unknown plugin ID\(s\): nonexistent/);
+      });
+
+      it("respects pluginOverrides even without root defaults", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+        artifacts.plugins["quality"] = { description: "Quality plugin" };
+
+        // No root, but pluginOverrides provided — should not throw
+        await adapter.prepareSession(artifacts, dir, {
+          pluginOverrides: ["quality"],
+        });
+      });
+
+      it("empty hookOverrides activates no hooks even with root defaults", async () => {
+        const dir = createTempDir();
+
+        const hookDir = join(dir, "..", "hooks", "hook-a");
+        mkdirSync(hookDir, { recursive: true });
+        writeFileSync(join(hookDir, "HOOK.json"), JSON.stringify({ event: "pre_commit", command: "a" }));
+
+        const artifacts = emptyArtifacts();
+        artifacts.hooks["hook-a"] = { description: "Hook A", path: resolve(hookDir) };
+
+        const root: RootEntry = {
+          description: "Test root",
+          default_hooks: ["hook-a"],
+        };
+
+        // Empty array override means "activate none"
+        const result = await adapter.prepareSession(artifacts, dir, {
+          root,
+          hookOverrides: [],
+        });
+
+        expect(existsSync(join(dir, ".claude", "hooks", "hook-a"))).toBe(false);
+        expect(result.hookPaths).toHaveLength(0);
+      });
+
+      it("empty pluginOverrides activates no plugins even with root defaults", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+        artifacts.plugins["quality"] = { description: "Quality plugin" };
+
+        const root: RootEntry = {
+          description: "Test root",
+          default_plugins: ["quality"],
+        };
+
+        // Empty array override means "activate none" — should not throw
+        await adapter.prepareSession(artifacts, dir, {
+          root,
+          pluginOverrides: [],
+        });
+      });
+
+      it("throws on unknown hook IDs from hookOverrides", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+        artifacts.hooks["lint"] = {
+          description: "Lint hook",
+          path: "/tmp/hooks/lint",
+        };
+
+        await expect(
+          adapter.prepareSession(artifacts, dir, {
+            hookOverrides: ["lint", "nonexistent-hook"],
+          })
+        ).rejects.toThrow(
+          /Unknown hook ID\(s\): nonexistent-hook\. Available: lint/
+        );
+      });
+
+      it("throws on unknown plugin IDs from pluginOverrides", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+        artifacts.plugins["quality"] = { description: "Quality plugin" };
+
+        await expect(
+          adapter.prepareSession(artifacts, dir, {
+            pluginOverrides: ["quality", "nonexistent-plugin"],
+          })
+        ).rejects.toThrow(
+          /Unknown plugin ID\(s\): nonexistent-plugin\. Available: quality/
+        );
+      });
     });
   });
 });

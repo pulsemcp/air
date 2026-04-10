@@ -61,6 +61,14 @@ export function prepareCommand(): Command {
       "Comma-separated MCP server IDs (overrides root defaults)"
     )
     .option(
+      "--hooks <ids>",
+      "Comma-separated hook IDs (overrides root defaults)"
+    )
+    .option(
+      "--plugins <ids>",
+      "Comma-separated plugin IDs (overrides root defaults)"
+    )
+    .option(
       "--no-subagent-merge",
       "Skip merging subagent roots' artifacts into the parent session (for orchestrators that manage composition externally)"
     )
@@ -76,6 +84,8 @@ export function prepareCommand(): Command {
         target: string;
         skills?: string;
         mcpServers?: string;
+        hooks?: string;
+        plugins?: string;
         subagentMerge: boolean;
         skipValidation?: boolean;
       }) => {
@@ -120,6 +130,12 @@ export function prepareCommand(): Command {
               : undefined,
             mcpServers: options.mcpServers
               ? options.mcpServers.split(",").map((s) => s.trim())
+              : undefined,
+            hooks: options.hooks
+              ? options.hooks.split(",").map((s) => s.trim())
+              : undefined,
+            plugins: options.plugins
+              ? options.plugins.split(",").map((s) => s.trim())
               : undefined,
             skipSubagentMerge: !options.subagentMerge,
             skipValidation: options.skipValidation,

@@ -118,8 +118,11 @@ export class ClaudeAdapter implements AgentAdapter {
       ? this.filterByIds(artifacts.mcp, mcpServerIds, "MCP server")
       : {};
 
-    const plugins = root?.default_plugins
-      ? this.filterByIds(artifacts.plugins, root.default_plugins, "plugin")
+    const pluginIds = options?.pluginOverrides
+      ?? root?.default_plugins
+      ?? undefined;
+    const plugins = pluginIds?.length
+      ? this.filterByIds(artifacts.plugins, pluginIds, "plugin")
       : {};
 
     // 2. Validate skill IDs
@@ -154,8 +157,10 @@ export class ClaudeAdapter implements AgentAdapter {
     }
 
     // 5. Validate and inject path-based hooks into .claude/hooks/
-    const hookIds = root?.default_hooks ?? [];
-    if (root?.default_hooks) {
+    const hookIds = options?.hookOverrides
+      ?? root?.default_hooks
+      ?? [];
+    if (hookIds.length > 0) {
       this.validateIds(artifacts.hooks, hookIds, "hook");
     }
     for (const hookId of hookIds) {
