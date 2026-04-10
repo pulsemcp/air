@@ -354,11 +354,8 @@ describe("initFromRepo", () => {
     expect(airJson.mcp).toEqual([
       "github://acme/air-config@main/mcp/mcp.json",
     ]);
-    // roots uses github:// URI like other artifacts
-    expect(airJson.roots).toEqual([
-      "github://acme/air-config@main/roots/roots.json",
-    ]);
-    // Should not include empty artifact types
+    // Should not include artifact types without index files in the repo
+    expect(airJson.roots).toBeUndefined();
     expect(airJson.references).toBeUndefined();
     expect(airJson.plugins).toBeUndefined();
     expect(airJson.hooks).toBeUndefined();
@@ -606,7 +603,7 @@ describe("initFromRepo", () => {
     ]);
   });
 
-  it("auto-generates roots.json for the current repo", () => {
+  it("does not auto-generate roots.json when none exists in the repo", () => {
     const repoDir = createGitRepo(
       "https://github.com/acme/my-project.git",
       {
@@ -623,118 +620,17 @@ describe("initFromRepo", () => {
     const outputDir = makeTempDir();
     const airJsonPath = resolve(outputDir, "air.json");
 
-    const result = initFromRepo({
+    initFromRepo({
       cwd: repoDir,
       path: airJsonPath,
     });
 
-    // Verify result fields — roots.json is now written to the repo directory
-    expect(result.generatedRootName).toBe("my-project");
-    expect(result.generatedRootsPath).toBe(
-      resolve(repoDir, "roots", "roots.json")
-    );
+    // No roots.json should be created in the repo
+    expect(existsSync(resolve(repoDir, "roots", "roots.json"))).toBe(false);
 
-    // Verify roots.json file was created
-    expect(existsSync(result.generatedRootsPath)).toBe(true);
-    const rootsJson = JSON.parse(
-      readFileSync(result.generatedRootsPath, "utf-8")
-    );
-    expect(rootsJson.$schema).toBe(
-      "https://raw.githubusercontent.com/pulsemcp/air/main/schemas/roots.schema.json"
-    );
-    expect(rootsJson["my-project"]).toBeDefined();
-    expect(rootsJson["my-project"].display_name).toBe("my-project");
-    expect(rootsJson["my-project"].description).toBe(
-      "Agent root for acme/my-project."
-    );
-    expect(rootsJson["my-project"].url).toBe(
-      "https://github.com/acme/my-project.git"
-    );
-    expect(rootsJson["my-project"].default_branch).toBe("main");
-  });
-
-  it("populates root defaults from discovered artifact IDs", () => {
-    const repoDir = createGitRepo(
-      "https://github.com/acme/config.git",
-      {
-        "skills/skills.json": {
-          "deploy-staging": {
-            id: "deploy-staging",
-            description: "Deploy",
-            path: "skills/deploy-staging",
-          },
-          "review-pr": {
-            id: "review-pr",
-            description: "Review",
-            path: "skills/review-pr",
-          },
-        },
-        "mcp/mcp.json": {
-          github: { type: "stdio", command: "npx", args: ["mcp"] },
-          postgres: { type: "stdio", command: "pg" },
-        },
-        "plugins/plugins.json": {
-          "code-quality": {
-            id: "code-quality",
-            description: "Code quality plugin",
-          },
-        },
-        "hooks/hooks.json": {
-          "lint-check": {
-            id: "lint-check",
-            description: "Lint",
-            path: "hooks/lint-check",
-          },
-        },
-      }
-    );
-
-    const outputDir = makeTempDir();
-    const airJsonPath = resolve(outputDir, "air.json");
-
-    const result = initFromRepo({
-      cwd: repoDir,
-      path: airJsonPath,
-    });
-
-    const rootsJson = JSON.parse(
-      readFileSync(result.generatedRootsPath, "utf-8")
-    );
-    const root = rootsJson["config"];
-
-    expect(root.default_skills).toEqual(["deploy-staging", "review-pr"]);
-    expect(root.default_mcp_servers).toEqual(["github", "postgres"]);
-    expect(root.default_plugins).toEqual(["code-quality"]);
-    expect(root.default_hooks).toEqual(["lint-check"]);
-  });
-
-  it("omits empty default arrays from generated root", () => {
-    const repoDir = createGitRepo(
-      "https://github.com/acme/simple.git",
-      {
-        "skills/skills.json": {
-          s1: { id: "s1", description: "A skill", path: "skills/s1" },
-        },
-      }
-    );
-
-    const outputDir = makeTempDir();
-    const airJsonPath = resolve(outputDir, "air.json");
-
-    const result = initFromRepo({
-      cwd: repoDir,
-      path: airJsonPath,
-    });
-
-    const rootsJson = JSON.parse(
-      readFileSync(result.generatedRootsPath, "utf-8")
-    );
-    const root = rootsJson["simple"];
-
-    expect(root.default_skills).toEqual(["s1"]);
-    expect(root.default_mcp_servers).toBeUndefined();
-    expect(root.default_plugins).toBeUndefined();
-    expect(root.default_hooks).toBeUndefined();
+    // air.json should not include a roots property
+    const airJson = JSON.parse(readFileSync(airJsonPath, "utf-8"));
+    expect(airJson.roots).toBeUndefined();
   });
 });
 
@@ -814,21 +710,4 @@ describe("smartInit", () => {
     expect(content.name).toBe("my-config");
   });
 
-  it("cleans up stale roots.json when falling back to blank with --force", () => {
-    const dir = makeTempDir();
-    const airJsonPath = resolve(dir, "air.json");
-
-    // Simulate a previous repo-mode init that created roots.json
-    writeFileSync(airJsonPath, '{"name":"old"}');
-    const rootsDir = resolve(dir, "roots");
-    mkdirSync(rootsDir, { recursive: true });
-    const rootsPath = resolve(rootsDir, "roots.json");
-    writeFileSync(rootsPath, '{"old-root":{"name":"old-root","description":"stale"}}');
-
-    const result = smartInit({ cwd: dir, path: airJsonPath, force: true });
-
-    expect(result.mode).toBe("blank");
-    // Stale roots.json should be cleaned up
-    expect(existsSync(rootsPath)).toBe(false);
-  });
 });

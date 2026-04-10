@@ -24,9 +24,7 @@ Initialize a new AIR configuration at `~/.air/`.
 air init
 ```
 
-When run inside a git repo with AIR artifact index files, discovers them automatically and generates:
-- `~/.air/air.json` — root config with `github://` resolver URIs
-- `~/.air/roots/roots.json` — auto-generated root entry for the current repo, with `default_skills`, `default_mcp_servers`, and `default_hooks` populated from discovered artifacts
+When run inside a git repo with AIR artifact index files, discovers them automatically and generates `~/.air/air.json` with `github://` resolver URIs for each discovered artifact type. Only artifact types that have existing index files in the repo are included.
 
 When no artifacts are found (or outside a git repo), creates a minimal `~/.air/air.json` scaffold.
 

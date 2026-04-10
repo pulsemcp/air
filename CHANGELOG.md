@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.17] - 2026-04-10
+
+### Fixed
+- `air init` no longer auto-generates a `roots/roots.json` file in the repo — it only discovers existing artifact index files, consistent with how all other artifact types work
+
+### Changed
+- Removed `generatedRootsPath` and `generatedRootName` from `InitFromRepoResult` (breaking for SDK consumers that relied on these fields)
+
 ## [0.0.16] - 2026-04-10
 
 ### Added
