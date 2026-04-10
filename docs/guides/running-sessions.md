@@ -15,8 +15,22 @@ air start claude
 1. Finds the adapter for the specified agent (e.g., `@pulsemcp/air-adapter-claude`)
 2. Resolves all artifacts from your `air.json`
 3. Checks if the agent CLI is available on your PATH
-4. Prints the session configuration summary
-5. Shows the command to launch the agent
+4. Opens an interactive TUI for browsing and selecting artifacts
+5. Prepares the session (writes `.mcp.json`, injects skills, etc.)
+6. Launches the agent
+
+### Interactive TUI
+
+When run in a TTY, `air start` opens an interactive terminal UI where you can:
+
+- **Browse artifact types** — use left/right arrows to switch between MCP, Skills, Hooks, and Plugins tabs
+- **Select/deselect artifacts** — use up/down arrows to navigate, Space to toggle, `a` for all, `n` for none, `o` for only current
+- **Search** — press `/` to filter items by name or description, Escape to clear
+- **Launch** — press Enter to start the agent with your selections, `q` or Ctrl+C to cancel
+
+The footer shows a cross-artifact selection summary so you can see what's selected across all tabs.
+
+When not in a TTY (e.g., in a CI pipeline) or when `--skip-confirmation` is passed, the TUI is skipped and the agent launches with root defaults.
 
 ### Options
 
@@ -26,7 +40,17 @@ Required argument: `<agent>` — the agent to start (e.g., `claude`).
 |------|-------------|
 | `--root <name>` | Activate a specific root |
 | `--dry-run` | Preview configuration without starting |
-| `--skip-confirmation` | Don't prompt for confirmation |
+| `--skip-confirmation` | Skip the interactive TUI and launch directly |
+
+### Passing arguments to the agent
+
+Use `--` to forward arguments to the agent process:
+
+```bash
+air start claude -- --dangerously-skip-permissions
+```
+
+Everything after `--` is passed directly to the agent's start command.
 
 ### Dry run
 
@@ -66,7 +90,7 @@ If you have [roots](roots.md) configured, activate one to scope the session:
 air start claude --root web-app
 ```
 
-This activates only the MCP servers, skills, plugins, and hooks listed in the root's defaults. Without `--root`, all artifacts are available.
+This activates only the MCP servers, skills, plugins, and hooks listed in the root's defaults. Without `--root`, `air start` auto-detects the root from the current directory's git context and pre-selects the root's defaults in the TUI.
 
 ## air prepare — programmatic sessions
 
