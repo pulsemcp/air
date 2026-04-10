@@ -52,6 +52,41 @@ jobs:
       - name: Run tests
         run: npx vitest run
 
+  e2e:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code@2.1.98
+
+      - name: Build core
+        run: npm run build -w packages/core
+
+      - name: Build extensions
+        run: |
+          for dir in packages/extensions/*/; do
+            npm run build -w "${dir%/}"
+          done
+
+      - name: Build SDK and CLI
+        run: |
+          npm run build -w packages/sdk
+          npm run build -w packages/cli
+
+      - name: Run E2E tests
+        run: npx vitest run tests/e2e/e2e.test.ts
+
   validate-schemas:
     runs-on: ubuntu-latest
 

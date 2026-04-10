@@ -1,0 +1,12 @@
+{
+  "session-audit": {
+    "title": "Session Audit Log",
+    "description": "Log session start and end events to the platform audit trail.",
+    "path": "session-audit"
+  },
+  "lint-check": {
+    "title": "Pre-Commit Lint",
+    "description": "Run linting on staged files before allowing a commit.",
+    "path": "lint-check"
+  }
+}

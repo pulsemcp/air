@@ -1,0 +1,28 @@
+{
+  "name": "acme-platform",
+  "description": "Acme Corp platform engineering — multi-team agent configuration with subagent roots",
+  "extensions": [
+    "@pulsemcp/air-adapter-claude",
+    "@pulsemcp/air-provider-github",
+    "@pulsemcp/air-secrets-env",
+    "@pulsemcp/air-secrets-file"
+  ],
+  "skills": [
+    "./skills/skills.json"
+  ],
+  "references": [
+    "./references/references.json"
+  ],
+  "mcp": [
+    "./mcp/mcp.json"
+  ],
+  "roots": [
+    "./roots/roots.json"
+  ],
+  "plugins": [
+    "./plugins/plugins.json"
+  ],
+  "hooks": [
+    "./hooks/hooks.json"
+  ]
+}
