@@ -1156,17 +1156,20 @@ describe("ClaudeAdapter", () => {
           default_plugins: ["quality", "security"],
         };
 
-        // Override: only activate security
+        // Override: only activate security — should not throw for valid IDs
+        // and should reject unknown plugin IDs (validated via filterByIds)
         await adapter.prepareSession(artifacts, dir, {
           root,
           pluginOverrides: ["security"],
         });
 
-        // generateConfig is called internally without root, so plugins are
-        // handled before that step. We verify by checking no error was thrown
-        // and the session completed successfully.
-        // The plugin filtering happens during prepareSession, not in output files.
-        // We primarily verify that it doesn't throw for valid IDs.
+        // Verify that an unknown plugin in the override is rejected
+        await expect(
+          adapter.prepareSession(artifacts, dir, {
+            root,
+            pluginOverrides: ["nonexistent"],
+          })
+        ).rejects.toThrow(/Unknown plugin ID\(s\): nonexistent/);
       });
 
       it("respects pluginOverrides even without root defaults", async () => {
@@ -1174,12 +1177,52 @@ describe("ClaudeAdapter", () => {
         const artifacts = emptyArtifacts();
         artifacts.plugins["quality"] = { description: "Quality plugin" };
 
-        // No root, but pluginOverrides provided
+        // No root, but pluginOverrides provided — should not throw
         await adapter.prepareSession(artifacts, dir, {
           pluginOverrides: ["quality"],
         });
+      });
 
-        // Should not throw — override activates the plugin without a root
+      it("empty hookOverrides activates no hooks even with root defaults", async () => {
+        const dir = createTempDir();
+
+        const hookDir = join(dir, "..", "hooks", "hook-a");
+        mkdirSync(hookDir, { recursive: true });
+        writeFileSync(join(hookDir, "HOOK.json"), JSON.stringify({ event: "pre_commit", command: "a" }));
+
+        const artifacts = emptyArtifacts();
+        artifacts.hooks["hook-a"] = { description: "Hook A", path: resolve(hookDir) };
+
+        const root: RootEntry = {
+          description: "Test root",
+          default_hooks: ["hook-a"],
+        };
+
+        // Empty array override means "activate none"
+        const result = await adapter.prepareSession(artifacts, dir, {
+          root,
+          hookOverrides: [],
+        });
+
+        expect(existsSync(join(dir, ".claude", "hooks", "hook-a"))).toBe(false);
+        expect(result.hookPaths).toHaveLength(0);
+      });
+
+      it("empty pluginOverrides activates no plugins even with root defaults", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+        artifacts.plugins["quality"] = { description: "Quality plugin" };
+
+        const root: RootEntry = {
+          description: "Test root",
+          default_plugins: ["quality"],
+        };
+
+        // Empty array override means "activate none" — should not throw
+        await adapter.prepareSession(artifacts, dir, {
+          root,
+          pluginOverrides: [],
+        });
       });
 
       it("throws on unknown hook IDs from hookOverrides", async () => {

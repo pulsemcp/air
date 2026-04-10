@@ -127,6 +127,8 @@ Required argument: `<adapter>` — the agent adapter to use (e.g., `claude`).
 | `--target <dir>` | Directory to prepare (default: current directory) |
 | `--skills <ids>` | Comma-separated skill IDs (overrides root defaults) |
 | `--mcp-servers <ids>` | Comma-separated MCP server IDs (overrides root defaults) |
+| `--hooks <ids>` | Comma-separated hook IDs (overrides root defaults) |
+| `--plugins <ids>` | Comma-separated plugin IDs (overrides root defaults) |
 | `--no-subagent-merge` | Skip merging subagent roots' artifacts |
 | `--skip-validation` | Skip `${VAR}` validation |
 
@@ -167,10 +169,10 @@ Detection priority:
 
 ### Overriding defaults
 
-Override which skills or MCP servers are activated, regardless of root defaults:
+Override which skills, MCP servers, hooks, or plugins are activated, regardless of root defaults:
 
 ```bash
-air prepare claude --skills deploy-staging --mcp-servers github,postgres-prod
+air prepare claude --skills deploy-staging --mcp-servers github,postgres-prod --hooks lint-pre-commit --plugins code-quality
 ```
 
 ## How roots, adapters, and providers interact
