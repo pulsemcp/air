@@ -13,7 +13,6 @@ import {
   getAllSchemaTypes,
   validateJson,
   type SchemaType,
-  type RootEntry,
 } from "@pulsemcp/air-core";
 import { initConfig } from "./init.js";
 
@@ -75,10 +74,6 @@ export interface InitFromRepoResult {
   discovered: DiscoveredArtifact[];
   /** Whether an existing config was overwritten. */
   overwritten: boolean;
-  /** Absolute path to the auto-generated roots.json, if created. */
-  generatedRootsPath: string;
-  /** Name/key of the auto-generated root entry. */
-  generatedRootName: string;
 }
 
 /**
@@ -231,42 +226,12 @@ export function discoverArtifacts(
 }
 
 /**
- * Extract artifact entry IDs from discovered artifact files.
- * Reads each file, parses the JSON, and collects the top-level keys (IDs).
- */
-function extractArtifactIds(
-  discovered: DiscoveredArtifact[],
-  repoRoot: string
-): Partial<Record<string, string[]>> {
-  const ids: Partial<Record<string, string[]>> = {};
-  for (const artifact of discovered) {
-    const filePath = resolve(repoRoot, artifact.repoPath);
-    try {
-      const content = readFileSync(filePath, "utf-8");
-      const data = JSON.parse(content);
-      const { $schema, ...entries } = data;
-      const entryIds = Object.keys(entries);
-      if (entryIds.length > 0) {
-        if (!ids[artifact.type]) ids[artifact.type] = [];
-        ids[artifact.type]!.push(...entryIds);
-      }
-    } catch {
-      continue;
-    }
-  }
-  return ids;
-}
-
-/**
  * Initialize an AIR config from artifact files discovered in a git repository.
  *
  * Scans the git repo for artifact index files (skills.json, mcp.json, etc.),
  * detects the GitHub remote, and generates an air.json with github:// URIs
- * pointing to the repository's default branch.
- *
- * Also auto-generates a roots.json entry describing the current repo,
- * populated with default_skills, default_mcp_servers, and default_hooks
- * from the discovered artifacts.
+ * pointing to the repository's default branch. Only artifact types that have
+ * existing index files in the repo are included — nothing is auto-generated.
  *
  * @throws Error if not in a git repo, no GitHub remote, no artifacts found,
  *         or air.json already exists (unless force is true).
@@ -346,46 +311,8 @@ export function initFromRepo(
   const repoName = repo.split("/")[1] || "my-config";
   const configName = repoName.replace(/[^a-zA-Z0-9_-]/g, "-");
 
-  // Auto-generate roots.json for the current repo.
-  // Write to the repo directory (not ~/.air/) so it can be committed and
-  // referenced via github:// URI, consistent with other artifact types.
-  const artifactIds = extractArtifactIds(discovered, repoRoot);
-
-  const rootEntry: RootEntry = {
-    display_name: configName,
-    description: `Agent root for ${repo}.`,
-    url: remoteUrl.trim(),
-    default_branch: branch,
-    ...(artifactIds.skills?.length && { default_skills: artifactIds.skills }),
-    ...(artifactIds.mcp?.length && { default_mcp_servers: artifactIds.mcp }),
-    ...(artifactIds.plugins?.length && { default_plugins: artifactIds.plugins }),
-    ...(artifactIds.hooks?.length && { default_hooks: artifactIds.hooks }),
-  };
-
-  // Determine path for generated roots.json in the repo
-  const rootsRelPath = "roots/roots.json";
-  const rootsPath = resolve(repoRoot, rootsRelPath);
-  const hasExistingRoots = existsSync(rootsPath);
-
-  // Only write if the repo doesn't already have a roots.json at this path
-  if (!hasExistingRoots) {
-    mkdirSync(resolve(repoRoot, "roots"), { recursive: true });
-    const rootsJson: Record<string, unknown> = {
-      $schema: "https://raw.githubusercontent.com/pulsemcp/air/main/schemas/roots.schema.json",
-      [configName]: rootEntry,
-    };
-    writeFileSync(rootsPath, JSON.stringify(rootsJson, null, 2) + "\n");
-  }
-
-  // Add github:// URI for the generated roots to the grouped artifacts
-  const generatedRootsUri = `github://${repo}@${branch}/${rootsRelPath}`;
-  if (!hasExistingRoots) {
-    if (!grouped.roots) grouped.roots = [];
-    // Prepend so discovered roots from other locations can override
-    grouped.roots.unshift(generatedRootsUri);
-  }
-
-  // Build air.json — all artifact types use github:// URIs consistently
+  // Build air.json — only include artifact types that were discovered.
+  // If no roots index exists in the repo, roots are simply omitted.
   const airJson: Record<string, unknown> = {
     name: configName,
     extensions: [
@@ -413,8 +340,6 @@ export function initFromRepo(
     branch,
     discovered,
     overwritten,
-    generatedRootsPath: rootsPath,
-    generatedRootName: configName,
   };
 }
 
@@ -451,11 +376,6 @@ export function smartInit(options?: InitFromRepoOptions): SmartInitResult {
       const targetPath = options?.path ?? getDefaultAirJsonPath();
       if (existsSync(targetPath)) {
         unlinkSync(targetPath);
-      }
-      // Clean up auto-generated roots.json from a previous repo-mode init
-      const rootsPath = resolve(dirname(targetPath), "roots", "roots.json");
-      if (existsSync(rootsPath)) {
-        unlinkSync(rootsPath);
       }
     }
 

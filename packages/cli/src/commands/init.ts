@@ -30,9 +30,6 @@ export function initCommand(): Command {
           for (const artifact of result.discovered) {
             console.log(`  [${artifact.type}] ${artifact.repoPath}`);
           }
-          console.log(
-            `\nGenerated root "${result.generatedRootName}" at ${result.generatedRootsPath}`
-          );
           console.log(`\nConfig written to ${result.airJsonPath}`);
         } else {
           console.log(
