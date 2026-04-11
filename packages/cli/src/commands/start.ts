@@ -52,6 +52,13 @@ export function startCommand(): Command {
           process.exit(1);
         }
 
+        // Print staleness warnings to stderr
+        if (result.warnings) {
+          for (const warning of result.warnings) {
+            console.error(`Warning: ${warning}`);
+          }
+        }
+
         // Resolve root: use explicit option, fall back to auto-detection
         let root = result.root;
         let rootId = options.root;

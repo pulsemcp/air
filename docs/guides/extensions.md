@@ -121,7 +121,21 @@ It does a shallow clone of the repository to `~/.air/cache/github/{owner}/{repo}
 export AIR_GITHUB_TOKEN=ghp_xxxxxxxxxxxx
 ```
 
-**Cache:** Clones are cached locally. Delete `~/.air/cache/github/` to force re-fetching.
+**Cache:** Clones are cached locally and reused on subsequent runs. When a cached clone is behind the remote, `air start` and `air prepare` print a warning to stderr:
+
+```
+Warning: github://acme/shared-config@main is behind remote. Run `air update` to refresh.
+```
+
+Immutable refs (full commit SHAs) are never checked for freshness.
+
+To refresh all cached clones:
+
+```bash
+air update
+```
+
+This fetches the latest commits for each cached mutable ref and reports what changed. You can also delete `~/.air/cache/github/` to force a full re-clone.
 
 ## Transforms
 

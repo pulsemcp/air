@@ -1,7 +1,11 @@
 import { execFileSync } from "child_process";
-import { existsSync, readFileSync } from "fs";
+import { existsSync, readFileSync, readdirSync } from "fs";
 import { resolve, dirname } from "path";
-import type { CatalogProvider } from "@pulsemcp/air-core";
+import type {
+  CatalogProvider,
+  CacheFreshnessWarning,
+  CacheRefreshResult,
+} from "@pulsemcp/air-core";
 
 export interface GitHubUri {
   owner: string;
@@ -145,6 +149,14 @@ function redactToken(text: string, token?: string): string {
 }
 
 /**
+ * Check whether a ref looks like a full commit SHA (40 hex chars).
+ * Full SHAs are immutable and never need freshness checking.
+ */
+function isImmutableRef(ref: string): boolean {
+  return /^[0-9a-f]{40}$/i.test(ref);
+}
+
+/**
  * GitHub catalog provider — resolves github:// URIs by cloning the
  * repository locally (shallow clone) and reading files from the clone.
  *
@@ -201,6 +213,179 @@ export class GitHubCatalogProvider implements CatalogProvider {
       return sourceDir;
     }
     return undefined;
+  }
+
+  /**
+   * Check freshness of cached clones for the given URIs.
+   * Compares local HEAD SHA against remote for mutable refs.
+   * Skips URIs with no local clone or immutable refs (full SHAs).
+   */
+  async checkFreshness(uris: string[]): Promise<CacheFreshnessWarning[]> {
+    // De-duplicate by owner/repo/ref so we only check each clone once
+    const seen = new Map<string, string>(); // cacheKey → first URI
+    const toCheck: { owner: string; repo: string; ref: string; uri: string }[] = [];
+
+    for (const uri of uris) {
+      const parsed = parseGitHubUri(uri);
+      const ref = parsed.ref || "HEAD";
+      const key = `${parsed.owner}/${parsed.repo}/${ref}`;
+      if (seen.has(key)) continue;
+      seen.set(key, uri);
+      toCheck.push({ owner: parsed.owner, repo: parsed.repo, ref, uri });
+    }
+
+    const warnings: CacheFreshnessWarning[] = [];
+
+    for (const { owner, repo, ref, uri } of toCheck) {
+      if (isImmutableRef(ref)) continue;
+
+      const cloneDir = getClonePath(owner, repo, ref);
+      if (!existsSync(resolve(cloneDir, ".git"))) continue;
+
+      try {
+        const localSha = execFileSync("git", ["rev-parse", "HEAD"], {
+          cwd: cloneDir,
+          encoding: "utf-8",
+          stdio: "pipe",
+          timeout: 10000,
+        }).trim();
+
+        const lsRemoteArgs = ref === "HEAD"
+          ? ["ls-remote", "origin", "HEAD"]
+          : ["ls-remote", "origin", ref];
+        const lsOutput = execFileSync("git", lsRemoteArgs, {
+          cwd: cloneDir,
+          encoding: "utf-8",
+          stdio: "pipe",
+          timeout: 15000,
+        }).trim();
+
+        if (!lsOutput) continue;
+
+        // ls-remote output: "<sha>\t<refname>" — take first line's SHA
+        const remoteSha = lsOutput.split("\n")[0].split("\t")[0];
+        if (remoteSha && remoteSha !== localSha) {
+          warnings.push({
+            uri,
+            message:
+              `github://${owner}/${repo}@${ref} is behind remote. ` +
+              `Run \`air update\` to refresh.`,
+          });
+        }
+      } catch {
+        // Network failure, auth issue, etc. — skip silently
+      }
+    }
+
+    return warnings;
+  }
+
+  /**
+   * Refresh all cached GitHub clones.
+   * Walks ~/.air/cache/github/ and updates each mutable-ref clone.
+   */
+  async refreshCache(): Promise<CacheRefreshResult[]> {
+    const cacheDir = getCacheDir();
+    if (!existsSync(cacheDir)) return [];
+
+    const results: CacheRefreshResult[] = [];
+
+    // Walk owner/repo/ref directories
+    let owners: string[];
+    try {
+      owners = readdirSync(cacheDir, { withFileTypes: true })
+        .filter((d) => d.isDirectory())
+        .map((d) => d.name);
+    } catch {
+      return [];
+    }
+
+    for (const owner of owners) {
+      const ownerDir = resolve(cacheDir, owner);
+      let repos: string[];
+      try {
+        repos = readdirSync(ownerDir, { withFileTypes: true })
+          .filter((d) => d.isDirectory())
+          .map((d) => d.name);
+      } catch {
+        continue;
+      }
+
+      for (const repo of repos) {
+        const repoDir = resolve(ownerDir, repo);
+        let refs: string[];
+        try {
+          refs = readdirSync(repoDir, { withFileTypes: true })
+            .filter((d) => d.isDirectory())
+            .map((d) => d.name);
+        } catch {
+          continue;
+        }
+
+        for (const ref of refs) {
+          const label = `${owner}/${repo}@${ref}`;
+          const cloneDir = resolve(repoDir, ref);
+
+          if (!existsSync(resolve(cloneDir, ".git"))) continue;
+
+          if (isImmutableRef(ref)) {
+            results.push({ label, updated: false, message: "skipped (immutable ref)" });
+            continue;
+          }
+
+          try {
+            // Get current SHA before fetch
+            const beforeSha = execFileSync("git", ["rev-parse", "HEAD"], {
+              cwd: cloneDir,
+              encoding: "utf-8",
+              stdio: "pipe",
+              timeout: 10000,
+            }).trim();
+
+            // Fetch latest
+            const fetchArgs = ref === "HEAD"
+              ? ["fetch", "--depth", "1", "origin"]
+              : ["fetch", "--depth", "1", "origin", ref];
+            execFileSync("git", fetchArgs, {
+              cwd: cloneDir,
+              stdio: "pipe",
+              timeout: 60000,
+            });
+
+            // Reset to fetched commit
+            const resetRef = ref === "HEAD" ? "origin/HEAD" : "FETCH_HEAD";
+            execFileSync("git", ["reset", "--hard", resetRef], {
+              cwd: cloneDir,
+              stdio: "pipe",
+              timeout: 10000,
+            });
+
+            const afterSha = execFileSync("git", ["rev-parse", "HEAD"], {
+              cwd: cloneDir,
+              encoding: "utf-8",
+              stdio: "pipe",
+              timeout: 10000,
+            }).trim();
+
+            if (afterSha !== beforeSha) {
+              results.push({
+                label,
+                updated: true,
+                message: `updated ${beforeSha.slice(0, 7)} → ${afterSha.slice(0, 7)}`,
+              });
+            } else {
+              results.push({ label, updated: false, message: "already up-to-date" });
+            }
+          } catch (err) {
+            const rawMsg = err instanceof Error ? err.message : String(err);
+            const msg = redactToken(rawMsg, this.token);
+            results.push({ label, updated: false, message: `failed: ${msg}` });
+          }
+        }
+      }
+    }
+
+    return results;
   }
 
   /**

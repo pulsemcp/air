@@ -5,10 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.0.21] - 2026-04-11
+## [0.0.22] - 2026-04-11
 
 ### Fixed
 - Claude adapter now registers copied hooks in `.claude/settings.json` — previously hooks were copied to `.claude/hooks/` but never registered, making them inert
+
+## [0.0.21] - 2026-04-11
+
+### Added
+- `air update` CLI command to refresh cached provider data (e.g., stale GitHub repository clones)
+- `checkFreshness()` and `refreshCache()` optional methods on the `CatalogProvider` interface for cache lifecycle management
+- Staleness warnings printed to stderr when `air start` or `air prepare` detects that cached GitHub clones are behind remote
+- `CacheFreshnessWarning` and `CacheRefreshResult` types exported from `@pulsemcp/air-core` and `@pulsemcp/air-sdk`
+- `updateProviderCaches()` SDK function for programmatic cache refresh
+- `checkProviderFreshness()` SDK helper for checking provider cache freshness against remote sources
 
 ## [0.0.20] - 2026-04-11
 

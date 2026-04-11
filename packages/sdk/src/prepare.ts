@@ -5,13 +5,14 @@ import {
   resolveArtifacts,
   type RootEntry,
   type PreparedSession,
+  type McpConfig,
 } from "@pulsemcp/air-core";
 import { findAdapter, listAvailableAdapters } from "./adapter-registry.js";
 import { detectRoot } from "./root-detection.js";
 import { loadExtensions, type LoadedExtensions } from "./extension-loader.js";
 import { runTransforms } from "./transform-runner.js";
+import { checkProviderFreshness } from "./cache-freshness.js";
 import { readFileSync } from "fs";
-import type { McpConfig } from "@pulsemcp/air-core";
 import {
   findUnresolvedVars,
   unresolvedVarsMessage,
@@ -65,6 +66,8 @@ export interface PrepareSessionResult {
   root?: RootEntry;
   /** Whether the root was auto-detected (true) or explicitly specified (false/undefined). */
   rootAutoDetected?: boolean;
+  /** Warnings from provider cache freshness checks (e.g., stale GitHub clones). */
+  warnings?: string[];
 }
 
 /**
@@ -89,12 +92,14 @@ export async function prepareSession(
   const airJsonDir = dirname(resolve(airJsonPath));
   const searchDirs = [airJsonDir];
 
+  // Load air.json config (needed for extensions and freshness checks)
+  const airConfig = loadAirConfig(airJsonPath);
+
   // Use pre-loaded extensions or load from air.json
   let loaded: LoadedExtensions;
   if (options.extensions) {
     loaded = options.extensions;
   } else {
-    const airConfig = loadAirConfig(airJsonPath);
     loaded = await loadExtensions(airConfig.extensions || [], airJsonDir);
   }
 
@@ -122,6 +127,9 @@ export async function prepareSession(
     .map((ext) => ext.provider!)
     .filter(Boolean);
   const artifacts = await resolveArtifacts(airJsonPath, { providers });
+
+  // Check freshness of provider caches (non-blocking — warnings only)
+  const warnings = await checkProviderFreshness(airConfig, providers);
 
   // Detect or validate root
   let root: RootEntry | undefined;
@@ -183,5 +191,10 @@ export async function prepareSession(
     }
   }
 
-  return { session, root, rootAutoDetected };
+  return {
+    session,
+    root,
+    rootAutoDetected,
+    warnings: warnings.length > 0 ? warnings : undefined,
+  };
 }

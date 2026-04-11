@@ -207,6 +207,40 @@ export interface CatalogProvider {
    * to absolute paths. Returns undefined if the source isn't locally available.
    */
   resolveSourceDir?(uri: string): string | undefined;
+  /**
+   * Check freshness of cached data for the given URIs.
+   * Returns warnings for any entries whose local cache is behind the remote.
+   * Providers that don't cache can omit this method.
+   */
+  checkFreshness?(uris: string[]): Promise<CacheFreshnessWarning[]>;
+  /**
+   * Refresh all cached data managed by this provider.
+   * Returns a result for each cached entry describing what happened.
+   */
+  refreshCache?(): Promise<CacheRefreshResult[]>;
+}
+
+/**
+ * Warning returned by CatalogProvider.checkFreshness() when a cached
+ * entry is behind the remote source.
+ */
+export interface CacheFreshnessWarning {
+  /** The URI that was checked (e.g., "github://owner/repo@main/path") */
+  uri: string;
+  /** Human-readable warning message */
+  message: string;
+}
+
+/**
+ * Result of refreshing a single cached entry via CatalogProvider.refreshCache().
+ */
+export interface CacheRefreshResult {
+  /** Human-readable label for the cached entry (e.g., "owner/repo@main") */
+  label: string;
+  /** Whether the entry was updated (false if already up-to-date or skipped) */
+  updated: boolean;
+  /** Human-readable status message */
+  message: string;
 }
 
 /**

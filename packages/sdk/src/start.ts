@@ -11,6 +11,7 @@ import {
 } from "@pulsemcp/air-core";
 import { findAdapter, listAvailableAdapters } from "./adapter-registry.js";
 import { loadExtensions } from "./extension-loader.js";
+import { checkProviderFreshness } from "./cache-freshness.js";
 
 export interface StartSessionOptions {
   /** Root to activate by name. */
@@ -34,6 +35,8 @@ export interface StartSessionResult {
   startCommand: StartCommand;
   /** The agent adapter display name. */
   adapterDisplayName: string;
+  /** Warnings from provider cache freshness checks (e.g., stale GitHub clones). */
+  warnings?: string[];
 }
 
 /**
@@ -56,6 +59,8 @@ export async function startSession(
   let artifacts: ResolvedArtifacts;
   let adapter = null;
 
+  let warnings: string[] = [];
+
   if (airJsonPath) {
     const airConfig = loadAirConfig(airJsonPath);
     const loaded = await loadExtensions(
@@ -72,6 +77,9 @@ export async function startSession(
       .map((ext) => ext.provider!)
       .filter(Boolean);
     artifacts = await resolveArtifacts(airJsonPath, { providers });
+
+    // Check freshness of provider caches (non-blocking — warnings only)
+    warnings = await checkProviderFreshness(airConfig, providers);
   } else {
     artifacts = emptyArtifacts();
   }
@@ -115,5 +123,6 @@ export async function startSession(
     agentAvailable,
     startCommand,
     adapterDisplayName: adapter.displayName,
+    warnings: warnings.length > 0 ? warnings : undefined,
   };
 }
