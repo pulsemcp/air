@@ -12,14 +12,7 @@ export function upgradeCommand(): Command {
 
       console.log(`Current version: ${currentVersion}`);
 
-      if (options.dryRun) {
-        console.log(
-          "Would run: npm install -g @pulsemcp/air-cli@latest"
-        );
-        return;
-      }
-
-      // Check if already up to date
+      // Check the registry for the latest published version
       let latestVersion: string | undefined;
       try {
         latestVersion = execSync("npm view @pulsemcp/air-cli version", {
@@ -39,6 +32,13 @@ export function upgradeCommand(): Command {
         console.log(`Latest version: ${latestVersion}`);
       }
 
+      if (options.dryRun) {
+        console.log(
+          "Would run: npm install -g @pulsemcp/air-cli@latest"
+        );
+        return;
+      }
+
       console.log("Running: npm install -g @pulsemcp/air-cli@latest");
 
       try {
@@ -52,8 +52,12 @@ export function upgradeCommand(): Command {
         } else {
           console.log("\nUpgrade complete.");
         }
-      } catch {
-        console.error("\nError: upgrade failed");
+      } catch (err) {
+        const detail = err instanceof Error ? `: ${err.message}` : "";
+        console.error(`\nError: upgrade failed${detail}`);
+        console.error(
+          "If this is a permissions issue, try running with sudo or fix your npm prefix."
+        );
         process.exit(1);
       }
     });
