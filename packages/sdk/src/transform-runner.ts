@@ -74,6 +74,14 @@ export async function runTransforms(opts: RunTransformsOptions): Promise<void> {
       }
     }
 
+    // Guarantee mcpServers exists so existing transforms that access it
+    // without null-guarding don't crash on non-.mcp.json config files.
+    // mcpServers was previously required, so this preserves backwards compat.
+    const hadMcpServers = "mcpServers" in config;
+    if (!config.mcpServers) {
+      config.mcpServers = {};
+    }
+
     const context: TransformContext = {
       targetDir,
       root,
@@ -87,6 +95,11 @@ export async function runTransforms(opts: RunTransformsOptions): Promise<void> {
     for (const ext of transforms) {
       if (!ext.transform) continue;
       config = await ext.transform.transform(config, context);
+    }
+
+    // Strip the synthetic mcpServers before writing non-.mcp.json files
+    if (!isMcpConfig && !hadMcpServers) {
+      delete config.mcpServers;
     }
 
     if (isMcpConfig) {
