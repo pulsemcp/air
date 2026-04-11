@@ -216,4 +216,93 @@ describe("envTransform", () => {
     const result = await envTransform(config, makeContext());
     expect((result.mcpServers.server.oauth as any).clientId).toBe("resolved-secret-value");
   });
+
+  it("resolves ${VAR} in hook env values", async () => {
+    const config: McpConfig = {
+      mcpServers: {},
+      hooks: {
+        "notify-hook": {
+          event: "Stop",
+          command: "node",
+          args: ["capture.js"],
+          env: { CREDENTIALS: "${MY_SECRET}" },
+        },
+      },
+    };
+
+    const result = await envTransform(config, makeContext());
+    expect((result.hooks!["notify-hook"].env as any).CREDENTIALS).toBe(
+      "resolved-secret-value"
+    );
+  });
+
+  it("resolves ${VAR:-default} in hook env values", async () => {
+    const config: McpConfig = {
+      mcpServers: {},
+      hooks: {
+        "my-hook": {
+          event: "session_start",
+          command: "bash",
+          env: {
+            URL: "${NONEXISTENT_VAR_12345:-https://fallback.example.com}",
+          },
+        },
+      },
+    };
+
+    const result = await envTransform(config, makeContext());
+    expect((result.hooks!["my-hook"].env as any).URL).toBe(
+      "https://fallback.example.com"
+    );
+  });
+
+  it("resolves ${VAR} in both mcpServers and hooks simultaneously", async () => {
+    const config: McpConfig = {
+      mcpServers: {
+        server: {
+          command: "npx",
+          env: { API_KEY: "${MY_SECRET}" },
+        },
+      },
+      hooks: {
+        "my-hook": {
+          event: "Stop",
+          command: "node",
+          env: { TOKEN: "${ANOTHER_VAR}" },
+        },
+      },
+    };
+
+    const result = await envTransform(config, makeContext());
+    expect((result.mcpServers.server.env as any).API_KEY).toBe("resolved-secret-value");
+    expect((result.hooks!["my-hook"].env as any).TOKEN).toBe("another-value");
+  });
+
+  it("passes through config when hooks is undefined", async () => {
+    const config: McpConfig = {
+      mcpServers: {
+        server: { command: "npx", env: { KEY: "${MY_SECRET}" } },
+      },
+    };
+
+    const result = await envTransform(config, makeContext());
+    expect(result.hooks).toBeUndefined();
+    expect((result.mcpServers.server.env as any).KEY).toBe("resolved-secret-value");
+  });
+
+  it("leaves unresolvable ${VAR} in hooks as-is", async () => {
+    const config: McpConfig = {
+      mcpServers: {},
+      hooks: {
+        "my-hook": {
+          event: "Stop",
+          command: "node",
+          env: { KEY: "${NONEXISTENT_VAR_12345}" },
+        },
+      },
+    };
+
+    const result = await envTransform(config, makeContext());
+    expect((result.hooks!["my-hook"].env as any).KEY).toBe("${NONEXISTENT_VAR_12345}");
+  });
 });

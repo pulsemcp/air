@@ -191,7 +191,6 @@ describe("prepareSession", () => {
       config: join(catalog, "air.json"),
       adapter: "claude",
       target,
-      adapter: "claude",
     });
 
     // .mcp.json should have empty mcpServers (no root = no defaults)
@@ -576,6 +575,243 @@ export default async function(config, context) {
       }
     });
 
+    it("resolves ${VAR} in HOOK.json env via secrets-env extension", async () => {
+      const savedVal = process.env.SDK_TEST_HOOK_SECRET;
+      process.env.SDK_TEST_HOOK_SECRET = "hook-resolved-value";
+
+      try {
+        const catalog = createTemp({
+          "air.json": {
+            name: "test",
+            extensions: ["@pulsemcp/air-secrets-env"],
+            hooks: ["./hooks.json"],
+            roots: ["./roots.json"],
+          },
+          "hooks.json": {
+            "notify-hook": {
+              description: "Notification hook",
+              path: "hooks/notify-hook",
+            },
+          },
+          "hooks/notify-hook/HOOK.json": JSON.stringify({
+            event: "Stop",
+            command: "node",
+            args: ["capture.js"],
+            env: {
+              CREDENTIALS: "${SDK_TEST_HOOK_SECRET}",
+            },
+          }),
+          "roots.json": {
+            default: {
+              name: "default",
+              description: "Default",
+              default_hooks: ["notify-hook"],
+            },
+          },
+        });
+
+        const target = createTemp({});
+
+        await prepareSession({
+          config: join(catalog, "air.json"),
+          adapter: "claude",
+          root: "default",
+          target,
+        });
+
+        const hookJson = JSON.parse(
+          readFileSync(
+            join(target, ".claude", "hooks", "notify-hook", "HOOK.json"),
+            "utf-8"
+          )
+        );
+        expect(hookJson.env.CREDENTIALS).toBe("hook-resolved-value");
+      } finally {
+        if (savedVal === undefined) {
+          delete process.env.SDK_TEST_HOOK_SECRET;
+        } else {
+          process.env.SDK_TEST_HOOK_SECRET = savedVal;
+        }
+      }
+    });
+
+    it("resolves ${VAR} in HOOK.json env via secrets-file extension", async () => {
+      const catalog = createTemp({
+        "air.json": {
+          name: "test",
+          extensions: ["@pulsemcp/air-secrets-file"],
+          hooks: ["./hooks.json"],
+          roots: ["./roots.json"],
+        },
+        "hooks.json": {
+          "file-hook": {
+            description: "File hook",
+            path: "hooks/file-hook",
+          },
+        },
+        "hooks/file-hook/HOOK.json": JSON.stringify({
+          event: "session_start",
+          command: "bash",
+          args: ["run.sh"],
+          env: {
+            API_KEY: "${FILE_HOOK_SECRET}",
+          },
+        }),
+        "roots.json": {
+          default: {
+            name: "default",
+            description: "Default",
+            default_hooks: ["file-hook"],
+          },
+        },
+        "secrets.json": { FILE_HOOK_SECRET: "from-secrets-file" },
+      });
+
+      const target = createTemp({});
+
+      await prepareSession({
+        config: join(catalog, "air.json"),
+        adapter: "claude",
+        root: "default",
+        target,
+        extensionOptions: { "secrets-file": join(catalog, "secrets.json") },
+      });
+
+      const hookJson = JSON.parse(
+        readFileSync(
+          join(target, ".claude", "hooks", "file-hook", "HOOK.json"),
+          "utf-8"
+        )
+      );
+      expect(hookJson.env.API_KEY).toBe("from-secrets-file");
+    });
+
+    it("resolves ${VAR} in both .mcp.json and HOOK.json simultaneously", async () => {
+      const savedVal = process.env.SDK_TEST_DUAL_SECRET;
+      process.env.SDK_TEST_DUAL_SECRET = "dual-value";
+
+      try {
+        const catalog = createTemp({
+          "air.json": {
+            name: "test",
+            extensions: ["@pulsemcp/air-secrets-env"],
+            mcp: ["./mcp.json"],
+            hooks: ["./hooks.json"],
+            roots: ["./roots.json"],
+          },
+          "mcp.json": {
+            server: {
+              type: "stdio",
+              command: "npx",
+              env: { TOKEN: "${SDK_TEST_DUAL_SECRET}" },
+            },
+          },
+          "hooks.json": {
+            "dual-hook": {
+              description: "Dual hook",
+              path: "hooks/dual-hook",
+            },
+          },
+          "hooks/dual-hook/HOOK.json": JSON.stringify({
+            event: "Stop",
+            command: "node",
+            env: { CRED: "${SDK_TEST_DUAL_SECRET}" },
+          }),
+          "roots.json": {
+            default: {
+              name: "default",
+              description: "Default",
+              default_mcp_servers: ["server"],
+              default_hooks: ["dual-hook"],
+            },
+          },
+        });
+
+        const target = createTemp({});
+
+        await prepareSession({
+          config: join(catalog, "air.json"),
+          adapter: "claude",
+          root: "default",
+          target,
+        });
+
+        const mcpJson = JSON.parse(readFileSync(join(target, ".mcp.json"), "utf-8"));
+        expect(mcpJson.mcpServers.server.env.TOKEN).toBe("dual-value");
+
+        const hookJson = JSON.parse(
+          readFileSync(
+            join(target, ".claude", "hooks", "dual-hook", "HOOK.json"),
+            "utf-8"
+          )
+        );
+        expect(hookJson.env.CRED).toBe("dual-value");
+      } finally {
+        if (savedVal === undefined) {
+          delete process.env.SDK_TEST_DUAL_SECRET;
+        } else {
+          process.env.SDK_TEST_DUAL_SECRET = savedVal;
+        }
+      }
+    });
+
+    it("hooks section is not written to .mcp.json", async () => {
+      const savedVal = process.env.SDK_TEST_LEAK;
+      process.env.SDK_TEST_LEAK = "value";
+
+      try {
+        const catalog = createTemp({
+          "air.json": {
+            name: "test",
+            extensions: ["@pulsemcp/air-secrets-env"],
+            mcp: ["./mcp.json"],
+            hooks: ["./hooks.json"],
+            roots: ["./roots.json"],
+          },
+          "mcp.json": {
+            server: { type: "stdio", command: "npx" },
+          },
+          "hooks.json": {
+            "leak-hook": {
+              description: "Leak check",
+              path: "hooks/leak-hook",
+            },
+          },
+          "hooks/leak-hook/HOOK.json": JSON.stringify({
+            event: "Stop",
+            command: "node",
+            env: { KEY: "${SDK_TEST_LEAK}" },
+          }),
+          "roots.json": {
+            default: {
+              name: "default",
+              description: "Default",
+              default_mcp_servers: ["server"],
+              default_hooks: ["leak-hook"],
+            },
+          },
+        });
+
+        const target = createTemp({});
+
+        await prepareSession({
+          config: join(catalog, "air.json"),
+          adapter: "claude",
+          root: "default",
+          target,
+        });
+
+        const mcpJson = JSON.parse(readFileSync(join(target, ".mcp.json"), "utf-8"));
+        expect(mcpJson.hooks).toBeUndefined();
+      } finally {
+        if (savedVal === undefined) {
+          delete process.env.SDK_TEST_LEAK;
+        } else {
+          process.env.SDK_TEST_LEAK = savedVal;
+        }
+      }
+    });
+
     it("throws with invalid extension specifier", async () => {
       const catalog = createTemp({
         "air.json": {
@@ -749,6 +985,45 @@ export default async function(config, context) {
           target,
         })
       ).rejects.toThrow("ARRAY_SECRET");
+    });
+
+    it("throws when unresolved ${VAR} patterns remain in HOOK.json", async () => {
+      const catalog = createTemp({
+        "air.json": {
+          name: "test",
+          hooks: ["./hooks.json"],
+          roots: ["./roots.json"],
+        },
+        "hooks.json": {
+          "unresolved-hook": {
+            description: "Hook with unresolved var",
+            path: "hooks/unresolved-hook",
+          },
+        },
+        "hooks/unresolved-hook/HOOK.json": JSON.stringify({
+          event: "Stop",
+          command: "node",
+          env: { KEY: "${MISSING_HOOK_SECRET}" },
+        }),
+        "roots.json": {
+          default: {
+            name: "default",
+            description: "Default",
+            default_hooks: ["unresolved-hook"],
+          },
+        },
+      });
+
+      const target = createTemp({});
+
+      await expect(
+        prepareSession({
+          config: join(catalog, "air.json"),
+          adapter: "claude",
+          root: "default",
+          target,
+        })
+      ).rejects.toThrow("MISSING_HOOK_SECRET");
     });
 
     it("skips validation when skipValidation is true", async () => {

@@ -156,7 +156,7 @@ Extensions can be:
 Extensions provide three types of functionality:
 - **Adapters** — translate AIR config to agent-specific formats (e.g., Claude Code)
 - **Providers** — resolve remote URIs like `github://` in artifact paths
-- **Transforms** — modify `.mcp.json` after session preparation (e.g., secrets injection)
+- **Transforms** — modify artifact configs (`.mcp.json`, `HOOK.json`) after session preparation (e.g., secrets injection)
 
 Order matters for transforms — they run in declaration order. See [Extensions System](extensions.md) for details.
 
@@ -204,7 +204,7 @@ If the key is `"my-skill"` but `id` is `"other-skill"`, this mismatch is not cau
 
 ### Leaving unresolved variables
 
-MCP server configs support `${ENV_VAR}` and `${ENV_VAR:-default}` interpolation. AIR validates that all variables are resolved after transforms run. Variables with `:-default` syntax always resolve (using the fallback when the variable is unset). If you see errors about unresolved variables, either set the environment variable, use `${VAR:-fallback}` for optional values, or use a transform extension to resolve them. You can bypass this check with `--skip-validation` on the `prepare` command.
+MCP server configs and hook `env` fields support `${ENV_VAR}` and `${ENV_VAR:-default}` interpolation. AIR validates that all variables are resolved after transforms run — in both `.mcp.json` and `HOOK.json` files. Variables with `:-default` syntax always resolve (using the fallback when the variable is unset). If you see errors about unresolved variables, either set the environment variable, use `${VAR:-fallback}` for optional values, or use a transform extension to resolve them. You can bypass this check with `--skip-validation` on the `prepare` command.
 
 ## Validating your config
 

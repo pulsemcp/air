@@ -244,23 +244,35 @@ export interface CacheRefreshResult {
 }
 
 /**
- * Prepare Transform — post-processes the MCP config after the adapter writes it.
+ * Prepare Transform — post-processes artifact configs after the adapter writes them.
  *
  * Transforms run in declaration order (the order they appear in the
  * air.json `extensions` array). Each transform receives the current
- * MCP config and returns a (possibly modified) version. This is the
- * general-purpose hook for secrets resolution, config patching,
- * server injection, and any other post-processing.
+ * config (MCP servers, hooks, and future artifact types) and returns
+ * a (possibly modified) version. This is the general-purpose hook for
+ * secrets resolution, config patching, server injection, and any other
+ * post-processing.
+ *
+ * Transforms may modify existing entries in `mcpServers` and `hooks`
+ * but should not add new hook IDs — the transform runner only writes
+ * back hooks that were originally collected from disk.
  */
 export interface PrepareTransform {
   transform(config: McpConfig, context: TransformContext): Promise<McpConfig>;
 }
 
 /**
- * The shape of the MCP config file (.mcp.json) that transforms operate on.
+ * The combined config that transforms operate on.
+ *
+ * Contains the MCP server config (from `.mcp.json`) and, when hooks are
+ * active, the parsed HOOK.json contents keyed by hook ID.  Future artifact
+ * types that support `${VAR}` interpolation will be added here as optional
+ * fields.
  */
 export interface McpConfig {
   mcpServers: Record<string, Record<string, unknown>>;
+  /** Parsed HOOK.json objects keyed by hook ID (populated by the transform runner). */
+  hooks?: Record<string, Record<string, unknown>>;
 }
 
 /**
@@ -277,6 +289,8 @@ export interface TransformContext {
   options: Record<string, unknown>;
   /** Path to the .mcp.json file being transformed */
   mcpConfigPath: string;
+  /** Paths to hook directories injected by the adapter (each contains a HOOK.json) */
+  hookPaths?: string[];
 }
 
 /**
@@ -305,7 +319,7 @@ export interface AirExtension {
   adapter?: AgentAdapter;
   /** Catalog provider for remote URI resolution (e.g., github://) */
   provider?: CatalogProvider;
-  /** Post-prepare transform for MCP config */
+  /** Post-prepare transform for artifact configs (MCP servers, hooks, etc.) */
   transform?: PrepareTransform;
   /** CLI options this extension contributes to `air prepare` */
   prepareOptions?: ExtensionCliOption[];

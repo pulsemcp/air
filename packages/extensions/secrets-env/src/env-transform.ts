@@ -5,8 +5,8 @@ const ENV_VAR_PATTERN = /\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-(.*?))?\}/g;
 /**
  * Transform that resolves ${VAR} and ${VAR:-default} patterns from process.env.
  *
- * Recursively walks all string values in the MCP config and replaces
- * ${VAR} patterns with the corresponding environment variable value.
+ * Recursively walks all string values in MCP server configs and hook configs,
+ * replacing ${VAR} patterns with the corresponding environment variable value.
  * Supports bash-style defaults: ${VAR:-fallback} uses fallback when VAR is unset.
  * For plain ${VAR}, unresolvable patterns are left as-is.
  */
@@ -17,6 +17,7 @@ export async function envTransform(
   return {
     ...config,
     mcpServers: resolveObject(config.mcpServers),
+    ...(config.hooks && { hooks: resolveObject(config.hooks) }),
   };
 }
 

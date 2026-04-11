@@ -15,6 +15,7 @@ import { checkProviderFreshness } from "./cache-freshness.js";
 import { readFileSync } from "fs";
 import {
   findUnresolvedVars,
+  findUnresolvedHookVars,
   unresolvedVarsMessage,
 } from "./validate-config.js";
 
@@ -164,7 +165,7 @@ export async function prepareSession(
     }
   );
 
-  // Run transforms in extension-list order on the written .mcp.json
+  // Run transforms in extension-list order on the written .mcp.json and HOOK.json files
   const mcpConfigPath = session.configFiles.find((f) =>
     f.endsWith(".mcp.json")
   );
@@ -177,17 +178,30 @@ export async function prepareSession(
       root,
       artifacts,
       extensionOptions: options.extensionOptions ?? {},
+      hookPaths: session.hookPaths,
     });
   }
 
   // Final validation: ensure no unresolved ${VAR} patterns remain
-  if (!options.skipValidation && mcpConfigPath) {
-    const config: McpConfig = JSON.parse(
-      readFileSync(mcpConfigPath, "utf-8")
-    );
-    const unresolved = findUnresolvedVars(config);
-    if (unresolved.length > 0) {
-      throw new Error(unresolvedVarsMessage(mcpConfigPath, unresolved));
+  if (!options.skipValidation) {
+    const allUnresolved: string[] = [];
+
+    if (mcpConfigPath) {
+      const config: McpConfig = JSON.parse(
+        readFileSync(mcpConfigPath, "utf-8")
+      );
+      allUnresolved.push(...findUnresolvedVars(config));
+    }
+
+    if (session.hookPaths.length > 0) {
+      allUnresolved.push(...findUnresolvedHookVars(session.hookPaths));
+    }
+
+    // Deduplicate
+    const unique = [...new Set(allUnresolved)];
+    if (unique.length > 0) {
+      const targetDir = options.target ?? process.cwd();
+      throw new Error(unresolvedVarsMessage(targetDir, unique));
     }
   }
 
