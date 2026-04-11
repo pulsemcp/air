@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.23] - 2026-04-11
+
+### Changed
+- `PrepareTransform` interface now receives hook configs alongside MCP server configs via the `McpConfig.hooks` field — transforms that only operate on `mcpServers` continue to work, but the contract is broader
+- `TransformContext` now includes an optional `hookPaths` field with paths to injected hook directories
+- Transform runner collects `HOOK.json` files from injected hooks, passes them through the transform pipeline, and writes resolved configs back
+- `@pulsemcp/air-secrets-env` resolves `${VAR}` and `${VAR:-default}` patterns in hook env fields (in addition to MCP servers)
+- `@pulsemcp/air-secrets-file` resolves `${VAR}` patterns in hook env fields (in addition to MCP servers)
+- Unresolved `${VAR}` validation now checks both `.mcp.json` and `HOOK.json` files after transforms run
+
+### Added
+- `findUnresolvedHookVars()` utility in the SDK for validating hook configs independently
+- Documentation for secret resolution in hooks (`docs/guides/hooks.md`)
+
 ## [0.0.22] - 2026-04-11
 
 ### Fixed

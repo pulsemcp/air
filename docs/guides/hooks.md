@@ -191,6 +191,15 @@ Hooks are activated per-root via `default_hooks`:
 
 Without a root, all hooks are available.
 
+## Secret resolution in hooks
+
+Hook `env` values support `${VAR}` interpolation, and these patterns are resolved by the same secrets transforms that handle MCP server configs. During `air prepare`, the transform pipeline processes both `.mcp.json` and all injected `HOOK.json` files:
+
+- **`@pulsemcp/air-secrets-env`** resolves `${VAR}` and `${VAR:-default}` from process environment variables
+- **`@pulsemcp/air-secrets-file`** resolves `${VAR}` from a JSON secrets file (via `--secrets-file`)
+
+After transforms run, AIR validates that no unresolved `${VAR}` patterns remain in either `.mcp.json` or `HOOK.json` files. Use `--skip-validation` if partial resolution is intentional.
+
 ## Agent translation
 
 At session start, AIR copies hook directories into the agent's working directory (e.g., `.claude/hooks/{id}/`). The adapter reads each `HOOK.json` to translate hooks into the agent's native format. Local hooks take priority — if a hook directory already exists in the target, the catalog version is not copied.

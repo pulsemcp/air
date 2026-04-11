@@ -122,6 +122,7 @@ export { checkProviderFreshness } from "./cache-freshness.js";
 // Config validation
 export {
   findUnresolvedVars,
+  findUnresolvedHookVars,
   validateNoUnresolvedVars,
   unresolvedVarsMessage,
 } from "./validate-config.js";

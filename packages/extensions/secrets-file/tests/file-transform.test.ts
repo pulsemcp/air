@@ -165,4 +165,75 @@ describe("fileTransform", () => {
       "postgresql://admin:s3cret@localhost/mydb"
     );
   });
+
+  it("resolves ${VAR} in hook env values from secrets file", async () => {
+    const dir = createTemp({
+      "secrets.json": { HOOK_SECRET: "hook-value" },
+    });
+
+    const config: McpConfig = {
+      mcpServers: {},
+      hooks: {
+        "my-hook": {
+          event: "Stop",
+          command: "node",
+          env: { CREDENTIALS: "${HOOK_SECRET}" },
+        },
+      },
+    };
+
+    const result = await fileTransform(
+      config,
+      makeContext({ options: { "secrets-file": join(dir, "secrets.json") } })
+    );
+
+    expect((result.hooks!["my-hook"].env as any).CREDENTIALS).toBe("hook-value");
+  });
+
+  it("resolves ${VAR} in both mcpServers and hooks from secrets file", async () => {
+    const dir = createTemp({
+      "secrets.json": { SERVER_KEY: "sv", HOOK_KEY: "hk" },
+    });
+
+    const config: McpConfig = {
+      mcpServers: {
+        server: { command: "npx", env: { KEY: "${SERVER_KEY}" } },
+      },
+      hooks: {
+        "my-hook": {
+          event: "session_start",
+          command: "bash",
+          env: { KEY: "${HOOK_KEY}" },
+        },
+      },
+    };
+
+    const result = await fileTransform(
+      config,
+      makeContext({ options: { "secrets-file": join(dir, "secrets.json") } })
+    );
+
+    expect((result.mcpServers.server.env as any).KEY).toBe("sv");
+    expect((result.hooks!["my-hook"].env as any).KEY).toBe("hk");
+  });
+
+  it("passes through when hooks is undefined", async () => {
+    const dir = createTemp({
+      "secrets.json": { KEY: "value" },
+    });
+
+    const config: McpConfig = {
+      mcpServers: {
+        server: { command: "npx", env: { KEY: "${KEY}" } },
+      },
+    };
+
+    const result = await fileTransform(
+      config,
+      makeContext({ options: { "secrets-file": join(dir, "secrets.json") } })
+    );
+
+    expect(result.hooks).toBeUndefined();
+    expect((result.mcpServers.server.env as any).KEY).toBe("value");
+  });
 });
