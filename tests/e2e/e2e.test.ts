@@ -409,6 +409,21 @@ describe("air start", () => {
     expect(result.stdout).toContain("deploy");
   });
 
+  it("dry-run with --no-subagent-merge excludes subagent artifacts", () => {
+    const result = tryRun(
+      "start claude --dry-run --root platform-orchestrator --no-subagent-merge",
+      fixtureEnv
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("AIR Session Configuration");
+    // Parent's servers should be listed
+    expect(result.stdout).toContain("github-server");
+    expect(result.stdout).toContain("postgres-db");
+    // Subagent servers should NOT be listed
+    expect(result.stdout).not.toContain("analytics-api");
+    expect(result.stdout).not.toContain("terraform-server");
+  });
+
   it("succeeds when claude is on PATH", () => {
     const targetDir = createTempDir();
     const stubDir = createTempDir();
