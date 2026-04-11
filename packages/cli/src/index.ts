@@ -8,6 +8,7 @@ import { prepareCommand } from "./commands/prepare.js";
 import { listCommand } from "./commands/list.js";
 import { initCommand } from "./commands/init.js";
 import { installCommand } from "./commands/install.js";
+import { upgradeCommand } from "./commands/upgrade.js";
 
 const require = createRequire(import.meta.url);
 const { version } = require("../package.json");
@@ -25,5 +26,6 @@ program.addCommand(prepareCommand());
 program.addCommand(listCommand());
 program.addCommand(initCommand());
 program.addCommand(installCommand());
+program.addCommand(upgradeCommand());
 
 program.parseAsync();

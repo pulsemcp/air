@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.0.18] - 2026-04-11
 
+### Added
+- `air upgrade` command to upgrade the CLI to the latest version via `npm install -g @pulsemcp/air-cli@latest`
+- `--dry-run` flag for `air upgrade` to preview what would be run without executing
+
 ### Fixed
 - `air init` now discovers artifact index files that have individual entries with schema validation errors (e.g., descriptions exceeding 500 characters) — previously the entire file was silently skipped if any entry failed validation
 - Artifact index files in subdirectories (e.g., `agents/agent-roots/roots.json`) are now properly discovered
