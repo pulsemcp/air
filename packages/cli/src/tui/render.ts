@@ -131,23 +131,32 @@ export function render(state: TuiState, viewportHeight: number): string[] {
 
   // ── Key legend ──
   lines.push("");
-  const legendParts = [
-    `${chalk.dim("←→")} tabs`,
-    `${chalk.dim("↑↓")} navigate`,
-  ];
-  if (isOverridable) {
+  const legendParts: string[] = [];
+  if (state.searchActive) {
     legendParts.push(
-      `${chalk.dim("Space")} toggle`,
-      `${chalk.dim("a")} all`,
-      `${chalk.dim("n")} none`,
-      `${chalk.dim("o")} only`
+      `${chalk.dim("↑↓")} navigate`,
+      `${chalk.dim("Enter")} select`,
+      `${chalk.dim("Esc")} cancel`
+    );
+  } else {
+    legendParts.push(
+      `${chalk.dim("←→")} types`,
+      `${chalk.dim("↑↓")} navigate`
+    );
+    if (isOverridable) {
+      legendParts.push(
+        `${chalk.dim("Space")} toggle`,
+        `${chalk.dim("a")} all`,
+        `${chalk.dim("n")} none`,
+        `${chalk.dim("o")} only`
+      );
+    }
+    legendParts.push(
+      `${chalk.dim("/")} search`,
+      `${chalk.dim("Enter")} start`,
+      `${chalk.dim("q")} quit`
     );
   }
-  legendParts.push(
-    `${chalk.dim("/")} search`,
-    `${chalk.dim("Enter")} start`,
-    `${chalk.dim("q")} quit`
-  );
   lines.push("  " + legendParts.join("  "));
   lines.push("");
 
