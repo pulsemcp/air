@@ -825,6 +825,107 @@ describe("ClaudeAdapter", () => {
         expect(result.subagentContext).toContain("Subagent B");
       });
 
+      it("skips MCP merge when mcpServerOverrides are provided", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+
+        artifacts.mcp["github"] = { type: "stdio", command: "gh" };
+        artifacts.mcp["postgres"] = { type: "stdio", command: "psql" };
+        artifacts.mcp["slack"] = { type: "stdio", command: "slack" };
+
+        artifacts.roots["sub-db"] = {
+          description: "DB subagent",
+          default_mcp_servers: ["postgres"],
+        };
+
+        const root: RootEntry = {
+          description: "Parent root",
+          default_mcp_servers: ["github"],
+          default_subagent_roots: ["sub-db"],
+        };
+
+        // Explicit overrides should be the final word — subagent servers not re-added
+        await adapter.prepareSession(artifacts, dir, {
+          root,
+          mcpServerOverrides: ["github", "slack"],
+        });
+
+        const mcpJson = JSON.parse(readFileSync(join(dir, ".mcp.json"), "utf-8"));
+        expect(Object.keys(mcpJson.mcpServers).sort()).toEqual(["github", "slack"]);
+        // postgres from subagent should NOT be added when overrides are explicit
+        expect(mcpJson.mcpServers["postgres"]).toBeUndefined();
+      });
+
+      it("skips skill merge when skillOverrides are provided", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+
+        // Create real skill source directories
+        const parentSkillSrc = join(dir, "..", "skills-src", "parent-skill");
+        const subSkillSrc = join(dir, "..", "skills-src", "sub-skill");
+        mkdirSync(parentSkillSrc, { recursive: true });
+        mkdirSync(subSkillSrc, { recursive: true });
+        writeFileSync(join(parentSkillSrc, "SKILL.md"), "# Parent");
+        writeFileSync(join(subSkillSrc, "SKILL.md"), "# Sub");
+
+        artifacts.skills["parent-skill"] = { description: "Parent", path: resolve(parentSkillSrc) };
+        artifacts.skills["sub-skill"] = { description: "Sub", path: resolve(subSkillSrc) };
+
+        artifacts.roots["sub-root"] = {
+          description: "Subagent",
+          default_skills: ["sub-skill"],
+        };
+
+        const root: RootEntry = {
+          description: "Parent root",
+          default_skills: ["parent-skill"],
+          default_subagent_roots: ["sub-root"],
+        };
+
+        // Explicit skill overrides — subagent skills not re-added
+        await adapter.prepareSession(artifacts, dir, {
+          root,
+          skillOverrides: ["parent-skill"],
+        });
+
+        expect(existsSync(join(dir, ".claude", "skills", "parent-skill"))).toBe(true);
+        expect(existsSync(join(dir, ".claude", "skills", "sub-skill"))).toBe(false);
+      });
+
+      it("still merges MCP servers when only skill overrides are provided", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+
+        artifacts.mcp["github"] = { type: "stdio", command: "gh" };
+        artifacts.mcp["postgres"] = { type: "stdio", command: "psql" };
+
+        const parentSkillSrc = join(dir, "..", "skills-src2", "parent-skill");
+        mkdirSync(parentSkillSrc, { recursive: true });
+        writeFileSync(join(parentSkillSrc, "SKILL.md"), "# Parent");
+        artifacts.skills["parent-skill"] = { description: "Parent", path: resolve(parentSkillSrc) };
+
+        artifacts.roots["sub-db"] = {
+          description: "DB subagent",
+          default_mcp_servers: ["postgres"],
+        };
+
+        const root: RootEntry = {
+          description: "Parent root",
+          default_mcp_servers: ["github"],
+          default_skills: ["parent-skill"],
+          default_subagent_roots: ["sub-db"],
+        };
+
+        // Skill overrides are set, but MCP overrides are NOT — MCP merge should still happen
+        await adapter.prepareSession(artifacts, dir, {
+          root,
+          skillOverrides: ["parent-skill"],
+        });
+
+        const mcpJson = JSON.parse(readFileSync(join(dir, ".mcp.json"), "utf-8"));
+        expect(Object.keys(mcpJson.mcpServers).sort()).toEqual(["github", "postgres"]);
+      });
+
       it("does not merge when root has no default_subagent_roots", async () => {
         const dir = createTempDir();
         const artifacts = emptyArtifacts();

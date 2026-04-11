@@ -106,12 +106,19 @@ export class ClaudeAdapter implements AgentAdapter {
       ?? root?.default_skills
       ?? [];
 
-    // 1b. Merge subagent roots' artifacts if applicable
+    // 1b. Merge subagent roots' artifacts if applicable.
+    // Skip merge per-artifact type when explicit overrides are provided —
+    // overrides represent the caller's final selection (e.g. from the TUI)
+    // and should not be augmented by implicit merge.
     const subagentRoots = this.resolveSubagentRoots(root, artifacts, options);
     if (subagentRoots.length > 0) {
       const merged = this.mergeSubagentArtifacts(subagentRoots, mcpServerIds, skillIds);
-      mcpServerIds = merged.mcpServerIds;
-      skillIds = merged.skillIds;
+      if (!options?.mcpServerOverrides) {
+        mcpServerIds = merged.mcpServerIds;
+      }
+      if (!options?.skillOverrides) {
+        skillIds = merged.skillIds;
+      }
     }
 
     const mcpServers = mcpServerIds?.length

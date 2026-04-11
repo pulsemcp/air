@@ -559,6 +559,33 @@ describe("air start", () => {
     expect(existsSync(join(targetDir, ".claude", "hooks", "session-audit"))).toBe(false);
   });
 
+  it("skips subagent merge with --no-subagent-merge on start", () => {
+    const targetDir = createTempDir();
+    const stubDir = createTempDir();
+    createStubClaude(stubDir);
+
+    const result = tryRunInDir(
+      "start claude --root platform-orchestrator --skip-confirmation --no-subagent-merge",
+      targetDir,
+      {
+        ...fixtureEnv,
+        PATH: `${stubDir}:${process.env.PATH}`,
+        GITHUB_TOKEN: "ghp_test_e2e_token",
+        PG_CONNECTION_STRING: "postgresql://test:test@localhost/test",
+        ANALYTICS_SECRET: "test_analytics_key",
+      }
+    );
+    expect(result.exitCode).toBe(0);
+
+    // Only parent's MCP servers — subagent servers NOT merged
+    const mcpJson = JSON.parse(readFileSync(join(targetDir, ".mcp.json"), "utf-8"));
+    expect(mcpJson.mcpServers["github-server"]).toBeDefined();
+    expect(mcpJson.mcpServers["postgres-db"]).toBeDefined();
+    // Subagent servers should NOT be present
+    expect(mcpJson.mcpServers["analytics-api"]).toBeUndefined();
+    expect(mcpJson.mcpServers["terraform-server"]).toBeUndefined();
+  });
+
   it("completes in non-TTY mode without --skip-confirmation", () => {
     const targetDir = createTempDir();
     const stubDir = createTempDir();

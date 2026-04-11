@@ -45,6 +45,7 @@ Required argument: `<agent>` — the agent to start (e.g., `claude`).
 | `--root <name>` | Activate a specific root |
 | `--dry-run` | Preview configuration without starting |
 | `--skip-confirmation` | Skip the interactive TUI and launch directly |
+| `--no-subagent-merge` | Skip merging subagent roots' artifacts |
 
 ### Passing arguments to the agent
 
@@ -95,6 +96,8 @@ air start claude --root web-app
 ```
 
 This activates only the MCP servers, skills, plugins, and hooks listed in the root's defaults. Without `--root`, `air start` auto-detects the root from the current directory's git context and pre-selects the root's defaults in the TUI.
+
+When a root declares `default_subagent_roots`, the TUI pre-selects MCP servers and skills from both the parent root and its subagent roots (union). The `--dry-run` output also reflects this merged view. Use `--no-subagent-merge` to disable this behavior.
 
 ## air prepare — programmatic sessions
 

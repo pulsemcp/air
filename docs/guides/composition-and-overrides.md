@@ -173,7 +173,7 @@ Roots can declare dependencies on other roots via `default_subagent_roots`:
 }
 ```
 
-By default, `air prepare` merges the subagent roots' skills and MCP servers into the parent session. The parent's declarations take priority over subagent declarations. Opt out with `--no-subagent-merge`.
+By default, both `air start` and `air prepare` merge the subagent roots' skills and MCP servers into the parent session. The parent's declarations take priority over subagent declarations. Opt out with `--no-subagent-merge`.
 
 ## Advanced patterns
 
