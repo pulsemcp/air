@@ -142,15 +142,39 @@ export async function updateProviderCaches(
     if (defaultAirDir !== airJsonDir) searchDirs.push(defaultAirDir);
 
     const provider = await tryLoadProvider(packageName, searchDirs);
-    if (provider?.refreshCache) {
+    // Add the provider even if it lacks refreshCache — the main loop
+    // below will surface a diagnostic result so users see why the
+    // refresh did not run, instead of the command silently reporting
+    // "no providers with cached data found".
+    if (provider) {
       providers.set(scheme, provider);
     }
   }
 
+  // Only schemes with actual cached data on disk are worth reporting.
+  // A provider may be listed in air.json extensions without having been
+  // used yet, in which case there is nothing to refresh.
+  const cachedSchemeSet = new Set(cachedSchemes);
+
+  const installPrefix = airJsonDir ?? dirname(getDefaultAirJsonPath());
   const results: Record<string, CacheRefreshResult[]> = {};
 
   for (const [scheme, provider] of providers) {
-    if (!provider.refreshCache) continue;
+    if (!cachedSchemeSet.has(scheme)) continue;
+    if (!provider.refreshCache) {
+      const packageName =
+        KNOWN_PROVIDERS[scheme] ?? `@pulsemcp/air-provider-${scheme}`;
+      results[scheme] = [
+        {
+          label: scheme,
+          updated: false,
+          message:
+            `installed provider is too old to refresh its cache. ` +
+            `Upgrade with: npm install --prefix ${installPrefix} ${packageName}@latest`,
+        },
+      ];
+      continue;
+    }
     results[scheme] = await provider.refreshCache();
   }
 

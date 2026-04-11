@@ -240,6 +240,92 @@ describe("updateProviderCaches", () => {
     expect(entry!.message).toContain("up-to-date");
   }, 30000);
 
+  it("surfaces a diagnostic when the installed provider lacks refreshCache", async () => {
+    const fakeHome = createTempDir();
+    setFakeHome(fakeHome);
+
+    // Create a "stale" provider extension — has scheme but no refreshCache
+    // method, simulating an older version of @pulsemcp/air-provider-github
+    // installed alongside a newer CLI.
+    const airDir = join(fakeHome, ".air");
+    mkdirSync(airDir, { recursive: true });
+
+    const extDir = join(airDir, "fake-provider");
+    mkdirSync(extDir, { recursive: true });
+    writeFileSync(
+      join(extDir, "index.mjs"),
+      `export default {
+  name: "stale-github-provider",
+  provider: {
+    scheme: "github",
+    async resolve() { return { type: "raw", data: {} }; },
+  },
+};
+`
+    );
+
+    writeFileSync(
+      join(airDir, "air.json"),
+      JSON.stringify({
+        name: "test",
+        extensions: ["./fake-provider/index.mjs"],
+      })
+    );
+
+    // Cached data must exist on disk — otherwise there's nothing to refresh
+    // and the command should remain silent.
+    createCachedClone(fakeHome, "test-owner", "test-repo", "main");
+
+    const { results } = await updateProviderCaches({
+      config: join(airDir, "air.json"),
+    });
+
+    expect(results).toHaveProperty("github");
+    expect(results.github).toHaveLength(1);
+    const entry = results.github[0];
+    expect(entry.updated).toBe(false);
+    expect(entry.message).toMatch(/too old/);
+    expect(entry.message).toMatch(/@pulsemcp\/air-provider-github@latest/);
+  }, 30000);
+
+  it("does not emit diagnostics for providers without cached data on disk", async () => {
+    const fakeHome = createTempDir();
+    setFakeHome(fakeHome);
+
+    // Provider listed in air.json, stale (no refreshCache), but no cache dir —
+    // nothing to refresh, so the command should stay silent (empty results).
+    const airDir = join(fakeHome, ".air");
+    mkdirSync(airDir, { recursive: true });
+
+    const extDir = join(airDir, "fake-provider");
+    mkdirSync(extDir, { recursive: true });
+    writeFileSync(
+      join(extDir, "index.mjs"),
+      `export default {
+  name: "stale-github-provider",
+  provider: {
+    scheme: "github",
+    async resolve() { return { type: "raw", data: {} }; },
+  },
+};
+`
+    );
+
+    writeFileSync(
+      join(airDir, "air.json"),
+      JSON.stringify({
+        name: "test",
+        extensions: ["./fake-provider/index.mjs"],
+      })
+    );
+
+    const { results } = await updateProviderCaches({
+      config: join(airDir, "air.json"),
+    });
+
+    expect(Object.keys(results)).toEqual([]);
+  });
+
   it("skips immutable refs (full SHA)", async () => {
     const fakeHome = createTempDir();
     setFakeHome(fakeHome);
