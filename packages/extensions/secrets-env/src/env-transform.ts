@@ -16,7 +16,7 @@ export async function envTransform(
 ): Promise<McpConfig> {
   return {
     ...config,
-    mcpServers: resolveObject(config.mcpServers),
+    ...(config.mcpServers && { mcpServers: resolveObject(config.mcpServers) }),
     ...(config.hooks && { hooks: resolveObject(config.hooks) }),
   };
 }

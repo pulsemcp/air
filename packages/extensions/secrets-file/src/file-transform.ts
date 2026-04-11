@@ -32,7 +32,9 @@ export async function fileTransform(
 
   return {
     ...config,
-    mcpServers: resolveObject(config.mcpServers, secrets),
+    ...(config.mcpServers && {
+      mcpServers: resolveObject(config.mcpServers, secrets),
+    }),
     ...(config.hooks && { hooks: resolveObject(config.hooks, secrets) }),
   };
 }

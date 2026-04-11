@@ -265,14 +265,17 @@ export interface PrepareTransform {
  * The combined config that transforms operate on.
  *
  * Contains the MCP server config (from `.mcp.json`) and, when hooks are
- * active, the parsed HOOK.json contents keyed by hook ID.  Future artifact
- * types that support `${VAR}` interpolation will be added here as optional
- * fields.
+ * active, the parsed HOOK.json contents keyed by hook ID.  The transform
+ * pipeline processes all config files returned by prepareSession().configFiles,
+ * so not every config will contain `mcpServers` — for example,
+ * `.claude/settings.json` only has `hooks`.
  */
 export interface McpConfig {
-  mcpServers: Record<string, Record<string, unknown>>;
+  mcpServers?: Record<string, Record<string, unknown>>;
   /** Parsed HOOK.json objects keyed by hook ID (populated by the transform runner). */
   hooks?: Record<string, Record<string, unknown>>;
+  /** Allow additional top-level keys so non-.mcp.json configs pass through intact. */
+  [key: string]: unknown;
 }
 
 /**
@@ -287,7 +290,12 @@ export interface TransformContext {
   artifacts: ResolvedArtifacts;
   /** Parsed CLI option values contributed by extensions */
   options: Record<string, unknown>;
-  /** Path to the .mcp.json file being transformed */
+  /** Path to the config file currently being transformed */
+  configFilePath: string;
+  /**
+   * Path to the .mcp.json file being transformed.
+   * @deprecated Use `configFilePath` instead — transforms now run on all config files.
+   */
   mcpConfigPath: string;
   /** Paths to hook directories injected by the adapter (each contains a HOOK.json) */
   hookPaths?: string[];
