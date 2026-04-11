@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.24] - 2026-04-11
+
+### Fixed
+- `air update` now discovers cached providers by scanning `~/.air/cache/` even when providers aren't listed in `air.json` extensions — previously reported "No providers with cached data found" despite cached clones existing on disk
+- `air update` no longer requires `air.json` to exist — it can refresh cached data based on the cache directory structure alone
+
+### Added
+- Known provider auto-discovery in `updateProviderCaches()` — matches cache directory scheme names (e.g., `github/`) to known provider packages
+- SDK test suite for the `air update` flow covering provider discovery, cache refresh, stale clone detection, and immutable ref handling
+
 ## [0.0.23] - 2026-04-11
 
 ### Changed
