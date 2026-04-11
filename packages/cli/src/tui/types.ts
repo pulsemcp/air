@@ -27,12 +27,16 @@ export interface TuiState {
 export interface TuiResult {
   mcpServers: string[];
   skills: string[];
+  hooks: string[];
+  plugins: string[];
 }
 
 /** Categories where prepareSession supports override arrays */
 export const OVERRIDABLE_CATEGORIES: Set<ArtifactCategory> = new Set([
   "mcp",
   "skills",
+  "hooks",
+  "plugins",
 ]);
 
 export const CATEGORY_LABELS: Record<ArtifactCategory, string> = {
@@ -58,14 +62,16 @@ export function getVisibleItems(state: TuiState): ArtifactItem[] {
 
 /**
  * Compute merged default IDs by unioning the parent root's defaults with
- * all subagent roots' defaults (MCP servers and skills only).
+ * all subagent roots' defaults.
  */
 export function getMergedDefaults(
   root: RootEntry | undefined,
   allRoots: Record<string, RootEntry>
-): { mcpServerIds: string[]; skillIds: string[] } {
+): { mcpServerIds: string[]; skillIds: string[]; hookIds: string[]; pluginIds: string[] } {
   const mcpSet = new Set(root?.default_mcp_servers ?? []);
   const skillSet = new Set(root?.default_skills ?? []);
+  const hookSet = new Set(root?.default_hooks ?? []);
+  const pluginSet = new Set(root?.default_plugins ?? []);
 
   for (const subId of root?.default_subagent_roots ?? []) {
     const sub = allRoots[subId];
@@ -76,11 +82,19 @@ export function getMergedDefaults(
     if (sub.default_skills) {
       for (const id of sub.default_skills) skillSet.add(id);
     }
+    if (sub.default_hooks) {
+      for (const id of sub.default_hooks) hookSet.add(id);
+    }
+    if (sub.default_plugins) {
+      for (const id of sub.default_plugins) pluginSet.add(id);
+    }
   }
 
   return {
     mcpServerIds: [...mcpSet],
     skillIds: [...skillSet],
+    hookIds: [...hookSet],
+    pluginIds: [...pluginSet],
   };
 }
 
@@ -107,17 +121,24 @@ export function buildInitialState(
 
   // Compute merged defaults from subagent roots unless merge is disabled
   const merged = skipSubagentMerge
-    ? { mcpServerIds: root?.default_mcp_servers ?? [], skillIds: root?.default_skills ?? [] }
+    ? {
+        mcpServerIds: root?.default_mcp_servers ?? [],
+        skillIds: root?.default_skills ?? [],
+        hookIds: root?.default_hooks ?? [],
+        pluginIds: root?.default_plugins ?? [],
+      }
     : getMergedDefaults(root, artifacts.roots);
 
   const mcpDefaults = merged.mcpServerIds.length > 0 ? merged.mcpServerIds : root?.default_mcp_servers;
   const skillDefaults = merged.skillIds.length > 0 ? merged.skillIds : root?.default_skills;
+  const hookDefaults = merged.hookIds.length > 0 ? merged.hookIds : root?.default_hooks;
+  const pluginDefaults = merged.pluginIds.length > 0 ? merged.pluginIds : root?.default_plugins;
 
   const items: Record<ArtifactCategory, ArtifactItem[]> = {
     mcp: buildItems(artifacts.mcp, mcpDefaults),
     skills: buildItems(artifacts.skills, skillDefaults),
-    hooks: buildItems(artifacts.hooks, root?.default_hooks),
-    plugins: buildItems(artifacts.plugins, root?.default_plugins),
+    hooks: buildItems(artifacts.hooks, hookDefaults),
+    plugins: buildItems(artifacts.plugins, pluginDefaults),
   };
 
   const tabs = (
@@ -147,6 +168,12 @@ export function getSelectedIds(state: TuiState): TuiResult {
       .filter((i) => i.selected)
       .map((i) => i.id),
     skills: state.items.skills
+      .filter((i) => i.selected)
+      .map((i) => i.id),
+    hooks: state.items.hooks
+      .filter((i) => i.selected)
+      .map((i) => i.id),
+    plugins: state.items.plugins
       .filter((i) => i.selected)
       .map((i) => i.id),
   };
