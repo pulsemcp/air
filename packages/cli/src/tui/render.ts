@@ -133,9 +133,12 @@ export function render(state: TuiState, viewportHeight: number): string[] {
   lines.push("");
   const legendParts: string[] = [];
   if (state.searchActive) {
+    legendParts.push(`${chalk.dim("↑↓")} navigate`);
+    if (isOverridable) {
+      legendParts.push(`${chalk.dim("Space")} toggle`);
+    }
     legendParts.push(
-      `${chalk.dim("↑↓")} navigate`,
-      `${chalk.dim("Enter")} select`,
+      `${chalk.dim("Enter")} confirm`,
       `${chalk.dim("Esc")} cancel`
     );
   } else {
