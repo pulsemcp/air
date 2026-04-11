@@ -50,6 +50,26 @@ describe("buildInitialState", () => {
     expect(state.items.plugins).toEqual([]);
   });
 
+  it("includes hooks and plugins tabs when they have items", () => {
+    const state = buildInitialState(
+      makeArtifacts({
+        mcp: {
+          server1: { type: "stdio", command: "node", description: "A server" },
+        },
+        skills: {
+          skill1: { description: "A skill", path: "/skills/skill1" },
+        },
+        hooks: {
+          hook1: { description: "A hook", path: "/hooks/hook1" },
+        },
+        plugins: {
+          plugin1: { description: "A plugin", path: "/plugins/plugin1" },
+        },
+      })
+    );
+    expect(state.tabs).toEqual(["mcp", "skills", "hooks", "plugins"]);
+  });
+
   it("selects items matching root defaults", () => {
     const state = buildInitialState(
       makeArtifacts({
@@ -205,7 +225,7 @@ describe("getVisibleItems", () => {
 });
 
 describe("getSelectedIds", () => {
-  it("returns only selected MCP servers and skills", () => {
+  it("returns selected IDs for all artifact categories", () => {
     const state = buildInitialState(
       makeArtifacts({
         mcp: {
@@ -224,16 +244,27 @@ describe("getSelectedIds", () => {
           skill1: { description: "Skill 1", path: "/skills/skill1" },
           skill2: { description: "Skill 2", path: "/skills/skill2" },
         },
+        hooks: {
+          hook1: { description: "Hook 1", path: "/hooks/hook1" },
+          hook2: { description: "Hook 2", path: "/hooks/hook2" },
+        },
+        plugins: {
+          plugin1: { description: "Plugin 1", path: "/plugins/plugin1" },
+        },
       }),
       {
         description: "Root",
         default_mcp_servers: ["server1"],
         default_skills: ["skill2"],
+        default_hooks: ["hook1"],
+        default_plugins: ["plugin1"],
       }
     );
     const result = getSelectedIds(state);
     expect(result.mcpServers).toEqual(["server1"]);
     expect(result.skills).toEqual(["skill2"]);
+    expect(result.hooks).toEqual(["hook1"]);
+    expect(result.plugins).toEqual(["plugin1"]);
   });
 
   it("returns empty arrays when nothing is selected", () => {
@@ -251,6 +282,8 @@ describe("getSelectedIds", () => {
     const result = getSelectedIds(state);
     expect(result.mcpServers).toEqual([]);
     expect(result.skills).toEqual([]);
+    expect(result.hooks).toEqual([]);
+    expect(result.plugins).toEqual([]);
   });
 });
 
@@ -299,30 +332,44 @@ describe("getAllSelectionSummary", () => {
 describe("getMergedDefaults", () => {
   it("returns parent defaults when no subagent roots exist", () => {
     const result = getMergedDefaults(
-      { description: "Root", default_mcp_servers: ["s1"], default_skills: ["sk1"] },
+      {
+        description: "Root",
+        default_mcp_servers: ["s1"],
+        default_skills: ["sk1"],
+        default_hooks: ["h1"],
+        default_plugins: ["p1"],
+      },
       {}
     );
     expect(result.mcpServerIds).toEqual(["s1"]);
     expect(result.skillIds).toEqual(["sk1"]);
+    expect(result.hookIds).toEqual(["h1"]);
+    expect(result.pluginIds).toEqual(["p1"]);
   });
 
   it("returns empty arrays when root has no defaults and no subagents", () => {
     const result = getMergedDefaults({ description: "Root" }, {});
     expect(result.mcpServerIds).toEqual([]);
     expect(result.skillIds).toEqual([]);
+    expect(result.hookIds).toEqual([]);
+    expect(result.pluginIds).toEqual([]);
   });
 
-  it("unions parent and subagent MCP servers and skills", () => {
+  it("unions parent and subagent defaults across all categories", () => {
     const roots = {
       "sub-a": {
         description: "Sub A",
         default_mcp_servers: ["s2", "s3"],
         default_skills: ["sk2"],
+        default_hooks: ["h2"],
+        default_plugins: ["p2"],
       },
       "sub-b": {
         description: "Sub B",
         default_mcp_servers: ["s3", "s4"],
         default_skills: ["sk3"],
+        default_hooks: ["h2", "h3"],
+        default_plugins: ["p3"],
       },
     };
     const result = getMergedDefaults(
@@ -330,12 +377,16 @@ describe("getMergedDefaults", () => {
         description: "Parent",
         default_mcp_servers: ["s1"],
         default_skills: ["sk1"],
+        default_hooks: ["h1"],
+        default_plugins: ["p1"],
         default_subagent_roots: ["sub-a", "sub-b"],
       },
       roots
     );
     expect(result.mcpServerIds.sort()).toEqual(["s1", "s2", "s3", "s4"]);
     expect(result.skillIds.sort()).toEqual(["sk1", "sk2", "sk3"]);
+    expect(result.hookIds.sort()).toEqual(["h1", "h2", "h3"]);
+    expect(result.pluginIds.sort()).toEqual(["p1", "p2", "p3"]);
   });
 
   it("collects subagent servers when parent has no default_mcp_servers", () => {
@@ -355,6 +406,40 @@ describe("getMergedDefaults", () => {
     expect(result.mcpServerIds.sort()).toEqual(["s1", "s2"]);
   });
 
+  it("collects subagent hooks when parent has no default_hooks", () => {
+    const roots = {
+      "sub-a": {
+        description: "Sub A",
+        default_hooks: ["h1", "h2"],
+      },
+    };
+    const result = getMergedDefaults(
+      {
+        description: "Parent",
+        default_subagent_roots: ["sub-a"],
+      },
+      roots
+    );
+    expect(result.hookIds.sort()).toEqual(["h1", "h2"]);
+  });
+
+  it("collects subagent plugins when parent has no default_plugins", () => {
+    const roots = {
+      "sub-a": {
+        description: "Sub A",
+        default_plugins: ["p1", "p2"],
+      },
+    };
+    const result = getMergedDefaults(
+      {
+        description: "Parent",
+        default_subagent_roots: ["sub-a"],
+      },
+      roots
+    );
+    expect(result.pluginIds.sort()).toEqual(["p1", "p2"]);
+  });
+
   it("skips missing subagent root IDs", () => {
     const result = getMergedDefaults(
       {
@@ -371,6 +456,8 @@ describe("getMergedDefaults", () => {
     const result = getMergedDefaults(undefined, {});
     expect(result.mcpServerIds).toEqual([]);
     expect(result.skillIds).toEqual([]);
+    expect(result.hookIds).toEqual([]);
+    expect(result.pluginIds).toEqual([]);
   });
 });
 
@@ -453,5 +540,113 @@ describe("buildInitialState with subagent merge", () => {
     );
     expect(state.items.skills.find((i) => i.id === "sub-skill")?.selected).toBe(true);
     expect(state.items.skills.find((i) => i.id === "other-skill")?.selected).toBe(false);
+  });
+
+  it("pre-selects subagent hooks when merge is enabled", () => {
+    const state = buildInitialState(
+      makeArtifacts({
+        hooks: {
+          "parent-hook": { description: "Parent hook", path: "/hooks/parent" },
+          "sub-hook": { description: "Subagent hook", path: "/hooks/sub" },
+        },
+        roots: {
+          "sub-root": {
+            description: "Subagent root",
+            default_hooks: ["sub-hook"],
+          },
+        },
+      }),
+      {
+        description: "Parent root",
+        default_hooks: ["parent-hook"],
+        default_subagent_roots: ["sub-root"],
+      },
+      "parent",
+      false,
+      false
+    );
+    expect(state.items.hooks.find((i) => i.id === "parent-hook")?.selected).toBe(true);
+    expect(state.items.hooks.find((i) => i.id === "sub-hook")?.selected).toBe(true);
+  });
+
+  it("does not pre-select subagent hooks when merge is disabled", () => {
+    const state = buildInitialState(
+      makeArtifacts({
+        hooks: {
+          "parent-hook": { description: "Parent hook", path: "/hooks/parent" },
+          "sub-hook": { description: "Subagent hook", path: "/hooks/sub" },
+        },
+        roots: {
+          "sub-root": {
+            description: "Subagent root",
+            default_hooks: ["sub-hook"],
+          },
+        },
+      }),
+      {
+        description: "Parent root",
+        default_hooks: ["parent-hook"],
+        default_subagent_roots: ["sub-root"],
+      },
+      "parent",
+      false,
+      true
+    );
+    expect(state.items.hooks.find((i) => i.id === "parent-hook")?.selected).toBe(true);
+    expect(state.items.hooks.find((i) => i.id === "sub-hook")?.selected).toBe(false);
+  });
+
+  it("pre-selects subagent plugins when merge is enabled", () => {
+    const state = buildInitialState(
+      makeArtifacts({
+        plugins: {
+          "parent-plugin": { description: "Parent plugin", path: "/plugins/parent" },
+          "sub-plugin": { description: "Subagent plugin", path: "/plugins/sub" },
+        },
+        roots: {
+          "sub-root": {
+            description: "Subagent root",
+            default_plugins: ["sub-plugin"],
+          },
+        },
+      }),
+      {
+        description: "Parent root",
+        default_plugins: ["parent-plugin"],
+        default_subagent_roots: ["sub-root"],
+      },
+      "parent",
+      false,
+      false
+    );
+    expect(state.items.plugins.find((i) => i.id === "parent-plugin")?.selected).toBe(true);
+    expect(state.items.plugins.find((i) => i.id === "sub-plugin")?.selected).toBe(true);
+  });
+
+  it("does not pre-select subagent plugins when merge is disabled", () => {
+    const state = buildInitialState(
+      makeArtifacts({
+        plugins: {
+          "parent-plugin": { description: "Parent plugin", path: "/plugins/parent" },
+          "sub-plugin": { description: "Subagent plugin", path: "/plugins/sub" },
+        },
+        roots: {
+          "sub-root": {
+            description: "Subagent root",
+            default_plugins: ["sub-plugin"],
+          },
+        },
+      }),
+      {
+        description: "Parent root",
+        default_plugins: ["parent-plugin"],
+        default_subagent_roots: ["sub-root"],
+      },
+      "parent",
+      false,
+      true
+    );
+    expect(state.items.plugins.find((i) => i.id === "parent-plugin")?.selected).toBe(true);
+    expect(state.items.plugins.find((i) => i.id === "sub-plugin")?.selected).toBe(false);
   });
 });

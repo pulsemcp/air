@@ -93,6 +93,8 @@ export function startCommand(): Command {
         // Interactive TUI or skip
         let selectedSkills: string[] | undefined;
         let selectedMcpServers: string[] | undefined;
+        let selectedHooks: string[] | undefined;
+        let selectedPlugins: string[] | undefined;
 
         const isTTY = process.stdout.isTTY && process.stdin.isTTY;
 
@@ -111,6 +113,8 @@ export function startCommand(): Command {
 
           selectedSkills = tuiResult.skills;
           selectedMcpServers = tuiResult.mcpServers;
+          selectedHooks = tuiResult.hooks;
+          selectedPlugins = tuiResult.plugins;
         }
 
         // Prepare session (write .mcp.json, inject skills, etc.)
@@ -122,6 +126,8 @@ export function startCommand(): Command {
             adapter: agent,
             skills: selectedSkills,
             mcpServers: selectedMcpServers,
+            hooks: selectedHooks,
+            plugins: selectedPlugins,
             skipSubagentMerge,
           });
         } catch (err) {
@@ -172,13 +178,18 @@ function printDryRun(
 
   // Compute merged defaults from subagent roots (unless merge is disabled)
   const merged = skipSubagentMerge
-    ? { mcpServerIds: root?.default_mcp_servers ?? [], skillIds: root?.default_skills ?? [] }
+    ? {
+        mcpServerIds: root?.default_mcp_servers ?? [],
+        skillIds: root?.default_skills ?? [],
+        hookIds: root?.default_hooks ?? [],
+        pluginIds: root?.default_plugins ?? [],
+      }
     : getMergedDefaults(root, artifacts.roots);
 
   const mcpIds = merged.mcpServerIds.length > 0 ? merged.mcpServerIds : (root?.default_mcp_servers || Object.keys(artifacts.mcp));
   const skillIds = merged.skillIds.length > 0 ? merged.skillIds : (root?.default_skills || Object.keys(artifacts.skills));
-  const pluginIds = root?.default_plugins || Object.keys(artifacts.plugins);
-  const hookIds = root?.default_hooks || Object.keys(artifacts.hooks);
+  const pluginIds = merged.pluginIds.length > 0 ? merged.pluginIds : (root?.default_plugins || Object.keys(artifacts.plugins));
+  const hookIds = merged.hookIds.length > 0 ? merged.hookIds : (root?.default_hooks || Object.keys(artifacts.hooks));
 
   console.log(`\nMCP Servers (${mcpIds.length}):`);
   for (const id of mcpIds) {
