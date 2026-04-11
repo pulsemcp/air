@@ -4,16 +4,22 @@ import { updateProviderCaches } from "@pulsemcp/air-sdk";
 export function updateCommand(): Command {
   const cmd = new Command("update")
     .description(
-      "Refresh cached provider data (e.g., GitHub repository clones)"
+      "Refresh cached provider data (e.g., GitHub repository clones). " +
+        "Auto-upgrades stale provider extensions when needed."
     )
     .option(
       "--config <path>",
       "Path to air.json (defaults to AIR_CONFIG env or ~/.air/air.json)"
     )
-    .action(async (options: { config?: string }) => {
+    .option(
+      "--no-auto-heal",
+      "Do not auto-upgrade provider extensions that are too old to refresh their cache"
+    )
+    .action(async (options: { config?: string; autoHeal?: boolean }) => {
       try {
         const { results } = await updateProviderCaches({
           config: options.config,
+          autoHeal: options.autoHeal,
         });
 
         const schemes = Object.keys(results);

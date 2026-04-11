@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { resolve, join } from "path";
+import { resolve, join, dirname } from "path";
 import {
   mkdirSync,
   writeFileSync,
@@ -240,20 +240,32 @@ describe("updateProviderCaches", () => {
     expect(entry!.message).toContain("up-to-date");
   }, 30000);
 
-  it("surfaces a diagnostic when the installed provider lacks refreshCache", async () => {
+  it("auto-heals a stale provider via pre-flight upgrade then refreshes the cache", async () => {
     const fakeHome = createTempDir();
     setFakeHome(fakeHome);
 
-    // Create a "stale" provider extension — has scheme but no refreshCache
-    // method, simulating an older version of @pulsemcp/air-provider-github
-    // installed alongside a newer CLI.
+    // Set up <airDir>/node_modules/@pulsemcp/air-provider-github at an
+    // older version that lacks refreshCache, mirroring a user whose
+    // ~/.air install hasn't kept up with the CLI.
     const airDir = join(fakeHome, ".air");
-    mkdirSync(airDir, { recursive: true });
-
-    const extDir = join(airDir, "fake-provider");
-    mkdirSync(extDir, { recursive: true });
+    const pkgDir = join(
+      airDir,
+      "node_modules",
+      "@pulsemcp",
+      "air-provider-github"
+    );
+    mkdirSync(pkgDir, { recursive: true });
     writeFileSync(
-      join(extDir, "index.mjs"),
+      join(pkgDir, "package.json"),
+      JSON.stringify({
+        name: "@pulsemcp/air-provider-github",
+        version: "0.0.13",
+        type: "module",
+        main: "./index.mjs",
+      })
+    );
+    writeFileSync(
+      join(pkgDir, "index.mjs"),
       `export default {
   name: "stale-github-provider",
   provider: {
@@ -268,39 +280,213 @@ describe("updateProviderCaches", () => {
       join(airDir, "air.json"),
       JSON.stringify({
         name: "test",
-        extensions: ["./fake-provider/index.mjs"],
+        extensions: ["@pulsemcp/air-provider-github"],
       })
     );
 
-    // Cached data must exist on disk — otherwise there's nothing to refresh
-    // and the command should remain silent.
+    // Cached data must exist on disk so the upgrade path is reached.
+    createCachedClone(fakeHome, "test-owner", "test-repo", "main");
+
+    // Stub `npm install` — instead of touching the network, overwrite
+    // the on-disk package with a fresh "upgraded" version that exposes
+    // a working refreshCache method. The pre-flight upgrade runs BEFORE
+    // any provider module is loaded, so the SDK loads this version.
+    const runNpmInstallLatest = async (
+      packageName: string,
+      prefix: string
+    ): Promise<{ ok: boolean; stderr: string }> => {
+      expect(packageName).toBe("@pulsemcp/air-provider-github");
+      expect(prefix).toBe(airDir);
+
+      writeFileSync(
+        join(pkgDir, "package.json"),
+        JSON.stringify({
+          name: packageName,
+          version: "9.9.9",
+          type: "module",
+          main: "./index.mjs",
+        })
+      );
+      writeFileSync(
+        join(pkgDir, "index.mjs"),
+        `export default {
+  name: "fresh-github-provider",
+  provider: {
+    scheme: "github",
+    async resolve() { return { type: "raw", data: {} }; },
+    async refreshCache() {
+      return [{ label: "stub/refresh@main", updated: true, message: "stub-refreshed" }];
+    },
+  },
+};
+`
+      );
+      return { ok: true, stderr: "" };
+    };
+
+    const { results } = await updateProviderCaches({
+      config: join(airDir, "air.json"),
+      runNpmInstallLatest,
+    });
+
+    expect(results).toHaveProperty("github");
+    const entries = results.github;
+    // First entry is the upgrade notice, then the refreshCache results.
+    expect(entries.length).toBeGreaterThanOrEqual(2);
+
+    const upgrade = entries[0];
+    expect(upgrade.updated).toBe(true);
+    expect(upgrade.label).toBe("@pulsemcp/air-provider-github");
+    expect(upgrade.message).toMatch(/upgraded provider package 0\.0\.13 → 9\.9\.9/);
+
+    const refreshed = entries.find((e) => e.label === "stub/refresh@main");
+    expect(refreshed).toBeDefined();
+    expect(refreshed!.updated).toBe(true);
+    expect(refreshed!.message).toBe("stub-refreshed");
+  }, 30000);
+
+  it("does not run pre-flight upgrade when installed provider already meets the minimum version", async () => {
+    const fakeHome = createTempDir();
+    setFakeHome(fakeHome);
+
+    const airDir = join(fakeHome, ".air");
+    const pkgDir = join(
+      airDir,
+      "node_modules",
+      "@pulsemcp",
+      "air-provider-github"
+    );
+    mkdirSync(pkgDir, { recursive: true });
+    writeFileSync(
+      join(pkgDir, "package.json"),
+      JSON.stringify({
+        name: "@pulsemcp/air-provider-github",
+        version: "0.0.99",
+        type: "module",
+        main: "./index.mjs",
+      })
+    );
+    writeFileSync(
+      join(pkgDir, "index.mjs"),
+      `export default {
+  name: "fresh-github-provider",
+  provider: {
+    scheme: "github",
+    async resolve() { return { type: "raw", data: {} }; },
+    async refreshCache() {
+      return [{ label: "noop", updated: false, message: "ok" }];
+    },
+  },
+};
+`
+    );
+
+    writeFileSync(
+      join(airDir, "air.json"),
+      JSON.stringify({
+        name: "test",
+        extensions: ["@pulsemcp/air-provider-github"],
+      })
+    );
+
+    createCachedClone(fakeHome, "test-owner", "test-repo", "main");
+
+    let installCalls = 0;
+    const runNpmInstallLatest = async () => {
+      installCalls += 1;
+      return { ok: true, stderr: "" };
+    };
+
+    const { results } = await updateProviderCaches({
+      config: join(airDir, "air.json"),
+      runNpmInstallLatest,
+    });
+
+    expect(installCalls).toBe(0);
+    expect(results.github).toBeDefined();
+    // No upgrade notice — first entry should be the refreshCache result.
+    expect(results.github[0].label).toBe("noop");
+  }, 30000);
+
+  it("emits a diagnostic when auto-heal is disabled and the provider lacks refreshCache", async () => {
+    const fakeHome = createTempDir();
+    setFakeHome(fakeHome);
+
+    const airDir = join(fakeHome, ".air");
+    const pkgDir = join(
+      airDir,
+      "node_modules",
+      "@pulsemcp",
+      "air-provider-github"
+    );
+    mkdirSync(pkgDir, { recursive: true });
+    writeFileSync(
+      join(pkgDir, "package.json"),
+      JSON.stringify({
+        name: "@pulsemcp/air-provider-github",
+        version: "0.0.13",
+        type: "module",
+        main: "./index.mjs",
+      })
+    );
+    writeFileSync(
+      join(pkgDir, "index.mjs"),
+      `export default {
+  name: "stale-github-provider",
+  provider: {
+    scheme: "github",
+    async resolve() { return { type: "raw", data: {} }; },
+  },
+};
+`
+    );
+
+    writeFileSync(
+      join(airDir, "air.json"),
+      JSON.stringify({
+        name: "test",
+        extensions: ["@pulsemcp/air-provider-github"],
+      })
+    );
+
     createCachedClone(fakeHome, "test-owner", "test-repo", "main");
 
     const { results } = await updateProviderCaches({
       config: join(airDir, "air.json"),
+      autoHeal: false,
     });
 
     expect(results).toHaveProperty("github");
     expect(results.github).toHaveLength(1);
     const entry = results.github[0];
     expect(entry.updated).toBe(false);
-    expect(entry.message).toMatch(/too old/);
+    expect(entry.message).toMatch(/does not support cache refresh/);
     expect(entry.message).toMatch(/@pulsemcp\/air-provider-github@latest/);
   }, 30000);
 
-  it("does not emit diagnostics for providers without cached data on disk", async () => {
+  it("surfaces failure details when pre-flight upgrade fails", async () => {
     const fakeHome = createTempDir();
     setFakeHome(fakeHome);
 
-    // Provider listed in air.json, stale (no refreshCache), but no cache dir —
-    // nothing to refresh, so the command should stay silent (empty results).
     const airDir = join(fakeHome, ".air");
-    mkdirSync(airDir, { recursive: true });
-
-    const extDir = join(airDir, "fake-provider");
-    mkdirSync(extDir, { recursive: true });
+    const pkgDir = join(
+      airDir,
+      "node_modules",
+      "@pulsemcp",
+      "air-provider-github"
+    );
+    mkdirSync(pkgDir, { recursive: true });
     writeFileSync(
-      join(extDir, "index.mjs"),
+      join(pkgDir, "package.json"),
+      JSON.stringify({
+        name: "@pulsemcp/air-provider-github",
+        version: "0.0.13",
+        type: "module",
+        main: "./index.mjs",
+      })
+    );
+    writeFileSync(
+      join(pkgDir, "index.mjs"),
       `export default {
   name: "stale-github-provider",
   provider: {
@@ -315,12 +501,82 @@ describe("updateProviderCaches", () => {
       join(airDir, "air.json"),
       JSON.stringify({
         name: "test",
-        extensions: ["./fake-provider/index.mjs"],
+        extensions: ["@pulsemcp/air-provider-github"],
+      })
+    );
+
+    createCachedClone(fakeHome, "test-owner", "test-repo", "main");
+
+    const runNpmInstallLatest = async () => ({
+      ok: false,
+      stderr: "EACCES: permission denied",
+    });
+
+    const { results } = await updateProviderCaches({
+      config: join(airDir, "air.json"),
+      runNpmInstallLatest,
+    });
+
+    expect(results).toHaveProperty("github");
+    expect(results.github.length).toBeGreaterThanOrEqual(2);
+
+    const failureNotice = results.github[0];
+    expect(failureNotice.updated).toBe(false);
+    expect(failureNotice.label).toBe("@pulsemcp/air-provider-github");
+    expect(failureNotice.message).toMatch(/failed to auto-upgrade/);
+    expect(failureNotice.message).toMatch(/EACCES/);
+
+    const diagnostic = results.github[1];
+    expect(diagnostic.updated).toBe(false);
+    expect(diagnostic.message).toMatch(/does not support cache refresh/);
+  }, 30000);
+
+  it("does not emit diagnostics for providers without cached data on disk", async () => {
+    const fakeHome = createTempDir();
+    setFakeHome(fakeHome);
+
+    // Provider listed in air.json (stale), but no cache dir — nothing
+    // to refresh, so the command should stay silent (empty results).
+    const airDir = join(fakeHome, ".air");
+    const pkgDir = join(
+      airDir,
+      "node_modules",
+      "@pulsemcp",
+      "air-provider-github"
+    );
+    mkdirSync(pkgDir, { recursive: true });
+    writeFileSync(
+      join(pkgDir, "package.json"),
+      JSON.stringify({
+        name: "@pulsemcp/air-provider-github",
+        version: "0.0.13",
+        type: "module",
+        main: "./index.mjs",
+      })
+    );
+    writeFileSync(
+      join(pkgDir, "index.mjs"),
+      `export default {
+  name: "stale-github-provider",
+  provider: {
+    scheme: "github",
+    async resolve() { return { type: "raw", data: {} }; },
+  },
+};
+`
+    );
+
+    writeFileSync(
+      join(airDir, "air.json"),
+      JSON.stringify({
+        name: "test",
+        extensions: ["@pulsemcp/air-provider-github"],
       })
     );
 
     const { results } = await updateProviderCaches({
       config: join(airDir, "air.json"),
+      runNpmInstallLatest: async () => ({ ok: true, stderr: "" }),
     });
 
     expect(Object.keys(results)).toEqual([]);
