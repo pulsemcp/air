@@ -4,7 +4,7 @@ AIR provides two commands for launching agent sessions: `air start` for interact
 
 ## Before you start
 
-AIR manages configuration **per-session** — it assembles everything fresh from `air.json` each time. Before your first session, ensure any user-scoped agent configuration is disabled so AIR is the single source of truth. See [How AIR manages configuration](quickstart.md#how-air-manages-configuration) for details and migration steps.
+AIR assembles configuration for a **single session** from `air.json` each time you run `air start` or `air prepare`. Before your first session, ensure any user-scoped agent configuration is disabled so AIR is the single source of truth. See [How AIR manages configuration](quickstart.md#how-air-manages-configuration) for details and migration steps.
 
 ## air start — interactive sessions
 
@@ -230,10 +230,10 @@ This is the simplest approach. When a session finishes, merge its branch and reu
 Git worktrees let you check out multiple branches of the same repo simultaneously without duplicating the full `.git` directory:
 
 ```bash
-# From your main clone, create worktrees for each session
+# From your main clone, create worktrees with new branches
 cd ~/repos/web-app
-git worktree add ~/agents/web-app-bugfix feature/bugfix
-git worktree add ~/agents/web-app-docs feature/docs
+git worktree add -b feature/bugfix ~/agents/web-app-bugfix
+git worktree add -b feature/docs ~/agents/web-app-docs
 
 # Start a session in each worktree
 cd ~/agents/web-app-bugfix && air start claude
@@ -241,6 +241,7 @@ cd ~/agents/web-app-docs && air start claude
 
 # Clean up when done
 git worktree remove ~/agents/web-app-bugfix
+git worktree remove ~/agents/web-app-docs
 ```
 
 Worktrees are more disk-efficient than full clones and share git history, but require comfort with the `git worktree` command. See `git worktree --help` for details.
