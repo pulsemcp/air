@@ -3,11 +3,12 @@ import {
   existsSync,
   mkdirSync,
   writeFileSync,
+  readFileSync,
   readdirSync,
   copyFileSync,
   statSync,
 } from "fs";
-import { join, dirname } from "path";
+import { join, dirname, relative } from "path";
 import type {
   AgentAdapter,
   AgentSessionConfig,
@@ -24,6 +25,20 @@ import type {
 export class ClaudeAdapter implements AgentAdapter {
   name = "claude";
   displayName = "Claude Code";
+
+  /**
+   * Map AIR lifecycle event names to Claude Code settings.json hook event names.
+   * Events without a direct Claude Code equivalent (e.g. pre_commit, post_commit)
+   * are omitted — the adapter skips unknown events rather than mapping them to
+   * lossy alternatives. Users should use pre_tool_call with a matcher instead.
+   */
+  private static readonly AIR_TO_CLAUDE_EVENT: Record<string, string> = {
+    session_start: "SessionStart",
+    session_end: "SessionEnd",
+    pre_tool_call: "PreToolUse",
+    post_tool_call: "PostToolUse",
+    notification: "Notification",
+  };
 
   async isAvailable(): Promise<boolean> {
     try {
@@ -191,13 +206,19 @@ export class ClaudeAdapter implements AgentAdapter {
       }
     }
 
-    // 6. Generate ephemeral subagent context for system prompt
+    // 6. Register copied hooks in .claude/settings.json
+    if (hookPaths.length > 0) {
+      const settingsPath = this.registerHooksInSettings(targetDir, hookPaths);
+      configFiles.push(settingsPath);
+    }
+
+    // 7. Generate ephemeral subagent context for system prompt
     let subagentContext: string | undefined;
     if (subagentRoots.length > 0) {
       subagentContext = this.buildSubagentContext(subagentRoots);
     }
 
-    // 7. Build start command (include --append-system-prompt if subagent context exists)
+    // 8. Build start command (include --append-system-prompt if subagent context exists)
     // Pass undefined as root — prepareSession already handled all filtering/validation above.
     // Passing root here would cause generateConfig to re-validate with the original (pre-merge)
     // root defaults, which is both redundant and fragile.
@@ -407,6 +428,86 @@ export class ClaudeAdapter implements AgentAdapter {
         copyFileSync(refSourcePath, refTargetPath);
       }
     }
+  }
+
+  /**
+   * Read HOOK.json from each copied hook directory and register the hooks
+   * in Claude Code's .claude/settings.json under the mapped event name.
+   * Merges with any existing settings; multiple hooks on the same event
+   * are appended to the event's array.
+   */
+  private registerHooksInSettings(targetDir: string, hookPaths: string[]): string {
+    const settingsPath = join(targetDir, ".claude", "settings.json");
+    let settings: Record<string, unknown> = {};
+    if (existsSync(settingsPath)) {
+      settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
+    }
+
+    const hooks = (settings.hooks ?? {}) as Record<string, unknown[]>;
+
+    for (const hookPath of hookPaths) {
+      const hookJsonPath = join(hookPath, "HOOK.json");
+      if (!existsSync(hookJsonPath)) continue;
+
+      let hookJson: Record<string, unknown>;
+      try {
+        hookJson = JSON.parse(readFileSync(hookJsonPath, "utf-8"));
+      } catch {
+        continue; // Skip hooks with malformed HOOK.json
+      }
+      const claudeEvent = ClaudeAdapter.AIR_TO_CLAUDE_EVENT[hookJson.event as string];
+      if (!claudeEvent || !hookJson.command) continue;
+
+      const hookRelDir = relative(targetDir, hookPath);
+      const command = this.buildHookCommand(
+        hookRelDir,
+        hookJson.command as string,
+        hookJson.args as string[] | undefined
+      );
+
+      const hookEntry: Record<string, unknown> = {
+        type: "command",
+        command,
+      };
+      if (hookJson.timeout_seconds != null) {
+        hookEntry.timeout = hookJson.timeout_seconds;
+      }
+
+      const matcherGroup: Record<string, unknown> = {
+        matcher: hookJson.matcher ?? "",
+        hooks: [hookEntry],
+      };
+
+      if (!hooks[claudeEvent]) {
+        hooks[claudeEvent] = [];
+      }
+      (hooks[claudeEvent] as unknown[]).push(matcherGroup);
+    }
+
+    settings.hooks = hooks;
+    mkdirSync(dirname(settingsPath), { recursive: true });
+    writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+    return settingsPath;
+  }
+
+  /**
+   * Build a shell command string from HOOK.json's command and args fields.
+   * Resolves relative paths (starting with ./) to be relative to the project root
+   * via the hook's installed directory path. Args containing shell metacharacters
+   * are single-quoted for safety.
+   */
+  private buildHookCommand(hookRelDir: string, command: string, args?: string[]): string {
+    let cmd = command;
+    if (cmd.startsWith("./")) {
+      cmd = join(hookRelDir, cmd.slice(2));
+    }
+    if (args && args.length > 0) {
+      const escaped = args.map((a) =>
+        /[\s;&|`$"'\\]/.test(a) ? `'${a.replace(/'/g, "'\\''")}'` : a
+      );
+      cmd += " " + escaped.join(" ");
+    }
+    return cmd;
   }
 
   private copyDirRecursive(src: string, dest: string): void {
