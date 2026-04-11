@@ -423,6 +423,23 @@ describe("getMergedDefaults", () => {
     expect(result.hookIds.sort()).toEqual(["h1", "h2"]);
   });
 
+  it("collects subagent plugins when parent has no default_plugins", () => {
+    const roots = {
+      "sub-a": {
+        description: "Sub A",
+        default_plugins: ["p1", "p2"],
+      },
+    };
+    const result = getMergedDefaults(
+      {
+        description: "Parent",
+        default_subagent_roots: ["sub-a"],
+      },
+      roots
+    );
+    expect(result.pluginIds.sort()).toEqual(["p1", "p2"]);
+  });
+
   it("skips missing subagent root IDs", () => {
     const result = getMergedDefaults(
       {
@@ -604,5 +621,32 @@ describe("buildInitialState with subagent merge", () => {
     );
     expect(state.items.plugins.find((i) => i.id === "parent-plugin")?.selected).toBe(true);
     expect(state.items.plugins.find((i) => i.id === "sub-plugin")?.selected).toBe(true);
+  });
+
+  it("does not pre-select subagent plugins when merge is disabled", () => {
+    const state = buildInitialState(
+      makeArtifacts({
+        plugins: {
+          "parent-plugin": { description: "Parent plugin", path: "/plugins/parent" },
+          "sub-plugin": { description: "Subagent plugin", path: "/plugins/sub" },
+        },
+        roots: {
+          "sub-root": {
+            description: "Subagent root",
+            default_plugins: ["sub-plugin"],
+          },
+        },
+      }),
+      {
+        description: "Parent root",
+        default_plugins: ["parent-plugin"],
+        default_subagent_roots: ["sub-root"],
+      },
+      "parent",
+      false,
+      true
+    );
+    expect(state.items.plugins.find((i) => i.id === "parent-plugin")?.selected).toBe(true);
+    expect(state.items.plugins.find((i) => i.id === "sub-plugin")?.selected).toBe(false);
   });
 });
