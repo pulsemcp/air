@@ -148,6 +148,7 @@ Extensions can contribute additional flags — see [Extensions System](extension
 ```bash
 # Diagnostic output (stderr)
 Auto-detected root: web-app
+Warning: github://acme/shared-config@main is behind remote. Run `air update` to refresh.
 
 # Structured output (stdout)
 {
@@ -159,6 +160,8 @@ Auto-detected root: web-app
   }
 }
 ```
+
+Staleness warnings appear when cached provider data (e.g., GitHub clones) is behind the remote. These are informational — the session still runs with cached data. Run `air update` to refresh.
 
 ### Auto-detection
 

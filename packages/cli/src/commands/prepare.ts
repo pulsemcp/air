@@ -147,6 +147,13 @@ export function prepareCommand(): Command {
             console.error(`Auto-detected root: ${result.root.display_name || result.root.description}`);
           }
 
+          // Print staleness warnings to stderr
+          if (result.warnings) {
+            for (const warning of result.warnings) {
+              console.error(`Warning: ${warning}`);
+            }
+          }
+
           // Output structured JSON to stdout for orchestrator consumption
           console.log(JSON.stringify(result.session, null, 2));
         } catch (err) {

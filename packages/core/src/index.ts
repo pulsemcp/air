@@ -16,6 +16,8 @@ export type {
 export type {
   AgentAdapter,
   CatalogProvider,
+  CacheFreshnessWarning,
+  CacheRefreshResult,
   AirExtension,
   PrepareTransform,
   McpConfig,

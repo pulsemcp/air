@@ -36,6 +36,8 @@ export type {
   // Extension interfaces
   AgentAdapter,
   CatalogProvider,
+  CacheFreshnessWarning,
+  CacheRefreshResult,
   AirExtension,
   PrepareTransform,
   McpConfig,
@@ -106,6 +108,16 @@ export type { LoadedExtensions } from "./extension-loader.js";
 // Transform runner
 export { runTransforms } from "./transform-runner.js";
 export type { RunTransformsOptions } from "./transform-runner.js";
+
+// Provider cache management
+export { updateProviderCaches } from "./update.js";
+export type {
+  UpdateProviderCachesOptions,
+  UpdateProviderCachesResult,
+} from "./update.js";
+
+// Cache freshness checking
+export { checkProviderFreshness } from "./cache-freshness.js";
 
 // Config validation
 export {

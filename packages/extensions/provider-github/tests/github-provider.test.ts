@@ -287,4 +287,98 @@ describe("GitHubCatalogProvider", () => {
       )
     ).rejects.toThrow("File not found in cloned repository");
   }, 30000);
+
+  // --- checkFreshness ---
+
+  it("checkFreshness returns empty array for URIs with no local clone", async () => {
+    const warnings = await provider.checkFreshness([
+      "github://nonexistent-owner-xyz/nonexistent-repo-xyz/file.json",
+    ]);
+    expect(warnings).toEqual([]);
+  });
+
+  it("checkFreshness skips immutable refs (full SHA)", async () => {
+    const sha = "a".repeat(40);
+    const warnings = await provider.checkFreshness([
+      `github://pulsemcp/air@${sha}/examples/skills/skills.json`,
+    ]);
+    expect(warnings).toEqual([]);
+  });
+
+  it("checkFreshness checks a cached clone against remote", async () => {
+    // Ensure clone exists
+    const cloneDir = getClonePath("pulsemcp", "air", "HEAD");
+    if (!existsSync(resolve(cloneDir, ".git"))) {
+      await provider.resolve(
+        "github://pulsemcp/air/examples/skills/skills.json",
+        "/tmp"
+      );
+    }
+
+    // Should return either empty (up-to-date) or a warning (behind)
+    const warnings = await provider.checkFreshness([
+      "github://pulsemcp/air/examples/skills/skills.json",
+    ]);
+    expect(Array.isArray(warnings)).toBe(true);
+
+    // If there are warnings, they should have the expected shape
+    for (const w of warnings) {
+      expect(w.uri).toBe("github://pulsemcp/air/examples/skills/skills.json");
+      expect(w.message).toContain("air update");
+    }
+  }, 30000);
+
+  it("checkFreshness de-duplicates by owner/repo/ref", async () => {
+    // Ensure clone exists
+    const cloneDir = getClonePath("pulsemcp", "air", "HEAD");
+    if (!existsSync(resolve(cloneDir, ".git"))) {
+      await provider.resolve(
+        "github://pulsemcp/air/examples/skills/skills.json",
+        "/tmp"
+      );
+    }
+
+    // Two URIs pointing to the same repo/ref should produce at most one warning
+    const warnings = await provider.checkFreshness([
+      "github://pulsemcp/air/examples/skills/skills.json",
+      "github://pulsemcp/air/examples/mcp/mcp.json",
+    ]);
+    // At most 1 warning for the single repo/ref
+    expect(warnings.length).toBeLessThanOrEqual(1);
+  }, 30000);
+
+  // --- refreshCache ---
+
+  it("refreshCache returns results for cached clones", async () => {
+    // Ensure at least one clone exists
+    const cloneDir = getClonePath("pulsemcp", "air", "HEAD");
+    if (!existsSync(resolve(cloneDir, ".git"))) {
+      await provider.resolve(
+        "github://pulsemcp/air/examples/skills/skills.json",
+        "/tmp"
+      );
+    }
+
+    const results = await provider.refreshCache();
+    expect(Array.isArray(results)).toBe(true);
+
+    // Should include the pulsemcp/air@HEAD clone
+    const airResult = results.find((r) => r.label.includes("pulsemcp/air"));
+    expect(airResult).toBeDefined();
+    expect(typeof airResult!.updated).toBe("boolean");
+    expect(typeof airResult!.message).toBe("string");
+  }, 60000);
+
+  it("refreshCache returns empty array when no cache exists", async () => {
+    // Create a provider that uses a non-existent cache dir by mocking HOME
+    const origHome = process.env.HOME;
+    process.env.HOME = "/tmp/air-test-no-cache-" + Date.now();
+    try {
+      const freshProvider = new GitHubCatalogProvider();
+      const results = await freshProvider.refreshCache();
+      expect(results).toEqual([]);
+    } finally {
+      process.env.HOME = origHome;
+    }
+  });
 });
