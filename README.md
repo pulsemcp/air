@@ -13,7 +13,7 @@ AIR solves this by:
 - **Orienting around open standards** — Agent Skills, MCP, Plugins, and more to come. The agentic ecosystem will constantly evolve, but agreed-upon standards and interfaces will be the deterministic mainstays that the ecosystem builds on top of. Everything else is just custom glue.
 - **Keeping everything in git** — All configuration is version-controlled, reviewable, and composable. No proprietary backends.
 - **Being maximally DRY** — No copy/pasting, drift, or unclear ownership. If someone in your org does the work once and catalogs it properly, nobody ever has to touch it again.
-- **Per-agent-session configs** — Not per-user or per-project (those don't scale). Each session assembles exactly what it needs from composable layers.
+- **Single-session configs** — Not per-user or per-project (those don't scale). Each session assembles exactly what it needs from composable layers.
 - **Working with any coding agent** — AIR is a common layer across the ecosystem of opinionated agent implementations. Start with one agent, switch later to the newest frontier implementation without undoing your organization's work.
 
 ## Standards Maturity
@@ -215,18 +215,19 @@ Hooks are shell commands that fire at agent lifecycle events. Use them for notif
 
 ## Scope
 
-AIR is a **configuration layer** — it resolves, validates, and translates agent configs. It is not an orchestration platform.
+AIR is a **single-session configuration layer** — it resolves, validates, and translates agent configs for one session at a time. It is not an orchestration platform.
 
 | AIR handles | Orchestration platforms handle |
 |-------------|-------------------------------|
 | Config resolution & composition | Session persistence & status tracking |
 | JSON Schema validation | Subagent invocation & coordination |
 | Agent-specific translation | Job queuing, retries, scheduling |
-| Single-session setup via `air start` | Secret management & credential vaults |
+| Single-session setup (`air start` / `air prepare`) | Secret management & credential vaults |
 | `${ENV_VAR}` interpolation in configs | Git clone lifecycle & working directories |
 | | Monitoring, cost tracking, dashboards |
+| | Running multiple sessions in parallel |
 
-Teams building multi-agent systems use AIR as the config layer underneath their orchestration platform. See [Orchestration](docs/orchestration.md) for patterns and guidance.
+Each `air start` or `air prepare` call sets up exactly one agent session in one working directory. If you need to run multiple sessions concurrently, you need separate working directories and a way to manage them — see [Running Sessions](docs/guides/running-sessions.md#tips-for-running-multiple-sessions) for practical tips, or [Orchestration](docs/orchestration.md) for building a full orchestration layer on top of AIR.
 
 ## Quickstart
 
@@ -312,7 +313,7 @@ Schemas are in the [`schemas/`](schemas/) directory. Point your editor's JSON sc
 1. **Open standards are the building blocks.** Ecosystems build deterministic layers around open standards. Orient around them.
 2. **Bias towards git and files.** All data lives in git repos. Use open-source tooling or roll your own.
 3. **Maximally DRY.** Don't duplicate anything that semantically represents the same thing. Compose, don't copy.
-4. **Per-agent-session configs.** Per-user and per-project configs don't scale — they drift. Compose what each session needs from reusable layers.
+4. **Single-session configs.** Per-user and per-project configs don't scale — they drift. Each `air start` assembles what one session needs from reusable layers.
 5. **Carefully collaborate.** Treat shared configs like software other people use. Make scope crystal clear. If it's org-level, anyone in the org should understand the description.
 6. **Build for everyone.** AI agents aren't just for engineers — engineers are the early adopters. Don't build infrastructure only engineers can use.
 7. **Fork and make it your own.** Teams are encouraged to fork this framework and adapt it. The patterns matter more than the specific implementation.

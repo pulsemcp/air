@@ -4,7 +4,7 @@ AIR provides two commands for launching agent sessions: `air start` for interact
 
 ## Before you start
 
-AIR manages configuration **per-session** — it assembles everything fresh from `air.json` each time. Before your first session, ensure any user-scoped agent configuration is disabled so AIR is the single source of truth. See [How AIR manages configuration](quickstart.md#how-air-manages-configuration) for details and migration steps.
+AIR assembles configuration for a **single session** from `air.json` each time you run `air start` or `air prepare`. Before your first session, ensure any user-scoped agent configuration is disabled so AIR is the single source of truth. See [How AIR manages configuration](quickstart.md#how-air-manages-configuration) for details and migration steps.
 
 ## air start — interactive sessions
 
@@ -27,12 +27,12 @@ air start claude
 
 When run in a TTY, `air start` opens an interactive terminal UI where you can:
 
-- **Browse artifact types** — use left/right arrows to switch between MCP, Skills, Hooks, and Plugins tabs
+- **Browse artifact types** — use left/right arrows to switch between MCP, Skills, Hooks, and Plugins
 - **Select/deselect artifacts** — use up/down arrows to navigate, Space to toggle, `a` for all, `n` for none, `o` for only current
 - **Search** — press `/` to filter items by name or description, Escape to clear
 - **Launch** — press Enter to start the agent with your selections, `q` or Ctrl+C to cancel
 
-The footer shows a cross-artifact selection summary so you can see what's selected across all tabs.
+The footer shows a cross-artifact selection summary so you can see what's selected across all types.
 
 When not in a TTY (e.g., in a CI pipeline) or when `--skip-confirmation` is passed, the TUI is skipped and the agent launches with root defaults.
 
@@ -203,6 +203,55 @@ Artifacts resolved → Adapter translates → Transforms modify → Session read
 5. **Adapter** translates AIR artifacts to agent-specific format (e.g., writes `.mcp.json`, copies skills and hook directories)
 6. **Transforms** (from extensions) modify the output (e.g., inject secrets)
 7. **Validation** checks for unresolved `${VAR}` patterns
+
+## Tips for running multiple sessions
+
+AIR sets up one session per working directory. If you want to run multiple agent sessions on the same repo at the same time — for example, one agent fixing a bug while another writes docs — each session needs its own isolated copy of the repo. Two practical approaches:
+
+### Approach 1: Rotate through git clones
+
+Create a few clones of your repo upfront and rotate through them:
+
+```bash
+# One-time setup: create a few working copies
+git clone https://github.com/acme/web-app.git ~/agents/web-app-1
+git clone https://github.com/acme/web-app.git ~/agents/web-app-2
+git clone https://github.com/acme/web-app.git ~/agents/web-app-3
+
+# Start a session in each clone
+cd ~/agents/web-app-1 && air start claude
+cd ~/agents/web-app-2 && air start claude
+```
+
+This is the simplest approach. When a session finishes, merge its branch and reuse the clone for the next task.
+
+### Approach 2: Use git worktrees
+
+Git worktrees let you check out multiple branches of the same repo simultaneously without duplicating the full `.git` directory:
+
+```bash
+# From your main clone, create worktrees with new branches
+cd ~/repos/web-app
+git worktree add -b feature/bugfix ~/agents/web-app-bugfix
+git worktree add -b feature/docs ~/agents/web-app-docs
+
+# Start a session in each worktree
+cd ~/agents/web-app-bugfix && air start claude
+cd ~/agents/web-app-docs && air start claude
+
+# Clean up when done
+git worktree remove ~/agents/web-app-bugfix
+git worktree remove ~/agents/web-app-docs
+```
+
+Worktrees are more disk-efficient than full clones and share git history, but require comfort with the `git worktree` command. See `git worktree --help` for details.
+
+### Which to choose?
+
+- **Clones** are simpler and fully independent — if one clone gets into a bad state, the others are unaffected. Good default choice.
+- **Worktrees** share the `.git` directory, so they use less disk space and `git fetch` in one worktree updates all of them. Better when you have many sessions on a large repo.
+
+Both approaches work identically with `air start` and `air prepare` — AIR doesn't care how the working directory was created.
 
 ## Common patterns
 
