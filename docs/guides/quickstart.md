@@ -29,6 +29,22 @@ Verify the installation:
 air --version
 ```
 
+### Upgrading
+
+To upgrade the CLI to the latest version:
+
+```bash
+air upgrade
+```
+
+This runs `npm install -g @pulsemcp/air-cli@latest` under the hood. If you're already on the latest version, it reports that and exits without reinstalling.
+
+Use `--dry-run` to see what would happen without actually installing:
+
+```bash
+air upgrade --dry-run
+```
+
 ## 2. Initialize your configuration
 
 ```bash
