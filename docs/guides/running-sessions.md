@@ -121,7 +121,7 @@ The adapter argument is required — it specifies which agent adapter to use (e.
 5. Runs transforms on `.mcp.json` (e.g., secrets injection)
 6. Copies hook directories into the agent's hook directory and registers them in the agent's settings (e.g., `.claude/settings.json`)
 7. Validates no `${VAR}` patterns remain unresolved
-7. Outputs structured JSON to stdout
+8. Outputs structured JSON to stdout
 
 ### Options
 

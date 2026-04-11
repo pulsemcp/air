@@ -1400,7 +1400,7 @@ describe("ClaudeAdapter", () => {
 
         const eventMappings: [string, string][] = [
           ["session_start", "SessionStart"],
-          ["session_end", "Stop"],
+          ["session_end", "SessionEnd"],
           ["pre_tool_call", "PreToolUse"],
           ["post_tool_call", "PostToolUse"],
           ["notification", "Notification"],
@@ -1510,10 +1510,12 @@ describe("ClaudeAdapter", () => {
         const settings = JSON.parse(readFileSync(join(claudeDir, "settings.json"), "utf-8"));
         // Existing non-hook settings preserved
         expect(settings.permissions).toEqual({ allow: ["Read"] });
-        // Existing Stop hook preserved, new one appended
-        expect(settings.hooks.Stop).toHaveLength(2);
+        // Existing Stop hook preserved unchanged
+        expect(settings.hooks.Stop).toHaveLength(1);
         expect(settings.hooks.Stop[0].hooks[0].command).toBe("existing-stop");
-        expect(settings.hooks.Stop[1].hooks[0].command).toBe("new-stop");
+        // New session_end hook goes under SessionEnd
+        expect(settings.hooks.SessionEnd).toHaveLength(1);
+        expect(settings.hooks.SessionEnd[0].hooks[0].command).toBe("new-stop");
       });
 
       it("carries through matcher field from HOOK.json", async () => {
@@ -1691,6 +1693,127 @@ describe("ClaudeAdapter", () => {
         expect(result.hookPaths).toHaveLength(0);
         // No settings.json written since no hooks were copied
         expect(existsSync(join(dir, ".claude", "settings.json"))).toBe(false);
+      });
+
+      it("skips pre_commit and post_commit events (no direct Claude Code equivalent)", async () => {
+        const dir = createTempDir();
+
+        const hookADir = join(dir, "..", "hooks", "pre-commit-hook");
+        mkdirSync(hookADir, { recursive: true });
+        writeFileSync(
+          join(hookADir, "HOOK.json"),
+          JSON.stringify({ event: "pre_commit", command: "lint" })
+        );
+
+        const hookBDir = join(dir, "..", "hooks", "post-commit-hook");
+        mkdirSync(hookBDir, { recursive: true });
+        writeFileSync(
+          join(hookBDir, "HOOK.json"),
+          JSON.stringify({ event: "post_commit", command: "notify" })
+        );
+
+        const artifacts = emptyArtifacts();
+        artifacts.hooks["pre-commit-hook"] = { description: "Pre", path: resolve(hookADir) };
+        artifacts.hooks["post-commit-hook"] = { description: "Post", path: resolve(hookBDir) };
+
+        const root: RootEntry = {
+          description: "Test",
+          default_hooks: ["pre-commit-hook", "post-commit-hook"],
+        };
+
+        await adapter.prepareSession(artifacts, dir, { root });
+
+        const settings = JSON.parse(readFileSync(join(dir, ".claude", "settings.json"), "utf-8"));
+        // pre_commit and post_commit have no Claude Code mapping — skipped
+        expect(settings.hooks.PreToolUse).toBeUndefined();
+        expect(settings.hooks.PostToolUse).toBeUndefined();
+        expect(Object.keys(settings.hooks)).toHaveLength(0);
+      });
+
+      it("shell-escapes args containing spaces or metacharacters", async () => {
+        const dir = createTempDir();
+
+        const hookSrcDir = join(dir, "..", "hooks", "complex-hook");
+        mkdirSync(hookSrcDir, { recursive: true });
+        writeFileSync(
+          join(hookSrcDir, "HOOK.json"),
+          JSON.stringify({
+            event: "pre_tool_call",
+            command: "bash",
+            args: ["-c", "echo hello world"],
+          })
+        );
+
+        const artifacts = emptyArtifacts();
+        artifacts.hooks["complex-hook"] = { description: "Complex", path: resolve(hookSrcDir) };
+
+        const root: RootEntry = {
+          description: "Test",
+          default_hooks: ["complex-hook"],
+        };
+
+        await adapter.prepareSession(artifacts, dir, { root });
+
+        const settings = JSON.parse(readFileSync(join(dir, ".claude", "settings.json"), "utf-8"));
+        // "echo hello world" contains spaces — should be single-quoted
+        expect(settings.hooks.PreToolUse[0].hooks[0].command).toBe(
+          "bash -c 'echo hello world'"
+        );
+      });
+
+      it("skips hooks with malformed HOOK.json", async () => {
+        const dir = createTempDir();
+
+        const hookSrcDir = join(dir, "..", "hooks", "bad-json-hook");
+        mkdirSync(hookSrcDir, { recursive: true });
+        writeFileSync(join(hookSrcDir, "HOOK.json"), "{ invalid json }");
+
+        const artifacts = emptyArtifacts();
+        artifacts.hooks["bad-json-hook"] = {
+          description: "Bad JSON",
+          path: resolve(hookSrcDir),
+        };
+
+        const root: RootEntry = {
+          description: "Test",
+          default_hooks: ["bad-json-hook"],
+        };
+
+        // Should not throw — gracefully skips the malformed hook
+        const result = await adapter.prepareSession(artifacts, dir, { root });
+        expect(result.hookPaths).toHaveLength(1);
+
+        const settings = JSON.parse(readFileSync(join(dir, ".claude", "settings.json"), "utf-8"));
+        expect(Object.keys(settings.hooks)).toHaveLength(0);
+      });
+
+      it("skips hooks with missing command field in HOOK.json", async () => {
+        const dir = createTempDir();
+
+        const hookSrcDir = join(dir, "..", "hooks", "no-cmd-hook");
+        mkdirSync(hookSrcDir, { recursive: true });
+        writeFileSync(
+          join(hookSrcDir, "HOOK.json"),
+          JSON.stringify({ event: "session_start" })
+        );
+
+        const artifacts = emptyArtifacts();
+        artifacts.hooks["no-cmd-hook"] = {
+          description: "No command",
+          path: resolve(hookSrcDir),
+        };
+
+        const root: RootEntry = {
+          description: "Test",
+          default_hooks: ["no-cmd-hook"],
+        };
+
+        // Should not throw — gracefully skips the hook
+        const result = await adapter.prepareSession(artifacts, dir, { root });
+        expect(result.hookPaths).toHaveLength(1);
+
+        const settings = JSON.parse(readFileSync(join(dir, ".claude", "settings.json"), "utf-8"));
+        expect(Object.keys(settings.hooks)).toHaveLength(0);
       });
     });
   });

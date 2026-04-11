@@ -26,14 +26,17 @@ export class ClaudeAdapter implements AgentAdapter {
   name = "claude";
   displayName = "Claude Code";
 
-  /** Map AIR lifecycle event names to Claude Code settings.json hook event names. */
+  /**
+   * Map AIR lifecycle event names to Claude Code settings.json hook event names.
+   * Events without a direct Claude Code equivalent (e.g. pre_commit, post_commit)
+   * are omitted — the adapter skips unknown events rather than mapping them to
+   * lossy alternatives. Users should use pre_tool_call with a matcher instead.
+   */
   private static readonly AIR_TO_CLAUDE_EVENT: Record<string, string> = {
     session_start: "SessionStart",
-    session_end: "Stop",
+    session_end: "SessionEnd",
     pre_tool_call: "PreToolUse",
     post_tool_call: "PostToolUse",
-    pre_commit: "PreToolUse",
-    post_commit: "PostToolUse",
     notification: "Notification",
   };
 
@@ -446,12 +449,21 @@ export class ClaudeAdapter implements AgentAdapter {
       const hookJsonPath = join(hookPath, "HOOK.json");
       if (!existsSync(hookJsonPath)) continue;
 
-      const hookJson = JSON.parse(readFileSync(hookJsonPath, "utf-8"));
-      const claudeEvent = ClaudeAdapter.AIR_TO_CLAUDE_EVENT[hookJson.event];
-      if (!claudeEvent) continue;
+      let hookJson: Record<string, unknown>;
+      try {
+        hookJson = JSON.parse(readFileSync(hookJsonPath, "utf-8"));
+      } catch {
+        continue; // Skip hooks with malformed HOOK.json
+      }
+      const claudeEvent = ClaudeAdapter.AIR_TO_CLAUDE_EVENT[hookJson.event as string];
+      if (!claudeEvent || !hookJson.command) continue;
 
       const hookRelDir = relative(targetDir, hookPath);
-      const command = this.buildHookCommand(hookRelDir, hookJson.command, hookJson.args);
+      const command = this.buildHookCommand(
+        hookRelDir,
+        hookJson.command as string,
+        hookJson.args as string[] | undefined
+      );
 
       const hookEntry: Record<string, unknown> = {
         type: "command",
@@ -481,7 +493,8 @@ export class ClaudeAdapter implements AgentAdapter {
   /**
    * Build a shell command string from HOOK.json's command and args fields.
    * Resolves relative paths (starting with ./) to be relative to the project root
-   * via the hook's installed directory path.
+   * via the hook's installed directory path. Args containing shell metacharacters
+   * are single-quoted for safety.
    */
   private buildHookCommand(hookRelDir: string, command: string, args?: string[]): string {
     let cmd = command;
@@ -489,7 +502,10 @@ export class ClaudeAdapter implements AgentAdapter {
       cmd = join(hookRelDir, cmd.slice(2));
     }
     if (args && args.length > 0) {
-      cmd += " " + args.join(" ");
+      const escaped = args.map((a) =>
+        /[\s;&|`$"'\\]/.test(a) ? `'${a.replace(/'/g, "'\\''")}'` : a
+      );
+      cmd += " " + escaped.join(" ");
     }
     return cmd;
   }

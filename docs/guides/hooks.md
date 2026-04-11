@@ -199,15 +199,15 @@ At session start, AIR copies hook directories into the agent's working directory
 
 For Claude Code, the adapter registers hooks in `.claude/settings.json` under the `hooks` key. Each AIR lifecycle event maps to a Claude Code hook event:
 
-| AIR event | Claude Code event |
-|-----------|-------------------|
-| `session_start` | `SessionStart` |
-| `session_end` | `Stop` |
-| `pre_tool_call` | `PreToolUse` |
-| `post_tool_call` | `PostToolUse` |
-| `pre_commit` | `PreToolUse` |
-| `post_commit` | `PostToolUse` |
-| `notification` | `Notification` |
+| AIR event | Claude Code event | Notes |
+|-----------|-------------------|-------|
+| `session_start` | `SessionStart` | |
+| `session_end` | `SessionEnd` | |
+| `pre_tool_call` | `PreToolUse` | |
+| `post_tool_call` | `PostToolUse` | |
+| `notification` | `Notification` | |
+| `pre_commit` | — | No direct equivalent; use `pre_tool_call` with a `matcher` |
+| `post_commit` | — | No direct equivalent; use `post_tool_call` with a `matcher` |
 
 The `command` and `args` from `HOOK.json` are combined into a single command string. Relative paths (starting with `./`) are resolved relative to the hook's installed location. The `matcher` and `timeout_seconds` fields are carried through when present.
 
@@ -245,6 +245,10 @@ Produces this entry in `.claude/settings.json`:
 ```
 
 If `.claude/settings.json` already exists, new hook entries are merged — existing settings and hooks are preserved.
+
+**Limitations:**
+- The `env` field from `HOOK.json` is not forwarded to Claude Code hooks. Environment variables must be set in the shell environment before starting the session.
+- `pre_commit` and `post_commit` events have no direct Claude Code equivalent and are skipped during registration. Use `pre_tool_call` with a `matcher` to target specific tool calls instead.
 
 ## Listing hooks
 
