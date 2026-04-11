@@ -11,7 +11,6 @@ import {
   getDefaultAirJsonPath,
   detectSchemaType,
   getAllSchemaTypes,
-  validateJson,
   type SchemaType,
 } from "@pulsemcp/air-core";
 import { initConfig } from "./init.js";
@@ -204,13 +203,17 @@ export function discoverArtifacts(
     if (!schemaType || schemaType === "air") continue;
     if (!ARTIFACT_TYPES.includes(schemaType)) continue;
 
-    // Validate the file actually matches the schema
+    // Confirm the file is parseable JSON with object structure.
+    // We intentionally do NOT reject files that fail full schema validation,
+    // because a single entry with e.g. a too-long description would cause the
+    // entire file to be silently skipped from discovery.
     const filePath = resolve(repoRoot, file);
     try {
       const content = readFileSync(filePath, "utf-8");
       const data = JSON.parse(content);
-      const result = validateJson(data, schemaType);
-      if (!result.valid) continue;
+      if (typeof data !== "object" || data === null || Array.isArray(data)) {
+        continue;
+      }
     } catch {
       continue;
     }

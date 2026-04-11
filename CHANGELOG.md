@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.18] - 2026-04-11
+
+### Fixed
+- `air init` now discovers artifact index files that have individual entries with schema validation errors (e.g., descriptions exceeding 500 characters) — previously the entire file was silently skipped if any entry failed validation
+- Artifact index files in subdirectories (e.g., `agents/agent-roots/roots.json`) are now properly discovered
+
 ## [0.0.17] - 2026-04-10
 
 ### Fixed
