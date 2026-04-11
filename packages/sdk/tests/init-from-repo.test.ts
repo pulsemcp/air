@@ -221,7 +221,7 @@ describe("discoverArtifacts", () => {
     expect(artifacts).toHaveLength(0);
   });
 
-  it("skips files that don't validate against schema", () => {
+  it("discovers files even when they have schema validation errors", () => {
     const dir = createGitRepo("https://github.com/acme/config.git", {
       // skills.json with invalid content (missing required fields)
       "skills/skills.json": {
@@ -229,8 +229,12 @@ describe("discoverArtifacts", () => {
       },
     });
 
+    // Discovery should not reject files based on schema validation — that's
+    // the job of `air validate`. A file with a too-long description or missing
+    // field shouldn't cause the entire file to be silently dropped from init.
     const artifacts = discoverArtifacts(dir, "acme/config", "main");
-    expect(artifacts).toHaveLength(0);
+    expect(artifacts).toHaveLength(1);
+    expect(artifacts[0].type).toBe("skills");
   });
 
   it("returns empty array for repos with no JSON files", () => {
@@ -281,6 +285,52 @@ describe("discoverArtifacts", () => {
     const artifacts = discoverArtifacts(dir, "acme/config", "main");
     expect(artifacts).toHaveLength(1);
     expect(artifacts[0].repoPath).toBe("skills/skills.json");
+  });
+
+  it("discovers roots.json in deep subdirectory paths", () => {
+    const dir = createGitRepo("https://github.com/acme/config.git", {
+      "agents/agent-roots/roots.json": {
+        "my-root": { description: "A root in a subdirectory" },
+      },
+      "agents/agent-skills/skills.json": {
+        s1: { description: "A skill", path: "agents/agent-skills/s1" },
+      },
+    });
+
+    const artifacts = discoverArtifacts(dir, "acme/config", "main");
+    expect(artifacts).toHaveLength(2);
+    const types = artifacts.map((a) => a.type).sort();
+    expect(types).toEqual(["roots", "skills"]);
+    const rootArtifact = artifacts.find((a) => a.type === "roots")!;
+    expect(rootArtifact.repoPath).toBe("agents/agent-roots/roots.json");
+    expect(rootArtifact.uri).toBe(
+      "github://acme/config@main/agents/agent-roots/roots.json"
+    );
+  });
+
+  it("discovers files with schema validation errors (e.g. too-long description)", () => {
+    const longDescription = "x".repeat(501); // exceeds 500-char limit
+    const dir = createGitRepo("https://github.com/acme/config.git", {
+      "agents/agent-roots/roots.json": {
+        "valid-root": { description: "Short and valid" },
+        "invalid-root": { description: longDescription },
+      },
+    });
+
+    // The file should still be discovered even though one entry fails validation
+    const artifacts = discoverArtifacts(dir, "acme/config", "main");
+    expect(artifacts).toHaveLength(1);
+    expect(artifacts[0].type).toBe("roots");
+    expect(artifacts[0].repoPath).toBe("agents/agent-roots/roots.json");
+  });
+
+  it("skips non-object JSON files (arrays, primitives)", () => {
+    const dir = createGitRepo("https://github.com/acme/config.git", {
+      "skills/skills.json": [{ description: "array, not object" }],
+    });
+
+    const artifacts = discoverArtifacts(dir, "acme/config", "main");
+    expect(artifacts).toHaveLength(0);
   });
 
   it("discovers multiple files of the same artifact type", () => {
