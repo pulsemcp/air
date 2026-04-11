@@ -33,10 +33,11 @@ export interface UpdateProviderCachesResult {
 
 /**
  * Get the AIR cache root directory (~/.air/cache).
+ * Derived from getDefaultAirJsonPath() to stay in sync with core's
+ * notion of the AIR home directory.
  */
 function getCacheRoot(): string {
-  const home = process.env.HOME || process.env.USERPROFILE || "~";
-  return resolve(home, ".air", "cache");
+  return resolve(dirname(getDefaultAirJsonPath()), "cache");
 }
 
 /**

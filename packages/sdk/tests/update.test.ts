@@ -12,11 +12,20 @@ import { updateProviderCaches } from "../src/update.js";
 
 const tempDirs: string[] = [];
 let origHome: string | undefined;
+let origAirConfig: string | undefined;
 
 afterEach(() => {
   if (origHome !== undefined) {
     process.env.HOME = origHome;
     origHome = undefined;
+  }
+  if (origAirConfig !== undefined) {
+    if (origAirConfig === "") {
+      delete process.env.AIR_CONFIG;
+    } else {
+      process.env.AIR_CONFIG = origAirConfig;
+    }
+    origAirConfig = undefined;
   }
   for (const dir of tempDirs) {
     if (existsSync(dir)) {
@@ -72,7 +81,9 @@ function createCachedClone(
 
 function setFakeHome(dir: string): void {
   origHome = process.env.HOME;
+  origAirConfig = process.env.AIR_CONFIG ?? "";
   process.env.HOME = dir;
+  delete process.env.AIR_CONFIG;
 }
 
 describe("updateProviderCaches", () => {
@@ -96,6 +107,39 @@ describe("updateProviderCaches", () => {
     });
 
     // Provider should be discovered from cache directory
+    expect(results).toHaveProperty("github");
+    expect(results.github.length).toBeGreaterThan(0);
+
+    const entry = results.github.find((r) =>
+      r.label.includes("test-owner/test-repo@main")
+    );
+    expect(entry).toBeDefined();
+    expect(typeof entry!.updated).toBe("boolean");
+  }, 30000);
+
+  it("loads provider from air.json extensions (regression)", async () => {
+    const fakeHome = createTempDir();
+    setFakeHome(fakeHome);
+
+    // Create air.json that lists the GitHub provider in extensions
+    const airDir = join(fakeHome, ".air");
+    mkdirSync(airDir, { recursive: true });
+    writeFileSync(
+      join(airDir, "air.json"),
+      JSON.stringify({
+        name: "test",
+        extensions: ["@pulsemcp/air-provider-github"],
+      })
+    );
+
+    // Create a cached clone
+    createCachedClone(fakeHome, "test-owner", "test-repo", "main");
+
+    const { results } = await updateProviderCaches({
+      config: join(airDir, "air.json"),
+    });
+
+    // Provider should be loaded from air.json extensions
     expect(results).toHaveProperty("github");
     expect(results.github.length).toBeGreaterThan(0);
 
