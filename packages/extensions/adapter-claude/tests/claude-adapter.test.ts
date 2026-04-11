@@ -1357,5 +1357,341 @@ describe("ClaudeAdapter", () => {
         );
       });
     });
+
+    describe("hook registration in settings.json", () => {
+      it("registers a copied hook in .claude/settings.json", async () => {
+        const dir = createTempDir();
+
+        const hookSrcDir = join(dir, "..", "hooks", "session-audit");
+        mkdirSync(hookSrcDir, { recursive: true });
+        writeFileSync(
+          join(hookSrcDir, "HOOK.json"),
+          JSON.stringify({ event: "session_start", command: "echo", args: ["started"] })
+        );
+
+        const artifacts = emptyArtifacts();
+        artifacts.hooks["session-audit"] = {
+          description: "Session audit",
+          path: resolve(hookSrcDir),
+        };
+
+        const root: RootEntry = {
+          description: "Test",
+          default_hooks: ["session-audit"],
+        };
+
+        const result = await adapter.prepareSession(artifacts, dir, { root });
+
+        const settingsPath = join(dir, ".claude", "settings.json");
+        expect(existsSync(settingsPath)).toBe(true);
+        expect(result.configFiles).toContain(settingsPath);
+
+        const settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
+        expect(settings.hooks).toBeDefined();
+        expect(settings.hooks.SessionStart).toHaveLength(1);
+        expect(settings.hooks.SessionStart[0].matcher).toBe("");
+        expect(settings.hooks.SessionStart[0].hooks).toHaveLength(1);
+        expect(settings.hooks.SessionStart[0].hooks[0].type).toBe("command");
+        expect(settings.hooks.SessionStart[0].hooks[0].command).toBe("echo started");
+      });
+
+      it("maps AIR event names to Claude Code event names", async () => {
+        const dir = createTempDir();
+
+        const eventMappings: [string, string][] = [
+          ["session_start", "SessionStart"],
+          ["session_end", "Stop"],
+          ["pre_tool_call", "PreToolUse"],
+          ["post_tool_call", "PostToolUse"],
+          ["notification", "Notification"],
+        ];
+
+        const artifacts = emptyArtifacts();
+        for (const [i, [airEvent]] of eventMappings.entries()) {
+          const hookId = `hook-${i}`;
+          const hookSrcDir = join(dir, "..", "hooks", hookId);
+          mkdirSync(hookSrcDir, { recursive: true });
+          writeFileSync(
+            join(hookSrcDir, "HOOK.json"),
+            JSON.stringify({ event: airEvent, command: `cmd-${i}` })
+          );
+          artifacts.hooks[hookId] = {
+            description: `Hook ${i}`,
+            path: resolve(hookSrcDir),
+          };
+        }
+
+        const root: RootEntry = {
+          description: "Test",
+          default_hooks: eventMappings.map((_, i) => `hook-${i}`),
+        };
+
+        await adapter.prepareSession(artifacts, dir, { root });
+
+        const settings = JSON.parse(readFileSync(join(dir, ".claude", "settings.json"), "utf-8"));
+        for (const [i, [, claudeEvent]] of eventMappings.entries()) {
+          const eventHooks = settings.hooks[claudeEvent] as unknown[];
+          expect(eventHooks).toBeDefined();
+          const entry = eventHooks.find(
+            (g: any) => g.hooks[0].command === `cmd-${i}`
+          );
+          expect(entry).toBeDefined();
+        }
+      });
+
+      it("appends multiple hooks targeting the same Claude Code event", async () => {
+        const dir = createTempDir();
+
+        const hookADir = join(dir, "..", "hooks", "hook-a");
+        mkdirSync(hookADir, { recursive: true });
+        writeFileSync(
+          join(hookADir, "HOOK.json"),
+          JSON.stringify({ event: "pre_tool_call", command: "lint" })
+        );
+
+        const hookBDir = join(dir, "..", "hooks", "hook-b");
+        mkdirSync(hookBDir, { recursive: true });
+        writeFileSync(
+          join(hookBDir, "HOOK.json"),
+          JSON.stringify({ event: "pre_tool_call", command: "typecheck" })
+        );
+
+        const artifacts = emptyArtifacts();
+        artifacts.hooks["hook-a"] = { description: "A", path: resolve(hookADir) };
+        artifacts.hooks["hook-b"] = { description: "B", path: resolve(hookBDir) };
+
+        const root: RootEntry = {
+          description: "Test",
+          default_hooks: ["hook-a", "hook-b"],
+        };
+
+        await adapter.prepareSession(artifacts, dir, { root });
+
+        const settings = JSON.parse(readFileSync(join(dir, ".claude", "settings.json"), "utf-8"));
+        expect(settings.hooks.PreToolUse).toHaveLength(2);
+        const commands = settings.hooks.PreToolUse.map((g: any) => g.hooks[0].command);
+        expect(commands).toContain("lint");
+        expect(commands).toContain("typecheck");
+      });
+
+      it("merges with existing settings.json without overwriting", async () => {
+        const dir = createTempDir();
+
+        // Pre-populate settings.json with existing content
+        const claudeDir = join(dir, ".claude");
+        mkdirSync(claudeDir, { recursive: true });
+        writeFileSync(
+          join(claudeDir, "settings.json"),
+          JSON.stringify({
+            permissions: { allow: ["Read"] },
+            hooks: {
+              Stop: [{ matcher: "", hooks: [{ type: "command", command: "existing-stop" }] }],
+            },
+          })
+        );
+
+        const hookSrcDir = join(dir, "..", "hooks", "my-hook");
+        mkdirSync(hookSrcDir, { recursive: true });
+        writeFileSync(
+          join(hookSrcDir, "HOOK.json"),
+          JSON.stringify({ event: "session_end", command: "new-stop" })
+        );
+
+        const artifacts = emptyArtifacts();
+        artifacts.hooks["my-hook"] = { description: "My hook", path: resolve(hookSrcDir) };
+
+        const root: RootEntry = {
+          description: "Test",
+          default_hooks: ["my-hook"],
+        };
+
+        await adapter.prepareSession(artifacts, dir, { root });
+
+        const settings = JSON.parse(readFileSync(join(claudeDir, "settings.json"), "utf-8"));
+        // Existing non-hook settings preserved
+        expect(settings.permissions).toEqual({ allow: ["Read"] });
+        // Existing Stop hook preserved, new one appended
+        expect(settings.hooks.Stop).toHaveLength(2);
+        expect(settings.hooks.Stop[0].hooks[0].command).toBe("existing-stop");
+        expect(settings.hooks.Stop[1].hooks[0].command).toBe("new-stop");
+      });
+
+      it("carries through matcher field from HOOK.json", async () => {
+        const dir = createTempDir();
+
+        const hookSrcDir = join(dir, "..", "hooks", "bash-guard");
+        mkdirSync(hookSrcDir, { recursive: true });
+        writeFileSync(
+          join(hookSrcDir, "HOOK.json"),
+          JSON.stringify({ event: "pre_tool_call", command: "validate", matcher: "Bash" })
+        );
+
+        const artifacts = emptyArtifacts();
+        artifacts.hooks["bash-guard"] = { description: "Guard", path: resolve(hookSrcDir) };
+
+        const root: RootEntry = {
+          description: "Test",
+          default_hooks: ["bash-guard"],
+        };
+
+        await adapter.prepareSession(artifacts, dir, { root });
+
+        const settings = JSON.parse(readFileSync(join(dir, ".claude", "settings.json"), "utf-8"));
+        expect(settings.hooks.PreToolUse[0].matcher).toBe("Bash");
+      });
+
+      it("carries through timeout_seconds as timeout", async () => {
+        const dir = createTempDir();
+
+        const hookSrcDir = join(dir, "..", "hooks", "slow-hook");
+        mkdirSync(hookSrcDir, { recursive: true });
+        writeFileSync(
+          join(hookSrcDir, "HOOK.json"),
+          JSON.stringify({ event: "session_start", command: "slow-cmd", timeout_seconds: 60 })
+        );
+
+        const artifacts = emptyArtifacts();
+        artifacts.hooks["slow-hook"] = { description: "Slow", path: resolve(hookSrcDir) };
+
+        const root: RootEntry = {
+          description: "Test",
+          default_hooks: ["slow-hook"],
+        };
+
+        await adapter.prepareSession(artifacts, dir, { root });
+
+        const settings = JSON.parse(readFileSync(join(dir, ".claude", "settings.json"), "utf-8"));
+        expect(settings.hooks.SessionStart[0].hooks[0].timeout).toBe(60);
+      });
+
+      it("combines command and args into a single command string", async () => {
+        const dir = createTempDir();
+
+        const hookSrcDir = join(dir, "..", "hooks", "lint-hook");
+        mkdirSync(hookSrcDir, { recursive: true });
+        writeFileSync(
+          join(hookSrcDir, "HOOK.json"),
+          JSON.stringify({ event: "pre_tool_call", command: "npx", args: ["lint-staged", "--quiet"] })
+        );
+
+        const artifacts = emptyArtifacts();
+        artifacts.hooks["lint-hook"] = { description: "Lint", path: resolve(hookSrcDir) };
+
+        const root: RootEntry = {
+          description: "Test",
+          default_hooks: ["lint-hook"],
+        };
+
+        await adapter.prepareSession(artifacts, dir, { root });
+
+        const settings = JSON.parse(readFileSync(join(dir, ".claude", "settings.json"), "utf-8"));
+        expect(settings.hooks.PreToolUse[0].hooks[0].command).toBe("npx lint-staged --quiet");
+      });
+
+      it("resolves relative command paths to hook install directory", async () => {
+        const dir = createTempDir();
+
+        const hookSrcDir = join(dir, "..", "hooks", "notify");
+        mkdirSync(hookSrcDir, { recursive: true });
+        writeFileSync(
+          join(hookSrcDir, "HOOK.json"),
+          JSON.stringify({ event: "session_start", command: "./notify.sh" })
+        );
+        writeFileSync(join(hookSrcDir, "notify.sh"), "#!/bin/bash\necho hello");
+
+        const artifacts = emptyArtifacts();
+        artifacts.hooks["notify"] = { description: "Notify", path: resolve(hookSrcDir) };
+
+        const root: RootEntry = {
+          description: "Test",
+          default_hooks: ["notify"],
+        };
+
+        await adapter.prepareSession(artifacts, dir, { root });
+
+        const settings = JSON.parse(readFileSync(join(dir, ".claude", "settings.json"), "utf-8"));
+        expect(settings.hooks.SessionStart[0].hooks[0].command).toBe(
+          join(".claude", "hooks", "notify", "notify.sh")
+        );
+      });
+
+      it("does not write settings.json when no hooks are copied", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+
+        const result = await adapter.prepareSession(artifacts, dir);
+
+        const settingsPath = join(dir, ".claude", "settings.json");
+        expect(existsSync(settingsPath)).toBe(false);
+        expect(result.configFiles).not.toContain(settingsPath);
+      });
+
+      it("skips hooks with unknown AIR events", async () => {
+        const dir = createTempDir();
+
+        const hookSrcDir = join(dir, "..", "hooks", "unknown-event-hook");
+        mkdirSync(hookSrcDir, { recursive: true });
+        writeFileSync(
+          join(hookSrcDir, "HOOK.json"),
+          JSON.stringify({ event: "custom_event", command: "custom-cmd" })
+        );
+
+        const artifacts = emptyArtifacts();
+        artifacts.hooks["unknown-event-hook"] = {
+          description: "Unknown event",
+          path: resolve(hookSrcDir),
+        };
+
+        const root: RootEntry = {
+          description: "Test",
+          default_hooks: ["unknown-event-hook"],
+        };
+
+        const result = await adapter.prepareSession(artifacts, dir, { root });
+
+        // Hook was copied but unknown event skipped in registration
+        expect(result.hookPaths).toHaveLength(1);
+        const settingsPath = join(dir, ".claude", "settings.json");
+        // settings.json is still written (even if empty hooks) because hookPaths.length > 0
+        expect(existsSync(settingsPath)).toBe(true);
+        const settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
+        expect(Object.keys(settings.hooks)).toHaveLength(0);
+      });
+
+      it("does not register skipped (pre-existing) hooks", async () => {
+        const dir = createTempDir();
+
+        // Pre-existing local hook
+        const localHookDir = join(dir, ".claude", "hooks", "local-hook");
+        mkdirSync(localHookDir, { recursive: true });
+        writeFileSync(
+          join(localHookDir, "HOOK.json"),
+          JSON.stringify({ event: "session_start", command: "local-cmd" })
+        );
+
+        // Catalog hook source
+        const catalogHookDir = join(dir, "..", "hooks", "local-hook");
+        mkdirSync(catalogHookDir, { recursive: true });
+        writeFileSync(
+          join(catalogHookDir, "HOOK.json"),
+          JSON.stringify({ event: "session_start", command: "catalog-cmd" })
+        );
+
+        const artifacts = emptyArtifacts();
+        artifacts.hooks["local-hook"] = { description: "Local hook", path: resolve(catalogHookDir) };
+
+        const root: RootEntry = {
+          description: "Test",
+          default_hooks: ["local-hook"],
+        };
+
+        const result = await adapter.prepareSession(artifacts, dir, { root });
+
+        // Hook was skipped — not in hookPaths
+        expect(result.hookPaths).toHaveLength(0);
+        // No settings.json written since no hooks were copied
+        expect(existsSync(join(dir, ".claude", "settings.json"))).toBe(false);
+      });
+    });
   });
 });

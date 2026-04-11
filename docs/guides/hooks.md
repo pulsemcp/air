@@ -193,7 +193,58 @@ Without a root, all hooks are available.
 
 ## Agent translation
 
-At session start, AIR copies hook directories into the agent's working directory (e.g., `.claude/hooks/{id}/`). The adapter reads `HOOK.json` to translate hooks into agent-specific formats. Local hooks take priority — if a hook directory already exists in the target, the catalog version is not copied.
+At session start, AIR copies hook directories into the agent's working directory (e.g., `.claude/hooks/{id}/`). The adapter reads each `HOOK.json` to translate hooks into the agent's native format. Local hooks take priority — if a hook directory already exists in the target, the catalog version is not copied.
+
+### Claude Code
+
+For Claude Code, the adapter registers hooks in `.claude/settings.json` under the `hooks` key. Each AIR lifecycle event maps to a Claude Code hook event:
+
+| AIR event | Claude Code event |
+|-----------|-------------------|
+| `session_start` | `SessionStart` |
+| `session_end` | `Stop` |
+| `pre_tool_call` | `PreToolUse` |
+| `post_tool_call` | `PostToolUse` |
+| `pre_commit` | `PreToolUse` |
+| `post_commit` | `PostToolUse` |
+| `notification` | `Notification` |
+
+The `command` and `args` from `HOOK.json` are combined into a single command string. Relative paths (starting with `./`) are resolved relative to the hook's installed location. The `matcher` and `timeout_seconds` fields are carried through when present.
+
+Example: a hook with this `HOOK.json`:
+
+```json
+{
+  "event": "pre_tool_call",
+  "command": "npx",
+  "args": ["lint-staged"],
+  "matcher": "Bash",
+  "timeout_seconds": 30
+}
+```
+
+Produces this entry in `.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx lint-staged",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+If `.claude/settings.json` already exists, new hook entries are merged — existing settings and hooks are preserved.
 
 ## Listing hooks
 

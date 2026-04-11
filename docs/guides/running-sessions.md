@@ -119,7 +119,7 @@ The adapter argument is required — it specifies which agent adapter to use (e.
    - Copies skills into the agent's skill directory
    - Copies referenced documents
 5. Runs transforms on `.mcp.json` (e.g., secrets injection)
-6. Copies hook directories into the agent's hook directory
+6. Copies hook directories into the agent's hook directory and registers them in the agent's settings (e.g., `.claude/settings.json`)
 7. Validates no `${VAR}` patterns remain unresolved
 7. Outputs structured JSON to stdout
 
@@ -200,7 +200,7 @@ Artifacts resolved → Adapter translates → Transforms modify → Session read
 2. **Providers** (from extensions) resolve remote URIs in artifact paths
 3. **Artifacts** are loaded and merged from all index files
 4. **Root** selection filters which artifacts are activated
-5. **Adapter** translates AIR artifacts to agent-specific format (e.g., writes `.mcp.json`, copies skills and hook directories)
+5. **Adapter** translates AIR artifacts to agent-specific format (e.g., writes `.mcp.json`, copies skills, copies and registers hooks)
 6. **Transforms** (from extensions) modify the output (e.g., inject secrets)
 7. **Validation** checks for unresolved `${VAR}` patterns
 
