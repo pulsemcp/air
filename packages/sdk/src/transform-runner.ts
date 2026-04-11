@@ -53,7 +53,13 @@ export async function runTransforms(opts: RunTransformsOptions): Promise<void> {
   if (Object.keys(hookFiles).length > 0) {
     config.hooks = {};
     for (const [id, path] of Object.entries(hookFiles)) {
-      config.hooks[id] = JSON.parse(readFileSync(path, "utf-8"));
+      try {
+        config.hooks[id] = JSON.parse(readFileSync(path, "utf-8"));
+      } catch (err) {
+        throw new Error(
+          `Failed to parse ${path}: ${err instanceof Error ? err.message : String(err)}`
+        );
+      }
     }
   }
 
