@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.20] - 2026-04-11
+
+### Changed
+- Clarified across documentation that AIR is a single-session configuration layer with no orchestration capabilities
+- Added practical tips for running multiple sessions using git clones or worktrees
+- Updated TUI documentation to use "types" instead of "tabs" for artifact type navigation
+
 ## [0.0.19] - 2026-04-11
 
 ### Added

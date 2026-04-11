@@ -99,13 +99,13 @@ If you find yourself duplicating content, that's a signal to extract it into a r
 
 ### 4. Per-Session Configuration
 
-AIR targets per-agent-session configs, not per-user or per-project. The distinction matters:
+AIR targets **single-session** configuration, not per-user or per-project. The distinction matters:
 
 - **Per-user configs** drift between users and don't compose
 - **Per-project configs** duplicate across projects and aren't appropriate for every session
 - **Per-session configs** are assembled from composable layers at session start time
 
-Each session gets exactly what it needs, composed from org, team, project, and local layers.
+Each `air start` or `air prepare` call sets up exactly one agent session in one working directory. AIR does not coordinate multiple sessions, manage parallelism, or orchestrate agents — those are concerns for a separate orchestration layer. See [Orchestration](orchestration.md) for what belongs where.
 
 ### 5. Progressive Disclosure
 
@@ -127,6 +127,6 @@ The description is what agents (and humans) use to decide relevance. Make it cou
 
 ## What AIR Is Not
 
-AIR is a configuration layer — it resolves, validates, and translates. It does not orchestrate agent sessions, manage subagents, persist state, or handle secrets.
+AIR is a **single-session configuration layer** — it resolves, validates, and translates config for one agent session at a time. It does not orchestrate multiple sessions, coordinate agents, persist state, or handle secrets.
 
-Teams building multi-agent systems (sequential pipelines, delegated subagents, event-triggered sessions) use AIR as the config layer underneath their orchestration platform. See [Orchestration & Multi-Agent Patterns](orchestration.md) for guidance on what belongs where.
+If you need to run multiple agent sessions (sequential pipelines, delegated subagents, event-triggered sessions), you need a separate orchestration layer. AIR is the config foundation underneath it. See [Orchestration & Multi-Agent Patterns](orchestration.md) for guidance on what belongs where.

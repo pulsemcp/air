@@ -1,6 +1,6 @@
 # Orchestration & Multi-Agent Patterns
 
-AIR is a **configuration layer** — it defines what an agent session needs (skills, MCP servers, references, hooks) and translates it for the target agent. It does not manage the lifecycle of sessions, coordinate multiple agents, or persist state between runs.
+AIR is a **single-session configuration layer**. Each `air start` or `air prepare` call assembles config for exactly one agent session in one working directory. AIR does not manage session lifecycles, coordinate multiple agents, schedule work, or persist state between runs.
 
 This document clarifies what AIR handles, what it explicitly leaves to orchestration platforms, and what patterns teams should consider when building multi-agent systems on top of AIR.
 
@@ -9,7 +9,7 @@ This document clarifies what AIR handles, what it explicitly leaves to orchestra
 1. **Config resolution** — load `air.json`, merge artifact indexes, resolve a root's defaults into a concrete set of skills, MCP servers, plugins, hooks, and references.
 2. **Validation** — ensure all JSON files conform to AIR schemas.
 3. **Agent translation** — convert resolved artifacts into agent-specific formats (Claude Code `.mcp.json`, etc.).
-4. **Session setup** — `air start` assembles config and starts a single agent session.
+4. **Single-session setup** — `air start` assembles config and launches one agent session in the current working directory. `air prepare` writes config without launching.
 
 ## What AIR Does Not Do
 

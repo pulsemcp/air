@@ -215,18 +215,19 @@ Hooks are shell commands that fire at agent lifecycle events. Use them for notif
 
 ## Scope
 
-AIR is a **configuration layer** — it resolves, validates, and translates agent configs. It is not an orchestration platform.
+AIR is a **single-session configuration layer** — it resolves, validates, and translates agent configs for one session at a time. It is not an orchestration platform.
 
 | AIR handles | Orchestration platforms handle |
 |-------------|-------------------------------|
 | Config resolution & composition | Session persistence & status tracking |
 | JSON Schema validation | Subagent invocation & coordination |
 | Agent-specific translation | Job queuing, retries, scheduling |
-| Single-session setup via `air start` | Secret management & credential vaults |
+| Single-session setup (`air start` / `air prepare`) | Secret management & credential vaults |
 | `${ENV_VAR}` interpolation in configs | Git clone lifecycle & working directories |
 | | Monitoring, cost tracking, dashboards |
+| | Running multiple sessions in parallel |
 
-Teams building multi-agent systems use AIR as the config layer underneath their orchestration platform. See [Orchestration](docs/orchestration.md) for patterns and guidance.
+Each `air start` or `air prepare` call sets up exactly one agent session in one working directory. If you need to run multiple sessions concurrently, you need separate working directories and a way to manage them — see [Running Sessions](docs/guides/running-sessions.md#tips-for-running-multiple-sessions) for practical tips, or [Orchestration](docs/orchestration.md) for building a full orchestration layer on top of AIR.
 
 ## Quickstart
 
