@@ -169,8 +169,9 @@ export function detectDefaultBranch(cwd: string): string {
  * Discover AIR artifact index files in the git repository.
  *
  * Lists tracked JSON files via `git ls-files`, detects their schema type
- * by filename, and validates them against the schema. Returns only files
- * that are valid artifact indexes.
+ * by filename, and confirms they are parseable JSON objects. Returns files
+ * that are plausible artifact indexes (full schema validation is deferred
+ * to `air validate`).
  */
 export function discoverArtifacts(
   repoRoot: string,
