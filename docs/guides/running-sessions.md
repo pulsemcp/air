@@ -117,10 +117,11 @@ The adapter argument is required — it specifies which agent adapter to use (e.
 4. Calls the adapter's `prepareSession()`:
    - Writes `.mcp.json` to the target directory
    - Copies skills into the agent's skill directory
+   - Copies hook directories into the agent's hook directory
    - Copies referenced documents
-5. Runs transforms on `.mcp.json` (e.g., secrets injection)
-6. Copies hook directories into the agent's hook directory and registers them in the agent's settings (e.g., `.claude/settings.json`)
-7. Validates no `${VAR}` patterns remain unresolved
+5. Runs transforms on `.mcp.json` and `HOOK.json` files (e.g., secrets injection)
+6. Registers hooks in the agent's settings (e.g., `.claude/settings.json`)
+7. Validates no `${VAR}` patterns remain unresolved in `.mcp.json` or `HOOK.json`
 8. Outputs structured JSON to stdout
 
 ### Options

@@ -62,7 +62,8 @@ function walkValue(value: unknown, vars: Set<string>): void {
 
 /**
  * Validate that no unresolved ${VAR} patterns remain in the .mcp.json file.
- * This is a final validation step that runs after all transforms complete.
+ * This only checks the MCP config file; use findUnresolvedHookVars() to
+ * also check HOOK.json files, or rely on prepareSession() which checks both.
  *
  * @throws Error listing all unresolved variables if any are found.
  */
@@ -77,11 +78,11 @@ export function validateNoUnresolvedVars(mcpConfigPath: string): void {
 }
 
 export function unresolvedVarsMessage(
-  mcpConfigPath: string,
+  configPath: string,
   unresolved: string[]
 ): string {
   return (
-    `Unresolved variable${unresolved.length === 1 ? "" : "s"} in ${mcpConfigPath}: ${unresolved.map((v) => `\${${v}}`).join(", ")}. ` +
+    `Unresolved variable${unresolved.length === 1 ? "" : "s"} in ${configPath}: ${unresolved.map((v) => `\${${v}}`).join(", ")}. ` +
     `Ensure all variables are provided via environment or a secrets transform.`
   );
 }

@@ -252,6 +252,10 @@ export interface CacheRefreshResult {
  * a (possibly modified) version. This is the general-purpose hook for
  * secrets resolution, config patching, server injection, and any other
  * post-processing.
+ *
+ * Transforms may modify existing entries in `mcpServers` and `hooks`
+ * but should not add new hook IDs — the transform runner only writes
+ * back hooks that were originally collected from disk.
  */
 export interface PrepareTransform {
   transform(config: McpConfig, context: TransformContext): Promise<McpConfig>;
@@ -315,7 +319,7 @@ export interface AirExtension {
   adapter?: AgentAdapter;
   /** Catalog provider for remote URI resolution (e.g., github://) */
   provider?: CatalogProvider;
-  /** Post-prepare transform for MCP config */
+  /** Post-prepare transform for artifact configs (MCP servers, hooks, etc.) */
   transform?: PrepareTransform;
   /** CLI options this extension contributes to `air prepare` */
   prepareOptions?: ExtensionCliOption[];

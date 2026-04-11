@@ -200,8 +200,8 @@ export async function prepareSession(
     // Deduplicate
     const unique = [...new Set(allUnresolved)];
     if (unique.length > 0) {
-      const target = mcpConfigPath ?? options.target ?? process.cwd();
-      throw new Error(unresolvedVarsMessage(target, unique));
+      const targetDir = options.target ?? process.cwd();
+      throw new Error(unresolvedVarsMessage(targetDir, unique));
     }
   }
 

@@ -156,7 +156,7 @@ Extensions can be:
 Extensions provide three types of functionality:
 - **Adapters** — translate AIR config to agent-specific formats (e.g., Claude Code)
 - **Providers** — resolve remote URIs like `github://` in artifact paths
-- **Transforms** — modify `.mcp.json` after session preparation (e.g., secrets injection)
+- **Transforms** — modify artifact configs (`.mcp.json`, `HOOK.json`) after session preparation (e.g., secrets injection)
 
 Order matters for transforms — they run in declaration order. See [Extensions System](extensions.md) for details.
 
