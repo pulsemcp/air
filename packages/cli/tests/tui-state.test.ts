@@ -5,6 +5,7 @@ import {
   getSelectedIds,
   getVisibleItems,
   getAllSelectionSummary,
+  getMergedDefaults,
 } from "../src/tui/types.js";
 
 function makeArtifacts(
@@ -292,5 +293,165 @@ describe("getAllSelectionSummary", () => {
   it("returns empty array when no tabs exist", () => {
     const state = buildInitialState(makeArtifacts());
     expect(getAllSelectionSummary(state)).toEqual([]);
+  });
+});
+
+describe("getMergedDefaults", () => {
+  it("returns parent defaults when no subagent roots exist", () => {
+    const result = getMergedDefaults(
+      { description: "Root", default_mcp_servers: ["s1"], default_skills: ["sk1"] },
+      {}
+    );
+    expect(result.mcpServerIds).toEqual(["s1"]);
+    expect(result.skillIds).toEqual(["sk1"]);
+  });
+
+  it("returns empty arrays when root has no defaults and no subagents", () => {
+    const result = getMergedDefaults({ description: "Root" }, {});
+    expect(result.mcpServerIds).toEqual([]);
+    expect(result.skillIds).toEqual([]);
+  });
+
+  it("unions parent and subagent MCP servers and skills", () => {
+    const roots = {
+      "sub-a": {
+        description: "Sub A",
+        default_mcp_servers: ["s2", "s3"],
+        default_skills: ["sk2"],
+      },
+      "sub-b": {
+        description: "Sub B",
+        default_mcp_servers: ["s3", "s4"],
+        default_skills: ["sk3"],
+      },
+    };
+    const result = getMergedDefaults(
+      {
+        description: "Parent",
+        default_mcp_servers: ["s1"],
+        default_skills: ["sk1"],
+        default_subagent_roots: ["sub-a", "sub-b"],
+      },
+      roots
+    );
+    expect(result.mcpServerIds.sort()).toEqual(["s1", "s2", "s3", "s4"]);
+    expect(result.skillIds.sort()).toEqual(["sk1", "sk2", "sk3"]);
+  });
+
+  it("collects subagent servers when parent has no default_mcp_servers", () => {
+    const roots = {
+      "sub-a": {
+        description: "Sub A",
+        default_mcp_servers: ["s1", "s2"],
+      },
+    };
+    const result = getMergedDefaults(
+      {
+        description: "Parent",
+        default_subagent_roots: ["sub-a"],
+      },
+      roots
+    );
+    expect(result.mcpServerIds.sort()).toEqual(["s1", "s2"]);
+  });
+
+  it("skips missing subagent root IDs", () => {
+    const result = getMergedDefaults(
+      {
+        description: "Parent",
+        default_mcp_servers: ["s1"],
+        default_subagent_roots: ["nonexistent"],
+      },
+      {}
+    );
+    expect(result.mcpServerIds).toEqual(["s1"]);
+  });
+
+  it("returns empty arrays for undefined root", () => {
+    const result = getMergedDefaults(undefined, {});
+    expect(result.mcpServerIds).toEqual([]);
+    expect(result.skillIds).toEqual([]);
+  });
+});
+
+describe("buildInitialState with subagent merge", () => {
+  it("pre-selects subagent MCP servers when merge is enabled", () => {
+    const state = buildInitialState(
+      makeArtifacts({
+        mcp: {
+          "parent-server": { type: "stdio", command: "node", description: "Parent" },
+          "sub-server": { type: "stdio", command: "node", description: "Subagent" },
+        },
+        roots: {
+          "sub-root": {
+            description: "Subagent root",
+            default_mcp_servers: ["sub-server"],
+          },
+        },
+      }),
+      {
+        description: "Parent root",
+        default_mcp_servers: ["parent-server"],
+        default_subagent_roots: ["sub-root"],
+      },
+      "parent",
+      false,
+      false // skipSubagentMerge = false
+    );
+    expect(state.items.mcp.find((i) => i.id === "parent-server")?.selected).toBe(true);
+    expect(state.items.mcp.find((i) => i.id === "sub-server")?.selected).toBe(true);
+  });
+
+  it("does not pre-select subagent servers when merge is disabled", () => {
+    const state = buildInitialState(
+      makeArtifacts({
+        mcp: {
+          "parent-server": { type: "stdio", command: "node", description: "Parent" },
+          "sub-server": { type: "stdio", command: "node", description: "Subagent" },
+        },
+        roots: {
+          "sub-root": {
+            description: "Subagent root",
+            default_mcp_servers: ["sub-server"],
+          },
+        },
+      }),
+      {
+        description: "Parent root",
+        default_mcp_servers: ["parent-server"],
+        default_subagent_roots: ["sub-root"],
+      },
+      "parent",
+      false,
+      true // skipSubagentMerge = true
+    );
+    expect(state.items.mcp.find((i) => i.id === "parent-server")?.selected).toBe(true);
+    expect(state.items.mcp.find((i) => i.id === "sub-server")?.selected).toBe(false);
+  });
+
+  it("pre-selects subagent skills when parent has no default_skills", () => {
+    const state = buildInitialState(
+      makeArtifacts({
+        skills: {
+          "sub-skill": { description: "Subagent skill", path: "/skills/sub-skill" },
+          "other-skill": { description: "Other skill", path: "/skills/other" },
+        },
+        roots: {
+          "sub-root": {
+            description: "Subagent root",
+            default_skills: ["sub-skill"],
+          },
+        },
+      }),
+      {
+        description: "Parent root",
+        default_subagent_roots: ["sub-root"],
+      },
+      "parent",
+      false,
+      false
+    );
+    expect(state.items.skills.find((i) => i.id === "sub-skill")?.selected).toBe(true);
+    expect(state.items.skills.find((i) => i.id === "other-skill")?.selected).toBe(false);
   });
 });

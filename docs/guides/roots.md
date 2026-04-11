@@ -136,11 +136,13 @@ A root can declare dependencies on other roots via `default_subagent_roots`:
 }
 ```
 
-By default, `air prepare` merges subagent roots' skills and MCP servers into the parent session and appends context about the subagent dependencies to the system prompt. This gives the parent agent awareness of its subagents' capabilities.
+By default, both `air start` and `air prepare` merge subagent roots' skills and MCP servers into the parent session and append context about the subagent dependencies to the system prompt. This gives the parent agent awareness of its subagents' capabilities.
 
 To opt out of this merging (e.g., when your orchestrator manages subagent composition externally):
 
 ```bash
+air start claude --no-subagent-merge
+# or
 air prepare claude --no-subagent-merge
 ```
 

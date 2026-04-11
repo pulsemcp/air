@@ -56,11 +56,40 @@ export function getVisibleItems(state: TuiState): ArtifactItem[] {
   );
 }
 
+/**
+ * Compute merged default IDs by unioning the parent root's defaults with
+ * all subagent roots' defaults (MCP servers and skills only).
+ */
+export function getMergedDefaults(
+  root: RootEntry | undefined,
+  allRoots: Record<string, RootEntry>
+): { mcpServerIds: string[]; skillIds: string[] } {
+  const mcpSet = new Set(root?.default_mcp_servers ?? []);
+  const skillSet = new Set(root?.default_skills ?? []);
+
+  for (const subId of root?.default_subagent_roots ?? []) {
+    const sub = allRoots[subId];
+    if (!sub) continue;
+    if (sub.default_mcp_servers) {
+      for (const id of sub.default_mcp_servers) mcpSet.add(id);
+    }
+    if (sub.default_skills) {
+      for (const id of sub.default_skills) skillSet.add(id);
+    }
+  }
+
+  return {
+    mcpServerIds: [...mcpSet],
+    skillIds: [...skillSet],
+  };
+}
+
 export function buildInitialState(
   artifacts: ResolvedArtifacts,
   root?: RootEntry,
   rootId?: string,
-  rootAutoDetected = false
+  rootAutoDetected = false,
+  skipSubagentMerge = false
 ): TuiState {
   const buildItems = (
     entries: Record<string, { description?: string; title?: string }>,
@@ -76,9 +105,17 @@ export function buildInitialState(
       .sort((a, b) => a.id.localeCompare(b.id));
   };
 
+  // Compute merged defaults from subagent roots unless merge is disabled
+  const merged = skipSubagentMerge
+    ? { mcpServerIds: root?.default_mcp_servers ?? [], skillIds: root?.default_skills ?? [] }
+    : getMergedDefaults(root, artifacts.roots);
+
+  const mcpDefaults = merged.mcpServerIds.length > 0 ? merged.mcpServerIds : root?.default_mcp_servers;
+  const skillDefaults = merged.skillIds.length > 0 ? merged.skillIds : root?.default_skills;
+
   const items: Record<ArtifactCategory, ArtifactItem[]> = {
-    mcp: buildItems(artifacts.mcp, root?.default_mcp_servers),
-    skills: buildItems(artifacts.skills, root?.default_skills),
+    mcp: buildItems(artifacts.mcp, mcpDefaults),
+    skills: buildItems(artifacts.skills, skillDefaults),
     hooks: buildItems(artifacts.hooks, root?.default_hooks),
     plugins: buildItems(artifacts.plugins, root?.default_plugins),
   };

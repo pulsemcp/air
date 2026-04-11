@@ -8,6 +8,7 @@ import {
   type RootEntry,
 } from "@pulsemcp/air-sdk";
 import { runInteractiveSelector } from "../tui/interactive-selector.js";
+import { getMergedDefaults } from "../tui/types.js";
 
 export function startCommand(): Command {
   const cmd = new Command("start")
@@ -19,6 +20,10 @@ export function startCommand(): Command {
       "--skip-confirmation",
       "Don't prompt for confirmation before starting"
     )
+    .option(
+      "--no-subagent-merge",
+      "Skip merging subagent roots' artifacts into the parent session (for orchestrators that manage composition externally)"
+    )
     .allowUnknownOption(true)
     .action(
       async (
@@ -27,6 +32,7 @@ export function startCommand(): Command {
           root?: string;
           dryRun?: boolean;
           skipConfirmation?: boolean;
+          subagentMerge: boolean;
         },
       ) => {
         const dashDashIdx = process.argv.indexOf("--");
@@ -61,9 +67,11 @@ export function startCommand(): Command {
           }
         }
 
+        const skipSubagentMerge = !options.subagentMerge;
+
         // Dry run
         if (options.dryRun) {
-          printDryRun(agent, result.artifacts, root);
+          printDryRun(agent, result.artifacts, root, skipSubagentMerge);
           process.exit(0);
         }
 
@@ -86,7 +94,8 @@ export function startCommand(): Command {
             result.artifacts,
             root,
             rootId,
-            rootAutoDetected
+            rootAutoDetected,
+            skipSubagentMerge
           );
 
           if (!tuiResult) {
@@ -106,6 +115,7 @@ export function startCommand(): Command {
             adapter: agent,
             skills: selectedSkills,
             mcpServers: selectedMcpServers,
+            skipSubagentMerge,
           });
         } catch (err) {
           const message =
@@ -143,7 +153,8 @@ export function startCommand(): Command {
 function printDryRun(
   agent: string,
   artifacts: ResolvedArtifacts,
-  root?: RootEntry
+  root?: RootEntry,
+  skipSubagentMerge = false
 ) {
   console.log(`\n=== AIR Session Configuration ===`);
   console.log(`Agent: ${agent}`);
@@ -152,8 +163,13 @@ function printDryRun(
     console.log(`Root: ${root.display_name || root.description}`);
   }
 
-  const mcpIds = root?.default_mcp_servers || Object.keys(artifacts.mcp);
-  const skillIds = root?.default_skills || Object.keys(artifacts.skills);
+  // Compute merged defaults from subagent roots (unless merge is disabled)
+  const merged = skipSubagentMerge
+    ? { mcpServerIds: root?.default_mcp_servers ?? [], skillIds: root?.default_skills ?? [] }
+    : getMergedDefaults(root, artifacts.roots);
+
+  const mcpIds = merged.mcpServerIds.length > 0 ? merged.mcpServerIds : (root?.default_mcp_servers || Object.keys(artifacts.mcp));
+  const skillIds = merged.skillIds.length > 0 ? merged.skillIds : (root?.default_skills || Object.keys(artifacts.skills));
   const pluginIds = root?.default_plugins || Object.keys(artifacts.plugins);
   const hookIds = root?.default_hooks || Object.keys(artifacts.hooks);
 

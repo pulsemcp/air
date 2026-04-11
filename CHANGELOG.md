@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.19] - 2026-04-11
+
+### Added
+- `--no-subagent-merge` flag for `air start` — parity with `air prepare` for skipping subagent root merging
+- TUI now pre-selects MCP servers and skills from subagent roots when a root declares `default_subagent_roots`
+- `getMergedDefaults` utility for computing the union of parent and subagent artifact defaults
+- `--dry-run` output for `air start` now reflects merged subagent artifacts
+
+### Changed
+- Adapter no longer merges subagent artifacts on top of explicit overrides — when `mcpServerOverrides` or `skillOverrides` are provided (e.g., from the TUI), they are treated as the final selection
+
 ## [0.0.18] - 2026-04-11
 
 ### Added

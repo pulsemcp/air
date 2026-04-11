@@ -74,9 +74,10 @@ export async function runInteractiveSelector(
   artifacts: ResolvedArtifacts,
   root?: RootEntry,
   rootId?: string,
-  rootAutoDetected = false
+  rootAutoDetected = false,
+  skipSubagentMerge = false
 ): Promise<TuiResult | null> {
-  const state = buildInitialState(artifacts, root, rootId, rootAutoDetected);
+  const state = buildInitialState(artifacts, root, rootId, rootAutoDetected, skipSubagentMerge);
 
   if (state.tabs.length === 0) {
     return getSelectedIds(state);
