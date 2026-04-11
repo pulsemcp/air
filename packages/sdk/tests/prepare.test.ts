@@ -812,6 +812,245 @@ export default async function(config, context) {
       }
     });
 
+    it("resolves ${VAR} in settings.json hook commands via secrets-env extension", async () => {
+      const savedVal = process.env.SDK_TEST_SETTINGS_SECRET;
+      process.env.SDK_TEST_SETTINGS_SECRET = "settings-resolved";
+
+      try {
+        const catalog = createTemp({
+          "air.json": {
+            name: "test",
+            extensions: ["@pulsemcp/air-secrets-env"],
+            hooks: ["./hooks.json"],
+            roots: ["./roots.json"],
+          },
+          "hooks.json": {
+            "settings-hook": {
+              description: "Hook with secret in command",
+              path: "hooks/settings-hook",
+            },
+          },
+          "hooks/settings-hook/HOOK.json": JSON.stringify({
+            event: "notification",
+            command: "node",
+            args: ["notify.js", "${SDK_TEST_SETTINGS_SECRET}"],
+          }),
+          "roots.json": {
+            default: {
+              name: "default",
+              description: "Default",
+              default_hooks: ["settings-hook"],
+            },
+          },
+        });
+
+        const target = createTemp({});
+
+        await prepareSession({
+          config: join(catalog, "air.json"),
+          adapter: "claude",
+          root: "default",
+          target,
+        });
+
+        // settings.json should have the resolved value in the hook command
+        const settings = JSON.parse(
+          readFileSync(join(target, ".claude", "settings.json"), "utf-8")
+        );
+        const commandFound = JSON.stringify(settings.hooks);
+        expect(commandFound).toContain("settings-resolved");
+        expect(commandFound).not.toContain("${SDK_TEST_SETTINGS_SECRET}");
+      } finally {
+        if (savedVal === undefined) {
+          delete process.env.SDK_TEST_SETTINGS_SECRET;
+        } else {
+          process.env.SDK_TEST_SETTINGS_SECRET = savedVal;
+        }
+      }
+    });
+
+    it("resolves ${VAR} in settings.json hook commands via secrets-file extension", async () => {
+      const catalog = createTemp({
+        "air.json": {
+          name: "test",
+          extensions: ["@pulsemcp/air-secrets-file"],
+          hooks: ["./hooks.json"],
+          roots: ["./roots.json"],
+        },
+        "hooks.json": {
+          "file-settings-hook": {
+            description: "Hook with file secret in command",
+            path: "hooks/file-settings-hook",
+          },
+        },
+        "hooks/file-settings-hook/HOOK.json": JSON.stringify({
+          event: "pre_tool_call",
+          command: "bash",
+          args: ["setup.sh", "${FILE_SETTINGS_SECRET}"],
+        }),
+        "roots.json": {
+          default: {
+            name: "default",
+            description: "Default",
+            default_hooks: ["file-settings-hook"],
+          },
+        },
+        "secrets.json": { FILE_SETTINGS_SECRET: "file-settings-resolved" },
+      });
+
+      const target = createTemp({});
+
+      await prepareSession({
+        config: join(catalog, "air.json"),
+        adapter: "claude",
+        root: "default",
+        target,
+        extensionOptions: { "secrets-file": join(catalog, "secrets.json") },
+      });
+
+      const settings = JSON.parse(
+        readFileSync(join(target, ".claude", "settings.json"), "utf-8")
+      );
+      const commandFound = JSON.stringify(settings.hooks);
+      expect(commandFound).toContain("file-settings-resolved");
+      expect(commandFound).not.toContain("${FILE_SETTINGS_SECRET}");
+    });
+
+    it("resolves ${VAR} in both .mcp.json and settings.json simultaneously", async () => {
+      const savedVal = process.env.SDK_TEST_BOTH_SECRET;
+      process.env.SDK_TEST_BOTH_SECRET = "both-resolved";
+
+      try {
+        const catalog = createTemp({
+          "air.json": {
+            name: "test",
+            extensions: ["@pulsemcp/air-secrets-env"],
+            mcp: ["./mcp.json"],
+            hooks: ["./hooks.json"],
+            roots: ["./roots.json"],
+          },
+          "mcp.json": {
+            server: {
+              type: "stdio",
+              command: "npx",
+              env: { TOKEN: "${SDK_TEST_BOTH_SECRET}" },
+            },
+          },
+          "hooks.json": {
+            "both-hook": {
+              description: "Hook for both test",
+              path: "hooks/both-hook",
+            },
+          },
+          "hooks/both-hook/HOOK.json": JSON.stringify({
+            event: "session_end",
+            command: "node",
+            args: ["run.js", "${SDK_TEST_BOTH_SECRET}"],
+          }),
+          "roots.json": {
+            default: {
+              name: "default",
+              description: "Default",
+              default_mcp_servers: ["server"],
+              default_hooks: ["both-hook"],
+            },
+          },
+        });
+
+        const target = createTemp({});
+
+        await prepareSession({
+          config: join(catalog, "air.json"),
+          adapter: "claude",
+          root: "default",
+          target,
+        });
+
+        // .mcp.json should have resolved value
+        const mcpJson = JSON.parse(readFileSync(join(target, ".mcp.json"), "utf-8"));
+        expect(mcpJson.mcpServers.server.env.TOKEN).toBe("both-resolved");
+
+        // settings.json should also have resolved value
+        const settings = JSON.parse(
+          readFileSync(join(target, ".claude", "settings.json"), "utf-8")
+        );
+        const settingsStr = JSON.stringify(settings.hooks);
+        expect(settingsStr).toContain("both-resolved");
+        expect(settingsStr).not.toContain("${SDK_TEST_BOTH_SECRET}");
+      } finally {
+        if (savedVal === undefined) {
+          delete process.env.SDK_TEST_BOTH_SECRET;
+        } else {
+          process.env.SDK_TEST_BOTH_SECRET = savedVal;
+        }
+      }
+    });
+
+    it("transforms operate on all config files without mcpServers key", async () => {
+      const catalog = createTemp({
+        "air.json": {
+          name: "test",
+          extensions: ["./resolve-hooks.js"],
+          hooks: ["./hooks.json"],
+          roots: ["./roots.json"],
+        },
+        "hooks.json": {
+          "custom-hook": {
+            description: "Custom hook",
+            path: "hooks/custom-hook",
+          },
+        },
+        "hooks/custom-hook/HOOK.json": JSON.stringify({
+          event: "post_tool_call",
+          command: "echo",
+          args: ["test"],
+        }),
+        "roots.json": {
+          default: {
+            name: "default",
+            description: "Default",
+            default_hooks: ["custom-hook"],
+          },
+        },
+        // Custom transform that marks hooks in settings.json
+        "resolve-hooks.js": `
+export default async function(config, context) {
+  if (config.hooks) {
+    for (const val of Object.values(config.hooks)) {
+      if (Array.isArray(val)) {
+        // settings.json hook structure — mark as transformed
+        for (const group of val) {
+          if (group.hooks) {
+            for (const h of group.hooks) {
+              if (h.command) h.command = h.command + " --transformed";
+            }
+          }
+        }
+      }
+    }
+  }
+  return config;
+}
+`,
+      });
+
+      const target = createTemp({});
+
+      await prepareSession({
+        config: join(catalog, "air.json"),
+        adapter: "claude",
+        root: "default",
+        target,
+      });
+
+      // settings.json should have the transform applied
+      const settings = JSON.parse(
+        readFileSync(join(target, ".claude", "settings.json"), "utf-8")
+      );
+      const settingsStr = JSON.stringify(settings.hooks);
+      expect(settingsStr).toContain("--transformed");
+    });
+
     it("throws with invalid extension specifier", async () => {
       const catalog = createTemp({
         "air.json": {

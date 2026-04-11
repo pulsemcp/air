@@ -12,7 +12,7 @@ import { detectRoot } from "./root-detection.js";
 import { loadExtensions, type LoadedExtensions } from "./extension-loader.js";
 import { runTransforms } from "./transform-runner.js";
 import { checkProviderFreshness } from "./cache-freshness.js";
-import { readFileSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import {
   findUnresolvedVars,
   findUnresolvedHookVars,
@@ -165,15 +165,11 @@ export async function prepareSession(
     }
   );
 
-  // Run transforms in extension-list order on the written .mcp.json and HOOK.json files
-  const mcpConfigPath = session.configFiles.find((f) =>
-    f.endsWith(".mcp.json")
-  );
-
-  if (loaded.transforms.length > 0 && mcpConfigPath) {
+  // Run transforms in extension-list order on all config files (e.g., .mcp.json, settings.json)
+  if (loaded.transforms.length > 0 && session.configFiles.length > 0) {
     await runTransforms({
       transforms: loaded.transforms,
-      mcpConfigPath,
+      configFiles: session.configFiles,
       targetDir: options.target ?? process.cwd(),
       root,
       artifacts,
@@ -186,10 +182,9 @@ export async function prepareSession(
   if (!options.skipValidation) {
     const allUnresolved: string[] = [];
 
-    if (mcpConfigPath) {
-      const config: McpConfig = JSON.parse(
-        readFileSync(mcpConfigPath, "utf-8")
-      );
+    for (const configFile of session.configFiles) {
+      if (!existsSync(configFile)) continue;
+      const config: McpConfig = JSON.parse(readFileSync(configFile, "utf-8"));
       allUnresolved.push(...findUnresolvedVars(config));
     }
 

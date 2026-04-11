@@ -61,9 +61,10 @@ function walkValue(value: unknown, vars: Set<string>): void {
 }
 
 /**
- * Validate that no unresolved ${VAR} patterns remain in the .mcp.json file.
- * This only checks the MCP config file; use findUnresolvedHookVars() to
- * also check HOOK.json files, or rely on prepareSession() which checks both.
+ * Validate that no unresolved ${VAR} patterns remain in a config file.
+ * Checks `mcpServers` and `hooks` keys. Use findUnresolvedHookVars() to
+ * also check HOOK.json files, or rely on prepareSession() which checks
+ * all config files and HOOK.json files.
  *
  * @throws Error listing all unresolved variables if any are found.
  */

@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.25] - 2026-04-11
+
+### Changed
+- Transform pipeline is now config-file-agnostic — transforms run on all config files returned by `prepareSession().configFiles` (e.g., `.mcp.json`, `.claude/settings.json`), not just `.mcp.json`
+- `McpConfig.mcpServers` is now optional — config files without MCP servers (like `settings.json`) pass through transforms correctly
+- `TransformContext` has a new `configFilePath` field pointing to the config file currently being transformed; `mcpConfigPath` is deprecated
+- `@pulsemcp/air-secrets-env` and `@pulsemcp/air-secrets-file` guard against undefined `mcpServers` for non-.mcp.json configs
+- Unresolved `${VAR}` validation now checks all config files, not just `.mcp.json`
+
+### Fixed
+- `${VAR}` patterns in hook `command` and `args` fields are now resolved in `.claude/settings.json` — previously only `.mcp.json` and `HOOK.json` were transformed, so registered hook commands in settings.json retained unresolved patterns
+
 ## [0.0.24] - 2026-04-11
 
 ### Fixed

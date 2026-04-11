@@ -48,6 +48,7 @@ function makeContext(overrides?: Partial<TransformContext>): TransformContext {
     targetDir: "/tmp/test",
     artifacts: emptyArtifacts(),
     options: {},
+    configFilePath: "/tmp/test/.mcp.json",
     mcpConfigPath: "/tmp/test/.mcp.json",
     ...overrides,
   };

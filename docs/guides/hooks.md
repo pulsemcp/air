@@ -193,12 +193,14 @@ Without a root, all hooks are available.
 
 ## Secret resolution in hooks
 
-Hook `env` values support `${VAR}` interpolation, and these patterns are resolved by the same secrets transforms that handle MCP server configs. During `air prepare`, the transform pipeline processes both `.mcp.json` and all injected `HOOK.json` files:
+Hook fields (`command`, `args`, `env`) support `${VAR}` interpolation, and these patterns are resolved by the same secrets transforms that handle MCP server configs. During `air prepare`, the transform pipeline processes all config files returned by the adapter — including `.mcp.json`, `.claude/settings.json`, and all injected `HOOK.json` files:
 
 - **`@pulsemcp/air-secrets-env`** resolves `${VAR}` and `${VAR:-default}` from process environment variables
 - **`@pulsemcp/air-secrets-file`** resolves `${VAR}` from a JSON secrets file (via `--secrets-file`)
 
-After transforms run, AIR validates that no unresolved `${VAR}` patterns remain in either `.mcp.json` or `HOOK.json` files. Use `--skip-validation` if partial resolution is intentional.
+This means `${VAR}` patterns in hook commands and args are resolved everywhere — both in the source `HOOK.json` files and in the agent's registered hook config (e.g., `.claude/settings.json`).
+
+After transforms run, AIR validates that no unresolved `${VAR}` patterns remain in any config file or `HOOK.json` file. Use `--skip-validation` if partial resolution is intentional.
 
 ## Agent translation
 

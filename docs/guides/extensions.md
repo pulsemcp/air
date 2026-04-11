@@ -139,17 +139,18 @@ This fetches the latest commits for each cached mutable ref and reports what cha
 
 ## Transforms
 
-Transforms modify artifact configs after the adapter writes them, enabling post-processing like secrets injection. They operate on both `.mcp.json` (MCP server configs) and `HOOK.json` files (hook configs), and future artifact types will be added automatically.
+Transforms modify artifact configs after the adapter writes them, enabling post-processing like secrets injection. They operate on all config files returned by the adapter (e.g., `.mcp.json`, `.claude/settings.json`) as well as `HOOK.json` files (hook configs).
 
 ### How transforms work
 
 During `air prepare`:
 
-1. The adapter writes `.mcp.json` and copies hook directories
-2. The transform runner collects all `HOOK.json` files from injected hooks
-3. Each transform runs sequentially in declaration order
-4. Each transform receives the combined config (MCP servers + hooks) and returns a modified version
-5. The final results are written back to `.mcp.json` and each `HOOK.json`
+1. The adapter writes config files (e.g., `.mcp.json`, `.claude/settings.json`) and copies hook directories
+2. The transform runner iterates over each config file returned by the adapter
+3. For `.mcp.json`, `HOOK.json` contents are merged in before transforms and written back separately afterward
+4. For all other config files (e.g., `settings.json`), transforms run directly on the file content
+5. Each transform runs sequentially in declaration order on each config file
+6. The final results are written back to each config file
 
 ### Transform context
 
@@ -161,7 +162,8 @@ Transforms receive a context object with:
 | `root` | Active root entry (if any) |
 | `artifacts` | All resolved artifacts |
 | `options` | CLI options contributed by this extension |
-| `mcpConfigPath` | Path to the `.mcp.json` file |
+| `configFilePath` | Path to the config file currently being transformed |
+| `mcpConfigPath` | Path to the `.mcp.json` file (deprecated — use `configFilePath`) |
 | `hookPaths` | Paths to injected hook directories (each contains a `HOOK.json`) |
 
 ### Extension-contributed CLI flags
@@ -205,9 +207,10 @@ Here's the complete flow during `air prepare`:
    ├── Write .mcp.json
    ├── Copy skills to workspace
    ├── Copy hooks to workspace
+   ├── Register hooks in settings.json (adapter-specific)
    └── Copy referenced documents
-6. Run transforms sequentially on .mcp.json and HOOK.json files
-7. Validate no unresolved ${VAR} patterns in .mcp.json and HOOK.json
+6. Run transforms sequentially on all config files and HOOK.json files
+7. Validate no unresolved ${VAR} patterns in config files and HOOK.json
 8. Return PreparedSession
 ```
 
