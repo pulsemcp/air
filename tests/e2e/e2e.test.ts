@@ -642,6 +642,8 @@ const isClaudeInstalled = (() => {
   }
 })();
 
+// Pinned to @anthropic-ai/claude-code@2.1.98 in .github/workflows/ci.yml.
+// If the pinned version changes, the mock endpoints below may need updating.
 describe.skipIf(!isClaudeInstalled)(
   "air prepare claude — real Claude Code validation",
   () => {
@@ -763,23 +765,35 @@ describe.skipIf(!isClaudeInstalled)(
             stdout: string;
             stderr: string;
             exitCode: number;
+            detail: string;
           }>((resolve) => {
             exec(
               'claude --print --dangerously-skip-permissions --model claude-sonnet-4-20250514 "Say hello"',
               {
                 cwd: target,
+                encoding: "utf-8",
                 env: {
                   ...process.env,
                   ANTHROPIC_BASE_URL: `http://127.0.0.1:${port}`,
                   ANTHROPIC_API_KEY: "test-key-for-e2e",
+                  CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
                 },
                 timeout: 30_000,
               },
               (error, stdout, stderr) => {
+                const exitCode = error
+                  ? typeof error.code === "number"
+                    ? error.code
+                    : 1
+                  : 0;
+                const detail = error?.killed
+                  ? ` (killed, signal=${error.signal})`
+                  : "";
                 resolve({
                   stdout: stdout ?? "",
                   stderr: stderr ?? "",
-                  exitCode: error ? (error.code as number) ?? 1 : 0,
+                  exitCode,
+                  detail,
                 });
               }
             );
@@ -788,10 +802,13 @@ describe.skipIf(!isClaudeInstalled)(
           // 4. Claude Code accepted the .mcp.json and completed a conversation
           expect(
             claudeResult.exitCode,
-            `Claude Code failed (exit ${claudeResult.exitCode}).\n` +
+            `Claude Code failed (exit ${claudeResult.exitCode}${claudeResult.detail}).\n` +
               `stderr: ${claudeResult.stderr}\n` +
               `stdout: ${claudeResult.stdout}`
           ).toBe(0);
+          expect(claudeResult.stdout).toContain(
+            "Hello! I received your message."
+          );
           expect(messagesReceived).toBeGreaterThanOrEqual(1);
         } finally {
           await new Promise<void>((resolve) =>
