@@ -10,6 +10,7 @@ import { resolve, dirname } from "path";
 import {
   getDefaultAirJsonPath,
   detectSchemaType,
+  detectSchemaFromValue,
   getAllSchemaTypes,
   type SchemaType,
 } from "@pulsemcp/air-core";
@@ -215,11 +216,12 @@ export function discoverArtifacts(
       if (typeof data !== "object" || data === null || Array.isArray(data)) {
         continue;
       }
-      // Skip JSON Schema definitions — their $schema points at a meta-schema
-      // (e.g. json-schema.org), not at an AIR schema URL.
+      // If the file declares a $schema, it must point to a known AIR schema.
+      // This rejects JSON Schema definitions, OpenAPI schemas, and any other
+      // structured JSON that happens to match an artifact keyword in its filename.
       if (
         typeof data.$schema === "string" &&
-        data.$schema.includes("json-schema.org")
+        !detectSchemaFromValue(data.$schema)
       ) {
         continue;
       }

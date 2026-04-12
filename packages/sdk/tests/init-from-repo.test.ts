@@ -356,21 +356,52 @@ describe("discoverArtifacts", () => {
     expect(artifacts[0].repoPath).toBe("mcp/mcp.json");
   });
 
-  it("skips files whose $schema points to a JSON Schema meta-schema", () => {
+  it("skips files whose $schema points to a non-AIR schema URL", () => {
+    const nonAirSchemas = [
+      "http://json-schema.org/draft-04/schema#",
+      "http://json-schema.org/draft-06/schema#",
+      "http://json-schema.org/draft-07/schema#",
+      "https://json-schema.org/draft/2019-09/schema",
+      "https://json-schema.org/draft/2020-12/schema",
+      "https://spec.openapis.org/oas/3.1/schema/2022-10-07",
+    ];
+
+    for (const schemaUrl of nonAirSchemas) {
+      const dir = createGitRepo("https://github.com/acme/config.git", {
+        "mcp/mcp.json": {
+          $schema: schemaUrl,
+          title: "Not an AIR catalog",
+          type: "object",
+        },
+        "skills/skills.json": {
+          "my-skill": { description: "A real skill", path: "skills/my-skill" },
+        },
+      });
+
+      const artifacts = discoverArtifacts(dir, "acme/config", "main");
+      expect(artifacts).toHaveLength(1);
+      expect(artifacts[0].type).toBe("skills");
+    }
+  });
+
+  it("discovers catalog files whose $schema points to a known AIR schema URL", () => {
     const dir = createGitRepo("https://github.com/acme/config.git", {
       "mcp/mcp.json": {
-        $schema: "http://json-schema.org/draft-07/schema#",
-        title: "This is a schema definition, not a catalog",
-        type: "object",
+        $schema:
+          "https://raw.githubusercontent.com/pulsemcp/air/main/schemas/mcp.schema.json",
+        server: { type: "stdio", command: "echo" },
       },
       "skills/skills.json": {
+        $schema:
+          "https://raw.githubusercontent.com/pulsemcp/air/main/schemas/skills.schema.json",
         "my-skill": { description: "A real skill", path: "skills/my-skill" },
       },
     });
 
     const artifacts = discoverArtifacts(dir, "acme/config", "main");
-    expect(artifacts).toHaveLength(1);
-    expect(artifacts[0].type).toBe("skills");
+    expect(artifacts).toHaveLength(2);
+    const types = artifacts.map((a) => a.type).sort();
+    expect(types).toEqual(["mcp", "skills"]);
   });
 
   it("discovers multiple files of the same artifact type", () => {
