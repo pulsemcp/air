@@ -154,7 +154,7 @@ describe("render legend", () => {
     expect(legend).not.toContain("Esc");
   });
 
-  it("omits toggle/all/none/only on non-overridable tab", () => {
+  it("shows toggle/all/none/only on hooks tab (now overridable)", () => {
     const state = buildInitialState(
       makeArtifacts({
         hooks: {
@@ -166,13 +166,13 @@ describe("render legend", () => {
     const legend = findLegendLine(lines);
     expect(legend).toContain("types");
     expect(legend).toContain("navigate");
-    expect(legend).not.toContain("toggle");
-    expect(legend).not.toContain("all");
-    expect(legend).not.toContain("none");
-    expect(legend).not.toContain("only");
+    expect(legend).toContain("toggle");
+    expect(legend).toContain("all");
+    expect(legend).toContain("none");
+    expect(legend).toContain("only");
   });
 
-  it("omits Space toggle in search mode on non-overridable tab", () => {
+  it("shows Space toggle in search mode on hooks tab (now overridable)", () => {
     const state = buildInitialState(
       makeArtifacts({
         hooks: {
@@ -186,6 +186,6 @@ describe("render legend", () => {
     const legend = findSearchLegendLine(lines);
     expect(legend).toContain("Esc");
     expect(legend).toContain("confirm");
-    expect(legend).not.toContain("toggle");
+    expect(legend).toContain("toggle");
   });
 });
