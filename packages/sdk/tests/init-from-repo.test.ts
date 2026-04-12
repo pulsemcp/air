@@ -384,6 +384,19 @@ describe("discoverArtifacts", () => {
     }
   });
 
+  it("discovers catalog files when $schema is not a string", () => {
+    const dir = createGitRepo("https://github.com/acme/config.git", {
+      "mcp/mcp.json": {
+        $schema: 42,
+        server: { type: "stdio", command: "echo" },
+      },
+    });
+
+    const artifacts = discoverArtifacts(dir, "acme/config", "main");
+    expect(artifacts).toHaveLength(1);
+    expect(artifacts[0].type).toBe("mcp");
+  });
+
   it("discovers catalog files whose $schema points to a known AIR schema URL", () => {
     const dir = createGitRepo("https://github.com/acme/config.git", {
       "mcp/mcp.json": {
