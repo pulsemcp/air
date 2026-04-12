@@ -356,6 +356,23 @@ describe("discoverArtifacts", () => {
     expect(artifacts[0].repoPath).toBe("mcp/mcp.json");
   });
 
+  it("skips files whose $schema points to a JSON Schema meta-schema", () => {
+    const dir = createGitRepo("https://github.com/acme/config.git", {
+      "mcp/mcp.json": {
+        $schema: "http://json-schema.org/draft-07/schema#",
+        title: "This is a schema definition, not a catalog",
+        type: "object",
+      },
+      "skills/skills.json": {
+        "my-skill": { description: "A real skill", path: "skills/my-skill" },
+      },
+    });
+
+    const artifacts = discoverArtifacts(dir, "acme/config", "main");
+    expect(artifacts).toHaveLength(1);
+    expect(artifacts[0].type).toBe("skills");
+  });
+
   it("discovers multiple files of the same artifact type", () => {
     const dir = createGitRepo("https://github.com/acme/config.git", {
       "frontend/skills.json": {

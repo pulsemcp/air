@@ -215,6 +215,14 @@ export function discoverArtifacts(
       if (typeof data !== "object" || data === null || Array.isArray(data)) {
         continue;
       }
+      // Skip JSON Schema definitions — their $schema points at a meta-schema
+      // (e.g. json-schema.org), not at an AIR schema URL.
+      if (
+        typeof data.$schema === "string" &&
+        data.$schema.includes("json-schema.org")
+      ) {
+        continue;
+      }
     } catch {
       continue;
     }
