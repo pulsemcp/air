@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.27] - 2026-04-12
+
+### Changed
+- Rename `←→ tabs` to `←→ types` in the TUI legend since the arrow keys switch between artifact types, not browser-style tabs
+
+### Added
+- Context-sensitive key hints in the TUI legend bar: search mode displays `↑↓ navigate` / `Space toggle` (on overridable tabs) / `Enter confirm` / `Esc cancel`; normal mode shows the full legend
+
 ## [0.0.26] - 2026-04-11
 
 ### Added
