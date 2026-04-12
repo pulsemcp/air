@@ -1,5 +1,7 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { execSync } from "child_process";
+import { exec, execSync } from "child_process";
+import { createServer } from "http";
+import type { AddressInfo } from "net";
 import { resolve, join } from "path";
 import {
   mkdirSync,
@@ -626,3 +628,195 @@ describe("air start", () => {
     expect(mcpJson.mcpServers["design-system"]).toBeDefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// 7. air prepare claude — real Claude Code validation
+// ---------------------------------------------------------------------------
+
+const isClaudeInstalled = (() => {
+  try {
+    execSync("which claude", { stdio: "pipe" });
+    return true;
+  } catch {
+    return false;
+  }
+})();
+
+// Pinned to @anthropic-ai/claude-code@2.1.98 in .github/workflows/ci.yml.
+// If the pinned version changes, the mock endpoints below may need updating.
+describe.skipIf(!isClaudeInstalled)(
+  "air prepare claude — real Claude Code validation",
+  () => {
+    const SSE_BODY = [
+      "event: message_start",
+      'data: {"type":"message_start","message":{"id":"msg_mock_001","type":"message","role":"assistant","content":[],"model":"claude-sonnet-4-20250514","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":100,"output_tokens":1}}}',
+      "",
+      "event: content_block_start",
+      'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}',
+      "",
+      "event: ping",
+      'data: {"type":"ping"}',
+      "",
+      "event: content_block_delta",
+      'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello! I received your message."}}',
+      "",
+      "event: content_block_stop",
+      'data: {"type":"content_block_stop","index":0}',
+      "",
+      "event: message_delta",
+      'data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":8}}',
+      "",
+      "event: message_stop",
+      'data: {"type":"message_stop"}',
+      "",
+    ].join("\n");
+
+    it(
+      "generated .mcp.json is accepted by a real Claude Code instance",
+      async () => {
+        const target = createTempDir();
+
+        // 1. Run air prepare claude to generate .mcp.json
+        const prepareResult = tryRun(
+          `prepare claude` +
+            ` --config ${join(FIXTURES, "air.json")}` +
+            ` --root frontend-app` +
+            ` --target ${target}` +
+            ` --skip-validation`,
+          { GITHUB_TOKEN: "ghp_test_e2e_token" }
+        );
+        expect(prepareResult.exitCode).toBe(0);
+
+        // Verify .mcp.json includes the streamable-http → http translation
+        const mcpJson = JSON.parse(
+          readFileSync(join(target, ".mcp.json"), "utf-8")
+        );
+        expect(mcpJson.mcpServers["design-system"]).toBeDefined();
+        expect(mcpJson.mcpServers["design-system"].type).toBe("http");
+
+        // 2. Start mock Anthropic API server
+        let messagesReceived = 0;
+
+        const server = createServer((req, res) => {
+          let body = "";
+          req.on("data", (chunk: string) => {
+            body += chunk;
+          });
+          req.on("end", () => {
+            // Parse pathname without query string
+            const pathname = new URL(
+              req.url || "/",
+              "http://localhost"
+            ).pathname;
+
+            if (pathname === "/v1/messages" && req.method === "POST") {
+              messagesReceived++;
+              res.writeHead(200, {
+                "Content-Type": "text/event-stream",
+                "Cache-Control": "no-cache",
+                Connection: "keep-alive",
+              });
+              res.end(SSE_BODY);
+              return;
+            }
+
+            if (
+              pathname === "/v1/messages/count_tokens" &&
+              req.method === "POST"
+            ) {
+              res.writeHead(200, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ input_tokens: 100 }));
+              return;
+            }
+
+            if (pathname.startsWith("/v1/models")) {
+              res.writeHead(200, { "Content-Type": "application/json" });
+              res.end(
+                JSON.stringify({
+                  data: [
+                    {
+                      id: "claude-sonnet-4-20250514",
+                      display_name: "Claude Sonnet 4",
+                      created_at: "2025-05-14",
+                    },
+                  ],
+                  has_more: false,
+                  first_id: "claude-sonnet-4-20250514",
+                  last_id: "claude-sonnet-4-20250514",
+                })
+              );
+              return;
+            }
+
+            // Catch-all: return empty JSON with 200
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end("{}");
+          });
+        });
+
+        await new Promise<void>((resolve) =>
+          server.listen(0, "127.0.0.1", resolve)
+        );
+        const port = (server.address() as AddressInfo).port;
+
+        try {
+          // 3. Run Claude Code against mock API with the prepared config
+          const claudeResult = await new Promise<{
+            stdout: string;
+            stderr: string;
+            exitCode: number;
+            detail: string;
+          }>((resolve) => {
+            exec(
+              'claude --print --dangerously-skip-permissions --model claude-sonnet-4-20250514 "Say hello"',
+              {
+                cwd: target,
+                encoding: "utf-8",
+                env: {
+                  ...process.env,
+                  ANTHROPIC_BASE_URL: `http://127.0.0.1:${port}`,
+                  ANTHROPIC_API_KEY: "test-key-for-e2e",
+                  CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+                },
+                timeout: 30_000,
+              },
+              (error, stdout, stderr) => {
+                const exitCode = error
+                  ? typeof error.code === "number"
+                    ? error.code
+                    : 1
+                  : 0;
+                const detail = error?.killed
+                  ? ` (killed, signal=${error.signal})`
+                  : "";
+                resolve({
+                  stdout: stdout ?? "",
+                  stderr: stderr ?? "",
+                  exitCode,
+                  detail,
+                });
+              }
+            );
+          });
+
+          // 4. Claude Code accepted the .mcp.json and completed a conversation
+          expect(
+            claudeResult.exitCode,
+            `Claude Code failed (exit ${claudeResult.exitCode}${claudeResult.detail}).\n` +
+              `stderr: ${claudeResult.stderr}\n` +
+              `stdout: ${claudeResult.stdout}`
+          ).toBe(0);
+          expect(claudeResult.stdout).toContain(
+            "Hello! I received your message."
+          );
+          expect(messagesReceived).toBeGreaterThanOrEqual(1);
+        } finally {
+          await new Promise<void>((resolve) =>
+            server.close(() => resolve())
+          );
+        }
+      },
+      60_000
+    );
+  }
+);
