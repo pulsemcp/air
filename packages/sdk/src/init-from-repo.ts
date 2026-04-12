@@ -10,6 +10,7 @@ import { resolve, dirname } from "path";
 import {
   getDefaultAirJsonPath,
   detectSchemaType,
+  detectSchemaFromValue,
   getAllSchemaTypes,
   type SchemaType,
 } from "@pulsemcp/air-core";
@@ -213,6 +214,15 @@ export function discoverArtifacts(
       const content = readFileSync(filePath, "utf-8");
       const data = JSON.parse(content);
       if (typeof data !== "object" || data === null || Array.isArray(data)) {
+        continue;
+      }
+      // If the file declares a $schema, it must point to a known AIR schema.
+      // This rejects JSON Schema definitions, OpenAPI schemas, and any other
+      // structured JSON that happens to match an artifact keyword in its filename.
+      if (
+        typeof data.$schema === "string" &&
+        !detectSchemaFromValue(data.$schema)
+      ) {
         continue;
       }
     } catch {
