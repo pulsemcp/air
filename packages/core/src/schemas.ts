@@ -49,15 +49,17 @@ const SCHEMA_FILES: Record<SchemaType, string> = {
   hooks: "hooks.schema.json",
 };
 
-// Substrings to match against filenames (checked in order, longest first to avoid false matches)
-const SCHEMA_SUBSTRINGS: [string, SchemaType][] = [
-  ["references", "references"],
-  ["plugins", "plugins"],
-  ["skills", "skills"],
-  ["roots", "roots"],
-  ["hooks", "hooks"],
-  ["mcp", "mcp"],
-  ["air", "air"],
+// Patterns to match against the basename stem (without .json).
+// Each keyword must appear as a whole word delimited by start/end or a separator (. - _).
+// Checked longest-first to avoid shorter prefixes shadowing longer ones.
+const SCHEMA_PATTERNS: [RegExp, SchemaType][] = [
+  [/(?:^|[._-])references(?:[._-]|$)/, "references"],
+  [/(?:^|[._-])plugins(?:[._-]|$)/, "plugins"],
+  [/(?:^|[._-])skills(?:[._-]|$)/, "skills"],
+  [/(?:^|[._-])roots(?:[._-]|$)/, "roots"],
+  [/(?:^|[._-])hooks(?:[._-]|$)/, "hooks"],
+  [/(?:^|[._-])mcp(?:[._-]|$)/, "mcp"],
+  [/(?:^|[._-])air(?:[._-]|$)/, "air"],
 ];
 
 export function getSchemasDir(): string {
@@ -76,8 +78,10 @@ export function loadSchema(type: SchemaType): object {
 
 export function detectSchemaType(filename: string): SchemaType | null {
   const basename = (filename.split("/").pop() || filename).toLowerCase();
-  for (const [substring, type] of SCHEMA_SUBSTRINGS) {
-    if (basename.includes(substring)) {
+  if (basename.endsWith(".schema.json")) return null;
+  const stem = basename.replace(/\.json$/, "");
+  for (const [pattern, type] of SCHEMA_PATTERNS) {
+    if (pattern.test(stem)) {
       return type;
     }
   }
