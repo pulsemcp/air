@@ -28,7 +28,7 @@ describe("getSchemaPath / loadSchema", () => {
 });
 
 describe("detectSchemaType", () => {
-  it("detects from filename substrings", () => {
+  it("detects from word-boundary keyword matching", () => {
     expect(detectSchemaType("air.json")).toBe("air");
     expect(detectSchemaType("skills.json")).toBe("skills");
     expect(detectSchemaType("mcp.json")).toBe("mcp");
