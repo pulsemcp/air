@@ -333,6 +333,29 @@ describe("discoverArtifacts", () => {
     expect(artifacts).toHaveLength(0);
   });
 
+  it("skips *.schema.json files (JSON Schema definitions, not catalogs)", () => {
+    const dir = createGitRepo("https://github.com/acme/config.git", {
+      "schemas/mcp.schema.json": {
+        $schema: "http://json-schema.org/draft-07/schema#",
+        title: "MCP schema",
+        type: "object",
+      },
+      "schemas/skills.schema.json": {
+        $schema: "http://json-schema.org/draft-07/schema#",
+        title: "Skills schema",
+        type: "object",
+      },
+      "mcp/mcp.json": {
+        server: { type: "stdio", command: "echo" },
+      },
+    });
+
+    const artifacts = discoverArtifacts(dir, "acme/config", "main");
+    expect(artifacts).toHaveLength(1);
+    expect(artifacts[0].type).toBe("mcp");
+    expect(artifacts[0].repoPath).toBe("mcp/mcp.json");
+  });
+
   it("discovers multiple files of the same artifact type", () => {
     const dir = createGitRepo("https://github.com/acme/config.git", {
       "frontend/skills.json": {

@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.28] - 2026-04-12
+
+### Fixed
+- `air init` no longer misclassifies `*.schema.json` files or unrelated filenames containing artifact keywords as catalogs — `detectSchemaType` now excludes `*.schema.json` and uses word-boundary matching instead of substring matching
+
 ## [0.0.27] - 2026-04-12
 
 ### Changed
