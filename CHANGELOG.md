@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.29] - 2026-04-14
+
+### Added
+- New `PluginEmitter` extension interface in core for building distributable plugin packages from AIR artifacts
+- New `@pulsemcp/air-cowork` package — emits Claude Co-work plugin directories and marketplace indexes from AIR plugins, resolving skill/hook/MCP server references into the Co-work inline format
+- New `exportMarketplace()` SDK operation for programmatic marketplace generation
+- New `air export` CLI command for building marketplace directories (e.g., `air export cowork --output ./marketplace`)
+
 ## [0.0.28] - 2026-04-12
 
 ### Fixed

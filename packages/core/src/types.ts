@@ -315,10 +315,65 @@ export interface ExtensionCliOption {
 }
 
 /**
+ * Plugin Emitter — builds distributable plugin packages from AIR artifacts.
+ *
+ * Unlike AgentAdapter (which prepares a working directory for a live session),
+ * emitters produce standalone plugin directories for distribution — e.g., a
+ * Claude Co-work marketplace directory that can be synced via GitHub.
+ *
+ * Implementations: @pulsemcp/air-cowork, etc.
+ */
+export interface PluginEmitter {
+  /** Target format name (e.g., "cowork") */
+  name: string;
+  /** Human-readable display name (e.g., "Claude Co-work") */
+  displayName: string;
+
+  /**
+   * Build a marketplace directory containing one or more plugins.
+   * Resolves all AIR references (skills, hooks, MCP servers) into
+   * the target format's inline/self-contained layout.
+   */
+  buildMarketplace(
+    artifacts: ResolvedArtifacts,
+    pluginIds: string[],
+    outputDir: string,
+    options?: BuildMarketplaceOptions
+  ): Promise<BuiltMarketplace>;
+}
+
+export interface BuildMarketplaceOptions {
+  /** Override the marketplace display name in the index file. */
+  marketplaceName?: string;
+  /** Override the marketplace description in the index file. */
+  marketplaceDescription?: string;
+}
+
+export interface BuiltPlugin {
+  /** Plugin ID */
+  id: string;
+  /** Path to the emitted plugin directory */
+  path: string;
+  /** Number of skills included */
+  skillCount: number;
+  /** Number of hooks included */
+  hookCount: number;
+  /** Number of MCP servers included */
+  mcpServerCount: number;
+}
+
+export interface BuiltMarketplace {
+  /** Path to the marketplace index file */
+  indexPath: string;
+  /** Built plugins */
+  plugins: BuiltPlugin[];
+}
+
+/**
  * Extension metadata — the shape every AIR extension package default-exports.
  *
- * An extension can provide any combination of adapter, provider, and/or
- * transform. The SDK partitions extensions by checking which fields are
+ * An extension can provide any combination of adapter, provider, transform,
+ * and/or emitter. The SDK partitions extensions by checking which fields are
  * present rather than using a type discriminant.
  */
 export interface AirExtension {
@@ -329,6 +384,8 @@ export interface AirExtension {
   provider?: CatalogProvider;
   /** Post-prepare transform for artifact configs (MCP servers, hooks, etc.) */
   transform?: PrepareTransform;
+  /** Plugin emitter for building distributable plugin packages (e.g., Co-work) */
+  emitter?: PluginEmitter;
   /** CLI options this extension contributes to `air prepare` */
   prepareOptions?: ExtensionCliOption[];
 }

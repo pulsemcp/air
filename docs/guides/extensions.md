@@ -9,6 +9,7 @@ Extensions are how AIR grows without bloating the core. Adapters, catalog provid
 | **Adapter** | Translate AIR config to agent-specific formats | `@pulsemcp/air-adapter-claude` |
 | **Provider** | Resolve remote URIs in artifact paths | `@pulsemcp/air-provider-github` |
 | **Transform** | Modify artifact configs (`.mcp.json`, `HOOK.json`) after session preparation | `@pulsemcp/air-secrets-env`, `@pulsemcp/air-secrets-file` |
+| **Emitter** | Build distributable plugin packages from AIR artifacts | `@pulsemcp/air-cowork` |
 
 A single extension package can provide any combination of these.
 
@@ -175,6 +176,42 @@ air prepare claude --secrets-file /path/to/secrets.env
 ```
 
 The flag's value is passed to the transform via `context.options`.
+
+## Emitters
+
+Emitters build distributable plugin packages from AIR artifacts. While adapters prepare a working directory for a live agent session, emitters produce standalone plugin directories for distribution — e.g., a Claude Co-work marketplace that can be synced via GitHub.
+
+### How emitters work
+
+When you run `air export`, the emitter:
+
+1. Takes the resolved AIR artifacts and a list of plugin IDs
+2. For each plugin, resolves all references (skills, hooks, MCP servers) into the target format's inline layout
+3. Writes self-contained plugin directories with all content embedded
+4. Produces a marketplace index file
+
+### Co-work emitter
+
+The `@pulsemcp/air-cowork` emitter translates AIR plugins into Claude Co-work plugin directories:
+
+- Writes `.claude-plugin/plugin.json` manifest from AIR plugin metadata
+- Copies skills into `skills/{skill-id}/SKILL.md` with reference documents
+- Translates AIR hooks into Co-work's inline `hooks/hooks.json` format (mapping AIR event names to Co-work event names like `SessionStart`, `PreToolUse`, etc.)
+- Copies hook scripts into `scripts/{hook-id}/` and rewrites paths to use `${CLAUDE_PLUGIN_ROOT}`
+- Translates MCP server configs into `.mcp.json` (same format as Claude Code)
+- Produces a `marketplace.json` index suitable for Co-work's GitHub marketplace sync
+
+AIR events are mapped to Co-work events as follows:
+
+| AIR Event | Co-work Event |
+|-----------|---------------|
+| `session_start` | `SessionStart` |
+| `session_end` | `SessionEnd` |
+| `pre_tool_call` | `PreToolUse` |
+| `post_tool_call` | `PostToolUse` |
+| `notification` | `Notification` |
+
+AIR events without a Co-work equivalent are silently skipped.
 
 ## Extension loading order
 
