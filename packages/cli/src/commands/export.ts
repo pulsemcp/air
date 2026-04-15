@@ -30,6 +30,10 @@ export function exportCommand(): Command {
       "--marketplace-description <description>",
       "Override the marketplace description in the index file"
     )
+    .option(
+      "--marketplace-owner <name>",
+      "Marketplace owner name (required by Claude Co-work)"
+    )
     .action(
       async (
         emitter: string,
@@ -39,6 +43,7 @@ export function exportCommand(): Command {
           plugins?: string;
           marketplaceName?: string;
           marketplaceDescription?: string;
+          marketplaceOwner?: string;
         }
       ) => {
         try {
@@ -51,6 +56,9 @@ export function exportCommand(): Command {
               : undefined,
             marketplaceName: options.marketplaceName,
             marketplaceDescription: options.marketplaceDescription,
+            marketplaceOwner: options.marketplaceOwner
+              ? { name: options.marketplaceOwner }
+              : undefined,
           });
 
           const { marketplace } = result;

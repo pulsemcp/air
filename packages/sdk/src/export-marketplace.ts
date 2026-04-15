@@ -20,6 +20,8 @@ export interface ExportMarketplaceOptions {
   marketplaceName?: string;
   /** Override the marketplace description. */
   marketplaceDescription?: string;
+  /** Marketplace owner (required by some formats, e.g. Claude Co-work). */
+  marketplaceOwner?: { name: string; email?: string };
   /** Pre-loaded extensions (avoids double loading when CLI has already loaded them). */
   extensions?: LoadedExtensions;
 }
@@ -84,6 +86,7 @@ export async function exportMarketplace(
     {
       marketplaceName: options.marketplaceName,
       marketplaceDescription: options.marketplaceDescription,
+      marketplaceOwner: options.marketplaceOwner,
     }
   );
 

@@ -347,6 +347,8 @@ export interface BuildMarketplaceOptions {
   marketplaceName?: string;
   /** Override the marketplace description in the index file. */
   marketplaceDescription?: string;
+  /** Marketplace owner (required by some formats, e.g. Claude Co-work). */
+  marketplaceOwner?: { name: string; email?: string };
 }
 
 export interface BuiltPlugin {

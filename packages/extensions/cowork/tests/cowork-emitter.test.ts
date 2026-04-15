@@ -714,11 +714,17 @@ describe("CoworkEmitter", () => {
       );
 
       expect(result.plugins).toHaveLength(2);
-      expect(result.indexPath).toBe(join(outputDir, "marketplace.json"));
+      expect(result.indexPath).toBe(
+        join(outputDir, ".claude-plugin", "marketplace.json")
+      );
 
       // Check marketplace.json
       const index = JSON.parse(readFileSync(result.indexPath, "utf-8"));
       expect(index.name).toBe("air-marketplace");
+      expect(index.owner).toEqual({ name: "AIR" });
+      expect(index.metadata.description).toBe(
+        "Plugin marketplace generated from AIR configuration"
+      );
       expect(index.plugins).toHaveLength(2);
       expect(index.plugins[0].name).toBe("code-quality");
       expect(index.plugins[0].source).toBe("./code-quality");
@@ -754,13 +760,21 @@ describe("CoworkEmitter", () => {
       await emitter.buildMarketplace(artifacts, ["minimal"], outputDir, {
         marketplaceName: "acme-plugins",
         marketplaceDescription: "Acme Corp internal plugins",
+        marketplaceOwner: { name: "Acme Corp", email: "dev@acme.com" },
       });
 
       const index = JSON.parse(
-        readFileSync(join(outputDir, "marketplace.json"), "utf-8")
+        readFileSync(
+          join(outputDir, ".claude-plugin", "marketplace.json"),
+          "utf-8"
+        )
       );
       expect(index.name).toBe("acme-plugins");
-      expect(index.description).toBe("Acme Corp internal plugins");
+      expect(index.owner).toEqual({
+        name: "Acme Corp",
+        email: "dev@acme.com",
+      });
+      expect(index.metadata.description).toBe("Acme Corp internal plugins");
     });
 
     it("throws on unknown plugin IDs", async () => {

@@ -54,7 +54,9 @@ export class CoworkEmitter implements PluginEmitter {
       builtPlugins.push(built);
     }
 
-    const indexPath = join(outputDir, "marketplace.json");
+    const claudePluginDir = join(outputDir, ".claude-plugin");
+    mkdirSync(claudePluginDir, { recursive: true });
+    const indexPath = join(claudePluginDir, "marketplace.json");
     const index = this.buildMarketplaceIndex(
       artifacts,
       pluginIds,
@@ -325,19 +327,23 @@ export class CoworkEmitter implements PluginEmitter {
         description: plugin.description,
       };
       if (plugin.version) entry.version = plugin.version;
-      if (plugin.title) entry.title = plugin.title;
       if (plugin.author) entry.author = plugin.author;
       if (plugin.keywords) entry.keywords = plugin.keywords;
       return entry;
     });
 
-    return {
+    const index: Record<string, unknown> = {
       name: options?.marketplaceName ?? "air-marketplace",
-      description:
-        options?.marketplaceDescription ??
-        "Plugin marketplace generated from AIR configuration",
+      owner: options?.marketplaceOwner ?? { name: "AIR" },
       plugins,
     };
+
+    const description =
+      options?.marketplaceDescription ??
+      "Plugin marketplace generated from AIR configuration";
+    index.metadata = { description };
+
+    return index;
   }
 
   private validatePluginIds(
