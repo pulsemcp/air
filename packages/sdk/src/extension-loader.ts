@@ -11,6 +11,8 @@ export interface LoadedExtensions {
   providers: AirExtension[];
   /** Extensions that provide a transform (in declaration order) */
   transforms: AirExtension[];
+  /** Extensions that provide a plugin emitter */
+  emitters: AirExtension[];
   /** All loaded extensions in declaration order */
   all: AirExtension[];
 }
@@ -33,6 +35,7 @@ export async function loadExtensions(
     adapters: [],
     providers: [],
     transforms: [],
+    emitters: [],
     all: [],
   };
 
@@ -42,6 +45,7 @@ export async function loadExtensions(
     if (ext.adapter) result.adapters.push(ext);
     if (ext.provider) result.providers.push(ext);
     if (ext.transform) result.transforms.push(ext);
+    if (ext.emitter) result.emitters.push(ext);
   }
 
   return result;

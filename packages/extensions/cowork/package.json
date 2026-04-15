@@ -1,5 +1,5 @@
 {
-  "name": "@pulsemcp/air-adapter-claude",
+  "name": "@pulsemcp/air-cowork",
   "version": "0.0.29",
   "publishConfig": {
     "access": "public"
@@ -7,9 +7,9 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/pulsemcp/air.git",
-    "directory": "packages/extensions/adapter-claude"
+    "directory": "packages/extensions/cowork"
   },
-  "description": "AIR adapter for Claude Code — translates AIR config to Claude Code format",
+  "description": "AIR plugin emitter for Claude Co-work — builds distributable plugin directories from AIR artifacts",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

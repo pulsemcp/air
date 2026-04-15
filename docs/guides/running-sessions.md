@@ -1,6 +1,6 @@
 # Running Sessions
 
-AIR provides two commands for launching agent sessions: `air start` for interactive use and `air prepare` for programmatic/orchestrator use.
+AIR provides commands for launching agent sessions (`air start`, `air prepare`) and for building distributable plugin packages (`air export`).
 
 ## Before you start
 
@@ -184,6 +184,76 @@ Override which skills, MCP servers, hooks, or plugins are activated, regardless 
 
 ```bash
 air prepare claude --skills deploy-staging --mcp-servers github,postgres-prod --hooks lint-pre-commit --plugins code-quality
+```
+
+## air export — building plugin marketplaces
+
+`air export` builds distributable plugin directories from AIR artifacts. It's designed for producing Claude Co-work marketplaces that can be synced via GitHub.
+
+```bash
+air export cowork --output ./marketplace
+```
+
+The emitter argument is required — it specifies which output format to use (e.g., `cowork`). The `--output` directory is where the marketplace will be written.
+
+### What it does
+
+1. Loads `air.json` and extensions
+2. Resolves artifacts (including remote URIs via providers)
+3. Finds the emitter extension matching the requested name
+4. Calls the emitter's `buildMarketplace()` for each plugin:
+   - Writes `.claude-plugin/plugin.json` manifest
+   - Copies skills with reference documents
+   - Translates hooks into inline format
+   - Copies hook scripts with `${CLAUDE_PLUGIN_ROOT}` paths
+   - Translates MCP server configs
+5. Writes a `marketplace.json` index file
+6. Outputs structured JSON to stdout
+
+### Options
+
+Required argument: `<emitter>` — the target format (e.g., `cowork`).
+
+| Flag | Description |
+|------|-------------|
+| `--output <dir>` | Output directory for the marketplace (required) |
+| `--config <path>` | Path to air.json (default: `~/.air/air.json` or `AIR_CONFIG`) |
+| `--plugins <ids>` | Comma-separated plugin IDs to export (default: all plugins) |
+| `--marketplace-name <name>` | Override the marketplace display name |
+| `--marketplace-description <desc>` | Override the marketplace description |
+
+### Output
+
+```bash
+air export cowork --output ./marketplace --plugins code-quality,deploy-toolkit
+```
+
+Produces:
+
+```
+marketplace/
+├── marketplace.json
+├── code-quality/
+│   ├── .claude-plugin/plugin.json
+│   ├── skills/lint-fix/SKILL.md
+│   └── hooks/hooks.json
+└── deploy-toolkit/
+    ├── .claude-plugin/plugin.json
+    ├── skills/deploy-staging/SKILL.md
+    ├── .mcp.json
+    └── scripts/pre-deploy-check/check.sh
+```
+
+The structured JSON output to stdout describes what was built:
+
+```json
+{
+  "indexPath": "/path/to/marketplace/marketplace.json",
+  "plugins": [
+    { "id": "code-quality", "path": "/path/to/marketplace/code-quality", "skillCount": 1, "hookCount": 1, "mcpServerCount": 0 },
+    { "id": "deploy-toolkit", "path": "/path/to/marketplace/deploy-toolkit", "skillCount": 1, "hookCount": 0, "mcpServerCount": 1 }
+  ]
+}
 ```
 
 ## How roots, adapters, and providers interact

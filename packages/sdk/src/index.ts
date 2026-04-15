@@ -40,6 +40,10 @@ export type {
   CacheRefreshResult,
   AirExtension,
   PrepareTransform,
+  PluginEmitter,
+  BuildMarketplaceOptions,
+  BuiltPlugin,
+  BuiltMarketplace,
   McpConfig,
   TransformContext,
   ExtensionCliOption,
@@ -93,6 +97,12 @@ export type {
   PrepareSessionOptions,
   PrepareSessionResult,
 } from "./prepare.js";
+
+export { exportMarketplace } from "./export-marketplace.js";
+export type {
+  ExportMarketplaceOptions,
+  ExportMarketplaceResult,
+} from "./export-marketplace.js";
 
 // Extension installer
 export { installExtensions } from "./install.js";

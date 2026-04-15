@@ -10,6 +10,7 @@ import { initCommand } from "./commands/init.js";
 import { installCommand } from "./commands/install.js";
 import { updateCommand } from "./commands/update.js";
 import { upgradeCommand } from "./commands/upgrade.js";
+import { exportCommand } from "./commands/export.js";
 
 const require = createRequire(import.meta.url);
 const { version } = require("../package.json");
@@ -29,5 +30,6 @@ program.addCommand(initCommand());
 program.addCommand(installCommand());
 program.addCommand(updateCommand());
 program.addCommand(upgradeCommand());
+program.addCommand(exportCommand());
 
 program.parseAsync();
