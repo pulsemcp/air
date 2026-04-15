@@ -1816,5 +1816,307 @@ describe("ClaudeAdapter", () => {
         expect(Object.keys(settings.hooks)).toHaveLength(0);
       });
     });
+
+    describe("plugin artifact resolution", () => {
+      it("merges plugin mcp_servers into .mcp.json", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+
+        artifacts.mcp["github"] = { type: "stdio", command: "gh" };
+        artifacts.mcp["playwright-custom"] = { type: "stdio", command: "playwright" };
+        artifacts.mcp["remote-fs"] = { type: "stdio", command: "remote-fs" };
+
+        artifacts.plugins["screenshots-videos"] = {
+          description: "Screenshot and video capture",
+          mcp_servers: ["playwright-custom", "remote-fs"],
+        };
+
+        const root: RootEntry = {
+          description: "Test root",
+          default_mcp_servers: ["github"],
+          default_plugins: ["screenshots-videos"],
+        };
+
+        await adapter.prepareSession(artifacts, dir, { root });
+
+        const mcpJson = JSON.parse(readFileSync(join(dir, ".mcp.json"), "utf-8"));
+        expect(mcpJson.mcpServers["github"]).toBeDefined();
+        expect(mcpJson.mcpServers["playwright-custom"]).toBeDefined();
+        expect(mcpJson.mcpServers["remote-fs"]).toBeDefined();
+      });
+
+      it("merges plugin skills into session", async () => {
+        const dir = createTempDir();
+
+        const skillSrcDir = join(dir, "..", "skills-plugin", "lint-fix");
+        mkdirSync(skillSrcDir, { recursive: true });
+        writeFileSync(join(skillSrcDir, "SKILL.md"), "# Lint Fix");
+
+        const parentSkillSrc = join(dir, "..", "skills-plugin", "deploy");
+        mkdirSync(parentSkillSrc, { recursive: true });
+        writeFileSync(join(parentSkillSrc, "SKILL.md"), "# Deploy");
+
+        const artifacts = emptyArtifacts();
+        artifacts.skills["deploy"] = { description: "Deploy", path: resolve(parentSkillSrc) };
+        artifacts.skills["lint-fix"] = { description: "Lint fix", path: resolve(skillSrcDir) };
+
+        artifacts.plugins["code-quality"] = {
+          description: "Code quality tools",
+          skills: ["lint-fix"],
+        };
+
+        const root: RootEntry = {
+          description: "Test root",
+          default_skills: ["deploy"],
+          default_plugins: ["code-quality"],
+        };
+
+        const result = await adapter.prepareSession(artifacts, dir, { root });
+
+        expect(existsSync(join(dir, ".claude", "skills", "deploy", "SKILL.md"))).toBe(true);
+        expect(existsSync(join(dir, ".claude", "skills", "lint-fix", "SKILL.md"))).toBe(true);
+        expect(result.skillPaths).toHaveLength(2);
+      });
+
+      it("merges plugin hooks into session", async () => {
+        const dir = createTempDir();
+
+        const hookSrcDir = join(dir, "..", "hooks-plugin", "lint-pre-commit");
+        mkdirSync(hookSrcDir, { recursive: true });
+        writeFileSync(
+          join(hookSrcDir, "HOOK.json"),
+          JSON.stringify({ event: "pre_tool_call", command: "npx", args: ["lint-staged"] })
+        );
+
+        const artifacts = emptyArtifacts();
+        artifacts.hooks["lint-pre-commit"] = {
+          description: "Pre-commit lint",
+          path: resolve(hookSrcDir),
+        };
+
+        artifacts.plugins["code-quality"] = {
+          description: "Code quality tools",
+          hooks: ["lint-pre-commit"],
+        };
+
+        const root: RootEntry = {
+          description: "Test root",
+          default_plugins: ["code-quality"],
+        };
+
+        const result = await adapter.prepareSession(artifacts, dir, { root });
+
+        expect(existsSync(join(dir, ".claude", "hooks", "lint-pre-commit", "HOOK.json"))).toBe(true);
+        expect(result.hookPaths).toHaveLength(1);
+      });
+
+      it("deduplicates when plugin and root share artifact IDs", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+
+        artifacts.mcp["github"] = { type: "stdio", command: "gh" };
+        artifacts.mcp["slack"] = { type: "stdio", command: "slack" };
+
+        artifacts.plugins["collab-tools"] = {
+          description: "Collaboration",
+          mcp_servers: ["github", "slack"],
+        };
+
+        const root: RootEntry = {
+          description: "Test root",
+          default_mcp_servers: ["github"],
+          default_plugins: ["collab-tools"],
+        };
+
+        await adapter.prepareSession(artifacts, dir, { root });
+
+        const mcpJson = JSON.parse(readFileSync(join(dir, ".mcp.json"), "utf-8"));
+        expect(Object.keys(mcpJson.mcpServers).sort()).toEqual(["github", "slack"]);
+      });
+
+      it("merges artifacts from multiple plugins", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+
+        artifacts.mcp["playwright"] = { type: "stdio", command: "playwright" };
+        artifacts.mcp["eslint-server"] = { type: "stdio", command: "eslint" };
+
+        artifacts.plugins["screenshots"] = {
+          description: "Screenshots",
+          mcp_servers: ["playwright"],
+        };
+        artifacts.plugins["linting"] = {
+          description: "Linting",
+          mcp_servers: ["eslint-server"],
+        };
+
+        const root: RootEntry = {
+          description: "Test root",
+          default_plugins: ["screenshots", "linting"],
+        };
+
+        await adapter.prepareSession(artifacts, dir, { root });
+
+        const mcpJson = JSON.parse(readFileSync(join(dir, ".mcp.json"), "utf-8"));
+        expect(mcpJson.mcpServers["playwright"]).toBeDefined();
+        expect(mcpJson.mcpServers["eslint-server"]).toBeDefined();
+      });
+
+      it("plugin artifacts are additive even when explicit overrides are provided", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+
+        artifacts.mcp["github"] = { type: "stdio", command: "gh" };
+        artifacts.mcp["playwright"] = { type: "stdio", command: "playwright" };
+
+        artifacts.plugins["screenshots"] = {
+          description: "Screenshots",
+          mcp_servers: ["playwright"],
+        };
+
+        const root: RootEntry = {
+          description: "Test root",
+          default_mcp_servers: ["github"],
+          default_plugins: ["screenshots"],
+        };
+
+        await adapter.prepareSession(artifacts, dir, {
+          root,
+          mcpServerOverrides: ["github"],
+        });
+
+        const mcpJson = JSON.parse(readFileSync(join(dir, ".mcp.json"), "utf-8"));
+        expect(mcpJson.mcpServers["github"]).toBeDefined();
+        expect(mcpJson.mcpServers["playwright"]).toBeDefined();
+      });
+
+      it("throws when plugin references a nonexistent MCP server", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+
+        artifacts.plugins["bad-plugin"] = {
+          description: "References missing server",
+          mcp_servers: ["nonexistent-server"],
+        };
+
+        const root: RootEntry = {
+          description: "Test root",
+          default_plugins: ["bad-plugin"],
+        };
+
+        await expect(
+          adapter.prepareSession(artifacts, dir, { root })
+        ).rejects.toThrow(
+          /Unknown MCP server ID\(s\): nonexistent-server/
+        );
+      });
+
+      it("throws when plugin references a nonexistent skill", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+
+        artifacts.plugins["bad-plugin"] = {
+          description: "References missing skill",
+          skills: ["nonexistent-skill"],
+        };
+
+        const root: RootEntry = {
+          description: "Test root",
+          default_plugins: ["bad-plugin"],
+        };
+
+        await expect(
+          adapter.prepareSession(artifacts, dir, { root })
+        ).rejects.toThrow(
+          /Unknown skill ID\(s\): nonexistent-skill/
+        );
+      });
+
+      it("plugin with no artifact arrays does not affect session", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+
+        artifacts.mcp["github"] = { type: "stdio", command: "gh" };
+
+        artifacts.plugins["minimal"] = {
+          description: "A minimal plugin with no artifacts",
+        };
+
+        const root: RootEntry = {
+          description: "Test root",
+          default_mcp_servers: ["github"],
+          default_plugins: ["minimal"],
+        };
+
+        await adapter.prepareSession(artifacts, dir, { root });
+
+        const mcpJson = JSON.parse(readFileSync(join(dir, ".mcp.json"), "utf-8"));
+        expect(Object.keys(mcpJson.mcpServers)).toEqual(["github"]);
+      });
+    });
+  });
+
+  describe("generateConfig plugin artifact resolution", () => {
+    it("merges plugin mcp_servers into config", () => {
+      const artifacts = emptyArtifacts();
+      artifacts.mcp["github"] = { type: "stdio", command: "gh" };
+      artifacts.mcp["playwright"] = { type: "stdio", command: "playwright" };
+
+      artifacts.plugins["screenshots"] = {
+        description: "Screenshots",
+        mcp_servers: ["playwright"],
+      };
+
+      const root: RootEntry = {
+        description: "Test root",
+        default_mcp_servers: ["github"],
+        default_plugins: ["screenshots"],
+      };
+
+      const config = adapter.generateConfig(artifacts, root);
+      const mcpConfig = config.mcpConfig as any;
+
+      expect(mcpConfig.mcpServers["github"]).toBeDefined();
+      expect(mcpConfig.mcpServers["playwright"]).toBeDefined();
+    });
+
+    it("merges plugin skills into config", () => {
+      const artifacts = emptyArtifacts();
+      artifacts.skills["deploy"] = { description: "Deploy", path: "skills/deploy" };
+      artifacts.skills["lint-fix"] = { description: "Lint fix", path: "skills/lint-fix" };
+
+      artifacts.plugins["code-quality"] = {
+        description: "Code quality",
+        skills: ["lint-fix"],
+      };
+
+      const root: RootEntry = {
+        description: "Test root",
+        default_skills: ["deploy"],
+        default_plugins: ["code-quality"],
+      };
+
+      const config = adapter.generateConfig(artifacts, root);
+      expect(config.skillPaths).toEqual(["skills/deploy", "skills/lint-fix"]);
+    });
+
+    it("handles plugin mcp_servers when root has no default_mcp_servers", () => {
+      const artifacts = emptyArtifacts();
+      artifacts.mcp["playwright"] = { type: "stdio", command: "playwright" };
+
+      artifacts.plugins["screenshots"] = {
+        description: "Screenshots",
+        mcp_servers: ["playwright"],
+      };
+
+      const root: RootEntry = {
+        description: "Test root",
+        default_plugins: ["screenshots"],
+      };
+
+      const config = adapter.generateConfig(artifacts, root);
+      const mcpConfig = config.mcpConfig as any;
+      expect(mcpConfig.mcpServers["playwright"]).toBeDefined();
+    });
   });
 });
