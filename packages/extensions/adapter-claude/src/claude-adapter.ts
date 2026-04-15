@@ -161,23 +161,23 @@ export class ClaudeAdapter implements AgentAdapter {
       ? this.filterByIds(artifacts.plugins, pluginIds, "plugin")
       : {};
 
+    const mcpSet = new Set(mcpServerIds ?? []);
+    const skillSet = new Set(skillIds);
+    const hookSet = new Set(hookIds);
     for (const plugin of Object.values(plugins)) {
       if (plugin.mcp_servers) {
-        const set = new Set(mcpServerIds ?? []);
-        for (const id of plugin.mcp_servers) set.add(id);
-        mcpServerIds = [...set];
+        for (const id of plugin.mcp_servers) mcpSet.add(id);
       }
       if (plugin.skills) {
-        const set = new Set(skillIds);
-        for (const id of plugin.skills) set.add(id);
-        skillIds = [...set];
+        for (const id of plugin.skills) skillSet.add(id);
       }
       if (plugin.hooks) {
-        const set = new Set(hookIds);
-        for (const id of plugin.hooks) set.add(id);
-        hookIds = [...set];
+        for (const id of plugin.hooks) hookSet.add(id);
       }
     }
+    if (mcpSet.size > 0 || mcpServerIds !== undefined) mcpServerIds = [...mcpSet];
+    skillIds = [...skillSet];
+    hookIds = [...hookSet];
 
     const mcpServers = mcpServerIds?.length
       ? this.filterByIds(artifacts.mcp, mcpServerIds, "MCP server")

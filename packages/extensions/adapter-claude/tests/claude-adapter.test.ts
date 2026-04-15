@@ -1990,6 +1990,48 @@ describe("ClaudeAdapter", () => {
         expect(mcpJson.mcpServers["playwright"]).toBeDefined();
       });
 
+      it("throws when plugin references a nonexistent MCP server", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+
+        artifacts.plugins["bad-plugin"] = {
+          description: "References missing server",
+          mcp_servers: ["nonexistent-server"],
+        };
+
+        const root: RootEntry = {
+          description: "Test root",
+          default_plugins: ["bad-plugin"],
+        };
+
+        await expect(
+          adapter.prepareSession(artifacts, dir, { root })
+        ).rejects.toThrow(
+          /Unknown MCP server ID\(s\): nonexistent-server/
+        );
+      });
+
+      it("throws when plugin references a nonexistent skill", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+
+        artifacts.plugins["bad-plugin"] = {
+          description: "References missing skill",
+          skills: ["nonexistent-skill"],
+        };
+
+        const root: RootEntry = {
+          description: "Test root",
+          default_plugins: ["bad-plugin"],
+        };
+
+        await expect(
+          adapter.prepareSession(artifacts, dir, { root })
+        ).rejects.toThrow(
+          /Unknown skill ID\(s\): nonexistent-skill/
+        );
+      });
+
       it("plugin with no artifact arrays does not affect session", async () => {
         const dir = createTempDir();
         const artifacts = emptyArtifacts();
