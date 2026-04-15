@@ -54,12 +54,27 @@ export class ClaudeAdapter implements AgentAdapter {
     root?: RootEntry,
     _workDir?: string
   ): AgentSessionConfig {
-    const mcpServers = root?.default_mcp_servers
-      ? this.filterByIds(artifacts.mcp, root.default_mcp_servers, "MCP server")
-      : {};
-
     const plugins = root?.default_plugins
       ? this.filterByIds(artifacts.plugins, root.default_plugins, "plugin")
+      : {};
+
+    // Merge plugin-declared MCP servers and skills into root defaults (additive)
+    const mcpServerIdSet = new Set(root?.default_mcp_servers ?? []);
+    const skillIdSet = new Set(root?.default_skills ?? []);
+    for (const plugin of Object.values(plugins)) {
+      if (plugin.mcp_servers) {
+        for (const id of plugin.mcp_servers) mcpServerIdSet.add(id);
+      }
+      if (plugin.skills) {
+        for (const id of plugin.skills) skillIdSet.add(id);
+      }
+    }
+
+    const mcpServerIds = [...mcpServerIdSet];
+    const skillIds = [...skillIdSet];
+
+    const mcpServers = mcpServerIds.length
+      ? this.filterByIds(artifacts.mcp, mcpServerIds, "MCP server")
       : {};
 
     const mcpConfig = this.translateMcpServers(mcpServers);
@@ -68,8 +83,7 @@ export class ClaudeAdapter implements AgentAdapter {
       this.translatePlugin(id, p)
     );
 
-    const skillIds = root?.default_skills ?? [];
-    if (root?.default_skills) {
+    if (skillIds.length > 0) {
       this.validateIds(artifacts.skills, skillIds, "skill");
     }
     const skillPaths = skillIds.map((id) => artifacts.skills[id].path);
@@ -120,6 +134,9 @@ export class ClaudeAdapter implements AgentAdapter {
     let skillIds = options?.skillOverrides
       ?? root?.default_skills
       ?? [];
+    let hookIds = options?.hookOverrides
+      ?? root?.default_hooks
+      ?? [];
 
     // 1b. Merge subagent roots' artifacts if applicable.
     // Skip merge per-artifact type when explicit overrides are provided —
@@ -136,15 +153,34 @@ export class ClaudeAdapter implements AgentAdapter {
       }
     }
 
-    const mcpServers = mcpServerIds?.length
-      ? this.filterByIds(artifacts.mcp, mcpServerIds, "MCP server")
-      : {};
-
+    // 1c. Resolve plugins and merge their declared artifacts (additive)
     const pluginIds = options?.pluginOverrides
       ?? root?.default_plugins
       ?? undefined;
     const plugins = pluginIds?.length
       ? this.filterByIds(artifacts.plugins, pluginIds, "plugin")
+      : {};
+
+    for (const plugin of Object.values(plugins)) {
+      if (plugin.mcp_servers) {
+        const set = new Set(mcpServerIds ?? []);
+        for (const id of plugin.mcp_servers) set.add(id);
+        mcpServerIds = [...set];
+      }
+      if (plugin.skills) {
+        const set = new Set(skillIds);
+        for (const id of plugin.skills) set.add(id);
+        skillIds = [...set];
+      }
+      if (plugin.hooks) {
+        const set = new Set(hookIds);
+        for (const id of plugin.hooks) set.add(id);
+        hookIds = [...set];
+      }
+    }
+
+    const mcpServers = mcpServerIds?.length
+      ? this.filterByIds(artifacts.mcp, mcpServerIds, "MCP server")
       : {};
 
     // 2. Validate skill IDs
@@ -179,9 +215,6 @@ export class ClaudeAdapter implements AgentAdapter {
     }
 
     // 5. Validate and inject path-based hooks into .claude/hooks/
-    const hookIds = options?.hookOverrides
-      ?? root?.default_hooks
-      ?? [];
     if (hookIds.length > 0) {
       this.validateIds(artifacts.hooks, hookIds, "hook");
     }
