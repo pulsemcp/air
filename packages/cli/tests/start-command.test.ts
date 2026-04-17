@@ -190,6 +190,59 @@ describe("start command — CLI artifact selection flags", () => {
     expect(result.stdout).toContain("github");
   });
 
+  it("treats an empty --skills value as explicit deselect (no skills)", () => {
+    const catalog = createTemp({
+      "air.json": {
+        name: "test",
+        skills: ["./skills.json"],
+        roots: ["./roots.json"],
+      },
+      "skills.json": {
+        "skill-a": { description: "Skill A", path: "skills/skill-a" },
+      },
+      "skills/skill-a/SKILL.md": "# A",
+      "roots.json": {
+        myroot: { description: "Test", default_skills: ["skill-a"] },
+      },
+    });
+
+    const result = tryRun(
+      `start claude --root myroot --dry-run --skills ""`,
+      { AIR_CONFIG: resolve(catalog, "air.json") }
+    );
+
+    expect(result.exitCode).toBe(0);
+    // Empty flag means no skills; root default skill-a should not appear
+    expect(result.stdout).toContain("Skills (0)");
+    expect(result.stdout).not.toContain("skill-a");
+  });
+
+  it("treats a comma-only --skills value as explicit deselect", () => {
+    const catalog = createTemp({
+      "air.json": {
+        name: "test",
+        skills: ["./skills.json"],
+        roots: ["./roots.json"],
+      },
+      "skills.json": {
+        "skill-a": { description: "Skill A", path: "skills/skill-a" },
+      },
+      "skills/skill-a/SKILL.md": "# A",
+      "roots.json": {
+        myroot: { description: "Test", default_skills: ["skill-a"] },
+      },
+    });
+
+    const result = tryRun(
+      `start claude --root myroot --dry-run --skills ",, ,"`,
+      { AIR_CONFIG: resolve(catalog, "air.json") }
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("Skills (0)");
+    expect(result.stdout).not.toContain("skill-a");
+  });
+
   it("supports --hooks and --plugins overrides", () => {
     const catalog = createTemp({
       "air.json": {

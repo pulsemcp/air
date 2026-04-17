@@ -96,11 +96,15 @@ export function startCommand(): Command {
 
         const skipSubagentMerge = !options.subagentMerge;
 
-        // Parse CLI artifact flags (CSV of IDs). Any flag present implies
-        // non-interactive mode and suppresses the TUI; unspecified categories
+        // Parse CLI artifact flags (CSV of IDs). Any flag present (including
+        // an empty or comma-only value) implies non-interactive mode, suppresses
+        // the TUI, and produces an explicit list — an empty string means "no
+        // artifacts of this category". Unspecified categories (flag omitted)
         // fall back to root defaults via prepareSession's default handling.
-        const parseIdList = (value: string | undefined): string[] | undefined =>
-          value ? value.split(",").map((s) => s.trim()).filter(Boolean) : undefined;
+        const parseIdList = (value: string | undefined): string[] | undefined => {
+          if (value === undefined) return undefined;
+          return value.split(",").map((s) => s.trim()).filter(Boolean);
+        };
 
         let selectedSkills = parseIdList(options.skills);
         let selectedMcpServers = parseIdList(options.mcpServers);

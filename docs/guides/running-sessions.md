@@ -38,7 +38,7 @@ When not in a TTY (e.g., in a CI pipeline) or when `--skip-confirmation` is pass
 
 ### Non-interactive selection
 
-Pass any of `--skills`, `--mcp-servers`, `--hooks`, or `--plugins` to select artifacts from the command line instead of the TUI. Each flag takes a comma-separated list of IDs and overrides the root defaults for that category. Unspecified categories fall back to root defaults.
+Pass any of `--skills`, `--mcp-servers`, `--hooks`, or `--plugins` to select artifacts from the command line instead of the TUI. Each flag takes a comma-separated list of IDs and overrides the root defaults for that category. Unspecified categories (flag omitted) fall back to root defaults; passing an empty or comma-only value (e.g. `--skills ""`) explicitly deselects everything in that category.
 
 ```bash
 air start claude --root web-app --skills deploy-staging,initial-pr-review --mcp-servers github,postgres-prod
