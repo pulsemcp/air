@@ -371,6 +371,39 @@ describe("start command — CLI artifact selection flags", () => {
     expect(result.stdout).toContain("plugin-b");
   });
 
+  it("when an ID appears in both --skills and --without-skills, the removal wins", () => {
+    const catalog = createTemp({
+      "air.json": {
+        name: "test",
+        skills: ["./skills.json"],
+        roots: ["./roots.json"],
+      },
+      "skills.json": {
+        "skill-a": { description: "Skill A", path: "skills/skill-a" },
+        "skill-b": { description: "Skill B", path: "skills/skill-b" },
+      },
+      "skills/skill-a/SKILL.md": "# A",
+      "skills/skill-b/SKILL.md": "# B",
+      "roots.json": {
+        myroot: {
+          description: "Test",
+          default_skills: [],
+        },
+      },
+    });
+
+    const result = tryRun(
+      `start claude --root myroot --dry-run --skills skill-a,skill-b --without-skills skill-a`,
+      { AIR_CONFIG: resolve(catalog, "air.json") }
+    );
+
+    expect(result.exitCode).toBe(0);
+    // skill-a was added then removed — final selection is just skill-b
+    expect(result.stdout).toContain("Skills (1)");
+    expect(result.stdout).toContain("skill-b");
+    expect(result.stdout).not.toMatch(/\u2022 skill-a\b/);
+  });
+
   it("combining --skills and --without-skills within the same category works", () => {
     const catalog = createTemp({
       "air.json": {
