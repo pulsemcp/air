@@ -106,18 +106,18 @@ Every AIR configuration starts with an `air.json` file. Each artifact property i
 }
 ```
 
-**Local catalog + shared remote catalog.** Your private team skills live in a directory you maintain (checked into your own repo), and you layer an org-wide catalog on top for shared defaults:
+**Local catalog + shared remote catalog.** Your private team skills live in a directory you maintain (e.g., a sibling repo checked into `~/.air/` or an absolute path elsewhere on disk), layered with an org-wide catalog for shared defaults. Local paths resolve relative to `air.json`, so `./platform-team-catalog/...` below points at `~/.air/platform-team-catalog/...`:
 
 ```json
 {
   "name": "platform-team",
   "skills": [
     "github://acme/air-org/skills/skills.json",
-    "~/code/platform-team-catalog/skills/skills.json"
+    "./platform-team-catalog/skills/skills.json"
   ],
   "mcp": [
     "github://acme/air-org/mcp/mcp.json",
-    "~/code/platform-team-catalog/mcp/mcp.json"
+    "./platform-team-catalog/mcp/mcp.json"
   ]
 }
 ```

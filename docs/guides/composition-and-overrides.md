@@ -78,7 +78,7 @@ This is the simplest setup and a fully supported shape — no providers required
 
 ### Local team catalog + shared remote catalog
 
-A common team shape is a private catalog checked into your own repo, composed alongside a shared org-wide catalog. The local paths can live anywhere on disk — they do not need to be under `~/.air/`:
+A common team shape is a private catalog kept as a sibling directory under `~/.air/` (often a git submodule or a checked-out team repo), composed alongside a shared org-wide catalog:
 
 ```json
 {
@@ -86,16 +86,18 @@ A common team shape is a private catalog checked into your own repo, composed al
   "extensions": ["@pulsemcp/air-provider-github"],
   "skills": [
     "github://acme/air-org/skills/skills.json",
-    "~/code/platform-team-catalog/skills/skills.json"
+    "./platform-team-catalog/skills/skills.json"
   ],
   "mcp": [
     "github://acme/air-org/mcp/mcp.json",
-    "~/code/platform-team-catalog/mcp/mcp.json"
+    "./platform-team-catalog/mcp/mcp.json"
   ]
 }
 ```
 
 Here the org catalog provides the baseline and the team's local catalog adds team-specific artifacts (and overrides any org defaults it wants to replace). Swap or add paths at will — each artifact field is just an ordered list of sources.
+
+Local paths are resolved relative to the directory containing `air.json` (so `./platform-team-catalog/...` above points at `~/.air/platform-team-catalog/...`). If your catalog lives elsewhere on disk, use an absolute path like `/opt/team-catalog/skills/skills.json`. **Tildes (`~/`) are not expanded** — either use a relative path or spell out the absolute path.
 
 ### Org → Team → Project
 
