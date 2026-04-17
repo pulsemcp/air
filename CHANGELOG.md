@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **Breaking:** CLI artifact selection flags on `air start` / `air prepare` are now singular with variadic cardinality: `--skill`, `--mcp-server`, `--hook`, `--plugin` (and their `--without-*` counterparts). Pass multiple IDs by repeating the flag (`--skill a --skill b`) or listing them after a single flag (`--skill a b`) — the previous comma-separated plural syntax (`--skills a,b`) is no longer supported. The singular naming is clearer and avoids ambiguity with acronyms (e.g., `--mcp-server` vs. `--mcp-servers`), and matches Commander's own conventions for variadic options.
+- `air start` and `air prepare` now print a one-line stderr warning when they see any of the old plural flag names in argv (before the `--` passthrough boundary) so scripts upgrading from 0.0.30/0.0.31 get a clear hint instead of a silent drop.
+
+### Note
+- The `--plugins <ids>` filter on `air export cowork` is **intentionally unchanged** and remains a plural comma-separated list. It's a different feature with different semantics (select a subset of plugins to export, not additively tweak a session's active set), so the naming convention does not apply.
 
 ## [0.0.31] - 2026-04-17
 

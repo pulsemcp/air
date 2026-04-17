@@ -10,6 +10,7 @@ import {
   type RootEntry,
 } from "@pulsemcp/air-sdk";
 import { runInteractiveSelector } from "../tui/interactive-selector.js";
+import { warnOnDeprecatedArtifactFlags } from "./deprecated-flags.js";
 
 export function startCommand(): Command {
   const cmd = new Command("start")
@@ -84,6 +85,8 @@ export function startCommand(): Command {
         const dashDashIdx = process.argv.indexOf("--");
         const passthroughArgs =
           dashDashIdx !== -1 ? process.argv.slice(dashDashIdx + 1) : [];
+
+        warnOnDeprecatedArtifactFlags(process.argv);
 
         let result;
         try {

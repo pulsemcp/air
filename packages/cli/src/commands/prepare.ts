@@ -6,6 +6,7 @@ import {
   getAirJsonPath,
   loadExtensions,
 } from "@pulsemcp/air-sdk";
+import { warnOnDeprecatedArtifactFlags } from "./deprecated-flags.js";
 
 /**
  * Extract the flag name from a Commander flag string.
@@ -114,6 +115,7 @@ export function prepareCommand(): Command {
         subagentMerge: boolean;
         skipValidation?: boolean;
       }) => {
+        warnOnDeprecatedArtifactFlags(process.argv);
         try {
           // Load extensions once — pass to SDK to avoid double loading
           const airJsonPath = options.config || getAirJsonPath();

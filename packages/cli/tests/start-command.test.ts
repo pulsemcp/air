@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { execSync } from "child_process";
+import { spawnSync } from "child_process";
 import { resolve } from "path";
 import { mkdirSync, writeFileSync, rmSync, existsSync } from "fs";
 import { tmpdir } from "os";
@@ -7,21 +7,20 @@ import { tmpdir } from "os";
 const CLI = resolve(__dirname, "../src/index.ts");
 
 const tryRun = (args: string, env?: Record<string, string>) => {
-  try {
-    const stdout = execSync(`npx tsx ${CLI} ${args}`, {
+  const result = spawnSync(
+    "npx",
+    ["tsx", CLI, ...args.match(/(?:[^\s"]+|"[^"]*")+/g)!.map((s) => s.replace(/^"|"$/g, ""))],
+    {
       encoding: "utf-8",
       cwd: resolve(__dirname, "../../.."),
-      stdio: ["pipe", "pipe", "pipe"],
       env: { ...process.env, ...env },
-    });
-    return { stdout, stderr: "", exitCode: 0 };
-  } catch (err: any) {
-    return {
-      stdout: err.stdout?.toString() || "",
-      stderr: err.stderr?.toString() || "",
-      exitCode: err.status ?? 1,
-    };
-  }
+    }
+  );
+  return {
+    stdout: result.stdout ?? "",
+    stderr: result.stderr ?? "",
+    exitCode: result.status ?? 1,
+  };
 };
 
 const tempDirs: string[] = [];
@@ -431,6 +430,63 @@ describe("start command — CLI artifact selection flags", () => {
     expect(result.stdout).toContain("Skills (1)");
     expect(result.stdout).toContain("skill-b");
     expect(result.stdout).not.toMatch(/\u2022 skill-a\b/);
+  });
+
+  it("emits a deprecation warning when the old plural --skills flag is used", () => {
+    const catalog = createTemp({
+      "air.json": {
+        name: "test",
+        skills: ["./skills.json"],
+        roots: ["./roots.json"],
+      },
+      "skills.json": {
+        "skill-a": { description: "Skill A", path: "skills/skill-a" },
+      },
+      "skills/skill-a/SKILL.md": "# A",
+      "roots.json": {
+        myroot: {
+          description: "Test",
+          default_skills: ["skill-a"],
+        },
+      },
+    });
+
+    const result = tryRun(
+      `start claude --root myroot --dry-run --skills skill-a`,
+      { AIR_CONFIG: resolve(catalog, "air.json") }
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toContain("--skills was renamed to --skill");
+    expect(result.stderr).toContain("v0.0.32");
+  });
+
+  it("does not warn when an agent passthrough arg after -- happens to match an old flag name", () => {
+    const catalog = createTemp({
+      "air.json": {
+        name: "test",
+        skills: ["./skills.json"],
+        roots: ["./roots.json"],
+      },
+      "skills.json": {
+        "skill-a": { description: "Skill A", path: "skills/skill-a" },
+      },
+      "skills/skill-a/SKILL.md": "# A",
+      "roots.json": {
+        myroot: {
+          description: "Test",
+          default_skills: ["skill-a"],
+        },
+      },
+    });
+
+    const result = tryRun(
+      `start claude --root myroot --dry-run -- --skills something-else`,
+      { AIR_CONFIG: resolve(catalog, "air.json") }
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).not.toContain("was renamed to");
   });
 
   it("combining --skill and --without-skill within the same category works", () => {
