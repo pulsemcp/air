@@ -36,6 +36,11 @@ function parseArgvFlag(flagName: string): string | undefined {
   return undefined;
 }
 
+function parseIdList(value: string | undefined): string[] | undefined {
+  if (value === undefined) return undefined;
+  return value.split(",").map((s) => s.trim()).filter(Boolean);
+}
+
 export function prepareCommand(): Command {
   const cmd = new Command("prepare")
     .description(
@@ -54,19 +59,39 @@ export function prepareCommand(): Command {
     )
     .option(
       "--skills <ids>",
-      "Comma-separated skill IDs (overrides root defaults)"
+      "Comma-separated skill IDs to ADD on top of root defaults"
     )
     .option(
       "--mcp-servers <ids>",
-      "Comma-separated MCP server IDs (overrides root defaults)"
+      "Comma-separated MCP server IDs to ADD on top of root defaults"
     )
     .option(
       "--hooks <ids>",
-      "Comma-separated hook IDs (overrides root defaults)"
+      "Comma-separated hook IDs to ADD on top of root defaults"
     )
     .option(
       "--plugins <ids>",
-      "Comma-separated plugin IDs (overrides root defaults)"
+      "Comma-separated plugin IDs to ADD on top of root defaults"
+    )
+    .option(
+      "--without-skills <ids>",
+      "Comma-separated skill IDs to remove from root defaults"
+    )
+    .option(
+      "--without-mcp-servers <ids>",
+      "Comma-separated MCP server IDs to remove from root defaults"
+    )
+    .option(
+      "--without-hooks <ids>",
+      "Comma-separated hook IDs to remove from root defaults"
+    )
+    .option(
+      "--without-plugins <ids>",
+      "Comma-separated plugin IDs to remove from root defaults"
+    )
+    .option(
+      "--without-defaults",
+      "Ignore all root defaults — start from an empty selection (only artifacts added via --skills / --mcp-servers / --hooks / --plugins will be activated)"
     )
     .option(
       "--no-subagent-merge",
@@ -86,6 +111,11 @@ export function prepareCommand(): Command {
         mcpServers?: string;
         hooks?: string;
         plugins?: string;
+        withoutSkills?: string;
+        withoutMcpServers?: string;
+        withoutHooks?: string;
+        withoutPlugins?: string;
+        withoutDefaults?: boolean;
         subagentMerge: boolean;
         skipValidation?: boolean;
       }) => {
@@ -125,18 +155,15 @@ export function prepareCommand(): Command {
             root: options.root,
             target: options.target,
             adapter,
-            skills: options.skills
-              ? options.skills.split(",").map((s) => s.trim())
-              : undefined,
-            mcpServers: options.mcpServers
-              ? options.mcpServers.split(",").map((s) => s.trim())
-              : undefined,
-            hooks: options.hooks
-              ? options.hooks.split(",").map((s) => s.trim())
-              : undefined,
-            plugins: options.plugins
-              ? options.plugins.split(",").map((s) => s.trim())
-              : undefined,
+            addSkills: parseIdList(options.skills),
+            addMcpServers: parseIdList(options.mcpServers),
+            addHooks: parseIdList(options.hooks),
+            addPlugins: parseIdList(options.plugins),
+            removeSkills: parseIdList(options.withoutSkills),
+            removeMcpServers: parseIdList(options.withoutMcpServers),
+            removeHooks: parseIdList(options.withoutHooks),
+            removePlugins: parseIdList(options.withoutPlugins),
+            withoutDefaults: options.withoutDefaults,
             skipSubagentMerge: !options.subagentMerge,
             skipValidation: options.skipValidation,
             extensionOptions,

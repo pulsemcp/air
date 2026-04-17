@@ -8,7 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.0.30] - 2026-04-17
 
 ### Added
-- `air start` now accepts `--skills`, `--mcp-servers`, `--hooks`, and `--plugins` flags — each taking a comma-separated list of IDs — to select artifacts non-interactively. Any flag present suppresses the interactive TUI; unspecified categories fall back to root defaults. `--dry-run` honors these flags so scripted invocations can be previewed.
+- `air start` and `air prepare` now accept `--skills`, `--mcp-servers`, `--hooks`, and `--plugins` flags — each taking a comma-separated list of IDs — to **add** artifacts on top of root defaults non-interactively. Any flag present suppresses the interactive TUI in `air start`; unspecified categories are untouched. `--dry-run` honors these flags so scripted invocations can be previewed.
+- Matching `--without-skills`, `--without-mcp-servers`, `--without-hooks`, and `--without-plugins` flags remove specific IDs from the root defaults.
+- `--without-defaults` drops all root defaults (parent root + merged subagent roots) so only the artifacts explicitly added via the `--skills` / `--mcp-servers` / `--hooks` / `--plugins` flags are activated.
+- New SDK helpers: `computeMergedDefaults(root, artifacts, skipSubagentMerge?)` and `resolveCategoryOverride(explicit, defaults, add, remove, withoutDefaults)` for reusing the add/remove resolution logic from callers other than the CLI.
+
+### Changed
+- `air prepare --skills <ids>` (and `--mcp-servers` / `--hooks` / `--plugins`) now **adds** on top of root defaults instead of replacing them. This is a breaking change for callers that relied on the previous override behavior — combine with `--without-defaults` to restore the old semantic (`--without-defaults --skills <ids>`).
 
 ## [0.0.29] - 2026-04-14
 

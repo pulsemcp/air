@@ -4,11 +4,12 @@ import {
   startSession,
   prepareSession,
   detectRoot,
+  computeMergedDefaults,
+  resolveCategoryOverride,
   type ResolvedArtifacts,
   type RootEntry,
 } from "@pulsemcp/air-sdk";
 import { runInteractiveSelector } from "../tui/interactive-selector.js";
-import { getMergedDefaults } from "../tui/types.js";
 
 export function startCommand(): Command {
   const cmd = new Command("start")
@@ -22,19 +23,39 @@ export function startCommand(): Command {
     )
     .option(
       "--skills <ids>",
-      "Comma-separated skill IDs (overrides root defaults, skips interactive TUI)"
+      "Comma-separated skill IDs to ADD on top of root defaults (skips interactive TUI)"
     )
     .option(
       "--mcp-servers <ids>",
-      "Comma-separated MCP server IDs (overrides root defaults, skips interactive TUI)"
+      "Comma-separated MCP server IDs to ADD on top of root defaults (skips interactive TUI)"
     )
     .option(
       "--hooks <ids>",
-      "Comma-separated hook IDs (overrides root defaults, skips interactive TUI)"
+      "Comma-separated hook IDs to ADD on top of root defaults (skips interactive TUI)"
     )
     .option(
       "--plugins <ids>",
-      "Comma-separated plugin IDs (overrides root defaults, skips interactive TUI)"
+      "Comma-separated plugin IDs to ADD on top of root defaults (skips interactive TUI)"
+    )
+    .option(
+      "--without-skills <ids>",
+      "Comma-separated skill IDs to remove from root defaults"
+    )
+    .option(
+      "--without-mcp-servers <ids>",
+      "Comma-separated MCP server IDs to remove from root defaults"
+    )
+    .option(
+      "--without-hooks <ids>",
+      "Comma-separated hook IDs to remove from root defaults"
+    )
+    .option(
+      "--without-plugins <ids>",
+      "Comma-separated plugin IDs to remove from root defaults"
+    )
+    .option(
+      "--without-defaults",
+      "Ignore all root defaults — start from an empty selection (only artifacts added via --skills / --mcp-servers / --hooks / --plugins will be activated)"
     )
     .option(
       "--no-subagent-merge",
@@ -52,6 +73,11 @@ export function startCommand(): Command {
           mcpServers?: string;
           hooks?: string;
           plugins?: string;
+          withoutSkills?: string;
+          withoutMcpServers?: string;
+          withoutHooks?: string;
+          withoutPlugins?: string;
+          withoutDefaults?: boolean;
           subagentMerge: boolean;
         },
       ) => {
@@ -96,26 +122,65 @@ export function startCommand(): Command {
 
         const skipSubagentMerge = !options.subagentMerge;
 
-        // Parse CLI artifact flags (CSV of IDs). Any flag present (including
-        // an empty or comma-only value) implies non-interactive mode, suppresses
-        // the TUI, and produces an explicit list — an empty string means "no
-        // artifacts of this category". Unspecified categories (flag omitted)
-        // fall back to root defaults via prepareSession's default handling.
+        // Parse CLI artifact flags. Values are comma-separated ID lists with
+        // whitespace trimmed and empty entries filtered. `undefined` means the
+        // flag was not passed.
         const parseIdList = (value: string | undefined): string[] | undefined => {
           if (value === undefined) return undefined;
           return value.split(",").map((s) => s.trim()).filter(Boolean);
         };
 
-        let selectedSkills = parseIdList(options.skills);
-        let selectedMcpServers = parseIdList(options.mcpServers);
-        let selectedHooks = parseIdList(options.hooks);
-        let selectedPlugins = parseIdList(options.plugins);
+        const addSkills = parseIdList(options.skills);
+        const addMcpServers = parseIdList(options.mcpServers);
+        const addHooks = parseIdList(options.hooks);
+        const addPlugins = parseIdList(options.plugins);
+        const removeSkills = parseIdList(options.withoutSkills);
+        const removeMcpServers = parseIdList(options.withoutMcpServers);
+        const removeHooks = parseIdList(options.withoutHooks);
+        const removePlugins = parseIdList(options.withoutPlugins);
+        const withoutDefaults = options.withoutDefaults ?? false;
 
         const hasArtifactFlags =
-          selectedSkills !== undefined ||
-          selectedMcpServers !== undefined ||
-          selectedHooks !== undefined ||
-          selectedPlugins !== undefined;
+          addSkills !== undefined ||
+          addMcpServers !== undefined ||
+          addHooks !== undefined ||
+          addPlugins !== undefined ||
+          removeSkills !== undefined ||
+          removeMcpServers !== undefined ||
+          removeHooks !== undefined ||
+          removePlugins !== undefined ||
+          withoutDefaults;
+
+        // Resolve final per-category overrides using the SDK helper
+        const merged = computeMergedDefaults(root, result.artifacts, skipSubagentMerge);
+        const selectedSkills = resolveCategoryOverride(
+          undefined,
+          merged.skillIds,
+          addSkills,
+          removeSkills,
+          withoutDefaults
+        );
+        const selectedMcpServers = resolveCategoryOverride(
+          undefined,
+          merged.mcpServerIds,
+          addMcpServers,
+          removeMcpServers,
+          withoutDefaults
+        );
+        const selectedHooks = resolveCategoryOverride(
+          undefined,
+          merged.hookIds,
+          addHooks,
+          removeHooks,
+          withoutDefaults
+        );
+        const selectedPlugins = resolveCategoryOverride(
+          undefined,
+          merged.pluginIds,
+          addPlugins,
+          removePlugins,
+          withoutDefaults
+        );
 
         // Dry run
         if (options.dryRun) {
@@ -138,6 +203,11 @@ export function startCommand(): Command {
 
         const isTTY = process.stdout.isTTY && process.stdin.isTTY;
 
+        let tuiSkills = selectedSkills;
+        let tuiMcpServers = selectedMcpServers;
+        let tuiHooks = selectedHooks;
+        let tuiPlugins = selectedPlugins;
+
         if (isTTY && !options.skipConfirmation && !hasArtifactFlags) {
           const tuiResult = await runInteractiveSelector(
             result.artifacts,
@@ -151,10 +221,10 @@ export function startCommand(): Command {
             process.exit(0);
           }
 
-          selectedSkills = tuiResult.skills;
-          selectedMcpServers = tuiResult.mcpServers;
-          selectedHooks = tuiResult.hooks;
-          selectedPlugins = tuiResult.plugins;
+          tuiSkills = tuiResult.skills;
+          tuiMcpServers = tuiResult.mcpServers;
+          tuiHooks = tuiResult.hooks;
+          tuiPlugins = tuiResult.plugins;
         }
 
         // Prepare session (write .mcp.json, inject skills, etc.)
@@ -164,10 +234,10 @@ export function startCommand(): Command {
             root: rootId,
             target: process.cwd(),
             adapter: agent,
-            skills: selectedSkills,
-            mcpServers: selectedMcpServers,
-            hooks: selectedHooks,
-            plugins: selectedPlugins,
+            skills: tuiSkills,
+            mcpServers: tuiMcpServers,
+            hooks: tuiHooks,
+            plugins: tuiPlugins,
             skipSubagentMerge,
           });
         } catch (err) {
@@ -222,15 +292,7 @@ function printDryRun(
     console.log(`Root: ${root.display_name || root.description}`);
   }
 
-  // Compute merged defaults from subagent roots (unless merge is disabled)
-  const merged = skipSubagentMerge
-    ? {
-        mcpServerIds: root?.default_mcp_servers ?? [],
-        skillIds: root?.default_skills ?? [],
-        hookIds: root?.default_hooks ?? [],
-        pluginIds: root?.default_plugins ?? [],
-      }
-    : getMergedDefaults(root, artifacts.roots);
+  const merged = computeMergedDefaults(root, artifacts, skipSubagentMerge);
 
   // CLI overrides take precedence over merged defaults for each category
   const mcpIds = overrides.mcpServers ?? (merged.mcpServerIds.length > 0 ? merged.mcpServerIds : (root?.default_mcp_servers || Object.keys(artifacts.mcp)));

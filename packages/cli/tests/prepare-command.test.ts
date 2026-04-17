@@ -213,7 +213,7 @@ describe("prepare command", () => {
     expect(mcpJson.mcpServers.slack).toBeUndefined();
   });
 
-  it("supports --skills override", () => {
+  it("--skills adds on top of root defaults (union)", () => {
     const catalog = createTemp({
       "air.json": {
         name: "test",
@@ -247,24 +247,110 @@ describe("prepare command", () => {
 
     const target = createTemp({});
 
-    // Override to only use skill-c (ignoring root defaults)
+    // Add skill-c on top of the root's default skills
     const result = tryRun(
       `prepare claude --config ${join(catalog, "air.json")} --root myroot --skills skill-c --target ${target}`
     );
     expect(result.exitCode).toBe(0);
 
+    // All three skills should now be injected
+    expect(
+      existsSync(join(target, ".claude", "skills", "skill-a", "SKILL.md"))
+    ).toBe(true);
+    expect(
+      existsSync(join(target, ".claude", "skills", "skill-b", "SKILL.md"))
+    ).toBe(true);
     expect(
       existsSync(join(target, ".claude", "skills", "skill-c", "SKILL.md"))
     ).toBe(true);
+  });
+
+  it("--without-skills removes specific skills from root defaults", () => {
+    const catalog = createTemp({
+      "air.json": {
+        name: "test",
+        skills: ["./skills.json"],
+        roots: ["./roots.json"],
+      },
+      "skills.json": {
+        "skill-a": { description: "Skill A", path: "skills/skill-a" },
+        "skill-b": { description: "Skill B", path: "skills/skill-b" },
+      },
+      "skills/skill-a/SKILL.md": "# A",
+      "skills/skill-b/SKILL.md": "# B",
+      "roots.json": {
+        myroot: {
+          description: "Test",
+          default_skills: ["skill-a", "skill-b"],
+        },
+      },
+    });
+
+    const target = createTemp({});
+
+    const result = tryRun(
+      `prepare claude --config ${join(catalog, "air.json")} --root myroot --without-skills skill-a --target ${target}`
+    );
+    expect(result.exitCode).toBe(0);
+
+    // skill-a removed, skill-b kept
     expect(
       existsSync(join(target, ".claude", "skills", "skill-a"))
     ).toBe(false);
     expect(
-      existsSync(join(target, ".claude", "skills", "skill-b"))
-    ).toBe(false);
+      existsSync(join(target, ".claude", "skills", "skill-b", "SKILL.md"))
+    ).toBe(true);
   });
 
-  it("supports --mcp-servers override", () => {
+  it("--without-defaults drops all root defaults and only activates additions", () => {
+    const catalog = createTemp({
+      "air.json": {
+        name: "test",
+        skills: ["./skills.json"],
+        mcp: ["./mcp.json"],
+        roots: ["./roots.json"],
+      },
+      "skills.json": {
+        "skill-a": { description: "Skill A", path: "skills/skill-a" },
+        "skill-b": { description: "Skill B", path: "skills/skill-b" },
+      },
+      "skills/skill-a/SKILL.md": "# A",
+      "skills/skill-b/SKILL.md": "# B",
+      "mcp.json": {
+        github: { type: "stdio", command: "npx", args: ["gh"] },
+      },
+      "roots.json": {
+        myroot: {
+          description: "Test",
+          default_skills: ["skill-a"],
+          default_mcp_servers: ["github"],
+        },
+      },
+    });
+
+    const target = createTemp({});
+
+    const result = tryRun(
+      `prepare claude --config ${join(catalog, "air.json")} --root myroot --without-defaults --skills skill-b --target ${target}`
+    );
+    expect(result.exitCode).toBe(0);
+
+    // Only skill-b activated
+    expect(
+      existsSync(join(target, ".claude", "skills", "skill-a"))
+    ).toBe(false);
+    expect(
+      existsSync(join(target, ".claude", "skills", "skill-b", "SKILL.md"))
+    ).toBe(true);
+
+    // No MCP servers: root's github default dropped, nothing added
+    const mcpJson = JSON.parse(
+      readFileSync(join(target, ".mcp.json"), "utf-8")
+    );
+    expect(mcpJson.mcpServers ?? {}).toEqual({});
+  });
+
+  it("--mcp-servers adds on top of root defaults (union)", () => {
     const catalog = createTemp({
       "air.json": {
         name: "test",
@@ -285,7 +371,7 @@ describe("prepare command", () => {
 
     const target = createTemp({});
 
-    // Override to only use slack (ignoring root's default of github)
+    // Add slack alongside the root's github default
     const result = tryRun(
       `prepare claude --config ${join(catalog, "air.json")} --root myroot --mcp-servers slack --target ${target}`
     );
@@ -294,8 +380,8 @@ describe("prepare command", () => {
     const mcpJson = JSON.parse(
       readFileSync(join(target, ".mcp.json"), "utf-8")
     );
+    expect(mcpJson.mcpServers.github).toBeDefined();
     expect(mcpJson.mcpServers.slack).toBeDefined();
-    expect(mcpJson.mcpServers.github).toBeUndefined();
   });
 
   it("injects skill references", () => {

@@ -3,6 +3,7 @@ import {
   loadAirConfig,
   getAirJsonPath,
   resolveArtifacts,
+  type ResolvedArtifacts,
   type RootEntry,
   type PreparedSession,
   type McpConfig,
@@ -36,6 +37,28 @@ export interface PrepareSessionOptions {
   hooks?: string[];
   /** Plugin IDs to activate (overrides root defaults). */
   plugins?: string[];
+  /** Skill IDs to add on top of (merged) root defaults. */
+  addSkills?: string[];
+  /** MCP server IDs to add on top of (merged) root defaults. */
+  addMcpServers?: string[];
+  /** Hook IDs to add on top of (merged) root defaults. */
+  addHooks?: string[];
+  /** Plugin IDs to add on top of (merged) root defaults. */
+  addPlugins?: string[];
+  /** Skill IDs to remove from (merged) root defaults. */
+  removeSkills?: string[];
+  /** MCP server IDs to remove from (merged) root defaults. */
+  removeMcpServers?: string[];
+  /** Hook IDs to remove from (merged) root defaults. */
+  removeHooks?: string[];
+  /** Plugin IDs to remove from (merged) root defaults. */
+  removePlugins?: string[];
+  /**
+   * Start from an empty set instead of root defaults when computing additions
+   * and removals. Use to opt out of all root-declared defaults (including
+   * subagent-root unions) and activate only the artifacts explicitly added.
+   */
+  withoutDefaults?: boolean;
   /**
    * Skip merging subagent roots' artifacts into the parent session.
    * Orchestrators that manage subagent composition externally should set this.
@@ -151,16 +174,50 @@ export async function prepareSession(
     }
   }
 
+  // Compute per-category overrides. Explicit `skills`/`mcpServers`/`hooks`/
+  // `plugins` values are final (from TUI/orchestrator selection). Otherwise,
+  // any `add*`/`remove*`/`withoutDefaults` intent is applied on top of the
+  // union of parent-root and subagent-root defaults.
+  const merged = computeMergedDefaults(root, artifacts, options.skipSubagentMerge);
+  const skillOverrides = resolveCategoryOverride(
+    options.skills,
+    merged.skillIds,
+    options.addSkills,
+    options.removeSkills,
+    options.withoutDefaults
+  );
+  const mcpServerOverrides = resolveCategoryOverride(
+    options.mcpServers,
+    merged.mcpServerIds,
+    options.addMcpServers,
+    options.removeMcpServers,
+    options.withoutDefaults
+  );
+  const hookOverrides = resolveCategoryOverride(
+    options.hooks,
+    merged.hookIds,
+    options.addHooks,
+    options.removeHooks,
+    options.withoutDefaults
+  );
+  const pluginOverrides = resolveCategoryOverride(
+    options.plugins,
+    merged.pluginIds,
+    options.addPlugins,
+    options.removePlugins,
+    options.withoutDefaults
+  );
+
   // Adapter writes .mcp.json and injects skills (no secret resolution)
   const session = await adapter.prepareSession(
     artifacts,
     options.target ?? process.cwd(),
     {
       root,
-      skillOverrides: options.skills,
-      mcpServerOverrides: options.mcpServers,
-      hookOverrides: options.hooks,
-      pluginOverrides: options.plugins,
+      skillOverrides,
+      mcpServerOverrides,
+      hookOverrides,
+      pluginOverrides,
       skipSubagentMerge: options.skipSubagentMerge,
     }
   );
@@ -206,4 +263,76 @@ export async function prepareSession(
     rootAutoDetected,
     warnings: warnings.length > 0 ? warnings : undefined,
   };
+}
+
+/**
+ * Merged default IDs across parent root and its subagent roots.
+ */
+export interface MergedArtifactDefaults {
+  mcpServerIds: string[];
+  skillIds: string[];
+  hookIds: string[];
+  pluginIds: string[];
+}
+
+/**
+ * Compute the union of parent root and subagent roots' defaults for each
+ * artifact category. Subagent merging can be disabled via `skipSubagentMerge`,
+ * in which case only the parent root's defaults are returned.
+ */
+export function computeMergedDefaults(
+  root: RootEntry | undefined,
+  artifacts: ResolvedArtifacts,
+  skipSubagentMerge = false
+): MergedArtifactDefaults {
+  const mcpSet = new Set(root?.default_mcp_servers ?? []);
+  const skillSet = new Set(root?.default_skills ?? []);
+  const hookSet = new Set(root?.default_hooks ?? []);
+  const pluginSet = new Set(root?.default_plugins ?? []);
+
+  if (!skipSubagentMerge) {
+    for (const subId of root?.default_subagent_roots ?? []) {
+      const sub = artifacts.roots[subId];
+      if (!sub) continue;
+      for (const id of sub.default_mcp_servers ?? []) mcpSet.add(id);
+      for (const id of sub.default_skills ?? []) skillSet.add(id);
+      for (const id of sub.default_hooks ?? []) hookSet.add(id);
+      for (const id of sub.default_plugins ?? []) pluginSet.add(id);
+    }
+  }
+
+  return {
+    mcpServerIds: [...mcpSet],
+    skillIds: [...skillSet],
+    hookIds: [...hookSet],
+    pluginIds: [...pluginSet],
+  };
+}
+
+/**
+ * Resolve the final override for a single artifact category.
+ *
+ * - If an explicit override is provided (e.g. from a TUI selection), it wins.
+ * - Otherwise, if any add/remove/withoutDefaults intent is present, the
+ *   merged defaults are the base, additions are unioned in, removals are
+ *   subtracted, and `withoutDefaults` starts from an empty base.
+ * - If no intent is expressed, returns `undefined` — the adapter uses its
+ *   own default resolution.
+ */
+export function resolveCategoryOverride(
+  explicitOverride: string[] | undefined,
+  mergedDefaults: string[],
+  add: string[] | undefined,
+  remove: string[] | undefined,
+  withoutDefaults: boolean | undefined
+): string[] | undefined {
+  if (explicitOverride !== undefined) return explicitOverride;
+  const hasIntent =
+    add !== undefined || remove !== undefined || (withoutDefaults ?? false);
+  if (!hasIntent) return undefined;
+  const base = withoutDefaults ? [] : mergedDefaults;
+  const set = new Set(base);
+  for (const id of add ?? []) set.add(id);
+  for (const id of remove ?? []) set.delete(id);
+  return [...set];
 }

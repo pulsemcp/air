@@ -56,7 +56,7 @@ function createTemp(files: Record<string, unknown>): string {
 // These tests use --dry-run so we don't actually spawn the agent. Dry run
 // respects the CLI artifact flags, which is what we want to verify.
 describe("start command — CLI artifact selection flags", () => {
-  it("--skills overrides root defaults in dry-run output", () => {
+  it("--skills adds on top of root defaults (union)", () => {
     const catalog = createTemp({
       "air.json": {
         name: "test",
@@ -85,45 +85,86 @@ describe("start command — CLI artifact selection flags", () => {
     );
 
     expect(result.exitCode).toBe(0);
+    // All three: defaults (a, b) + added (c)
+    expect(result.stdout).toContain("skill-a");
+    expect(result.stdout).toContain("skill-b");
     expect(result.stdout).toContain("skill-c");
-    // Root defaults should NOT appear because --skills overrode them
-    expect(result.stdout).not.toContain("skill-a");
-    expect(result.stdout).not.toContain("skill-b");
+    expect(result.stdout).toContain("Skills (3)");
   });
 
-  it("--mcp-servers overrides root defaults in dry-run output", () => {
+  it("--without-skills removes specific skills from root defaults", () => {
     const catalog = createTemp({
       "air.json": {
         name: "test",
-        mcp: ["./mcp.json"],
+        skills: ["./skills.json"],
         roots: ["./roots.json"],
       },
-      "mcp.json": {
-        github: { type: "stdio", command: "npx", args: ["gh"] },
-        slack: { type: "stdio", command: "npx", args: ["slack"] },
-        postgres: { type: "stdio", command: "npx", args: ["pg"] },
+      "skills.json": {
+        "skill-a": { description: "Skill A", path: "skills/skill-a" },
+        "skill-b": { description: "Skill B", path: "skills/skill-b" },
+        "skill-c": { description: "Skill C", path: "skills/skill-c" },
       },
+      "skills/skill-a/SKILL.md": "# A",
+      "skills/skill-b/SKILL.md": "# B",
+      "skills/skill-c/SKILL.md": "# C",
       "roots.json": {
         myroot: {
           description: "Test root",
+          default_skills: ["skill-a", "skill-b", "skill-c"],
+        },
+      },
+    });
+
+    const result = tryRun(
+      `start claude --root myroot --dry-run --without-skills skill-b`,
+      { AIR_CONFIG: resolve(catalog, "air.json") }
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("skill-a");
+    expect(result.stdout).toContain("skill-c");
+    expect(result.stdout).toContain("Skills (2)");
+    // skill-b removed — verify it does not appear as a selected skill bullet
+    expect(result.stdout).not.toMatch(/\u2022 skill-b\b/);
+  });
+
+  it("--without-defaults drops all root defaults", () => {
+    const catalog = createTemp({
+      "air.json": {
+        name: "test",
+        skills: ["./skills.json"],
+        mcp: ["./mcp.json"],
+        roots: ["./roots.json"],
+      },
+      "skills.json": {
+        "skill-a": { description: "Skill A", path: "skills/skill-a" },
+      },
+      "skills/skill-a/SKILL.md": "# A",
+      "mcp.json": {
+        github: { type: "stdio", command: "npx", args: ["gh"] },
+      },
+      "roots.json": {
+        myroot: {
+          description: "Test",
+          default_skills: ["skill-a"],
           default_mcp_servers: ["github"],
         },
       },
     });
 
     const result = tryRun(
-      `start claude --root myroot --dry-run --mcp-servers slack,postgres`,
+      `start claude --root myroot --dry-run --without-defaults`,
       { AIR_CONFIG: resolve(catalog, "air.json") }
     );
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("slack");
-    expect(result.stdout).toContain("postgres");
-    // github from root default should be omitted
-    expect(result.stdout).not.toMatch(/\bgithub\b/);
+    expect(result.stdout).toContain("Skills (0)");
+    expect(result.stdout).toContain("MCP Servers (0)");
+    expect(result.stdout).not.toMatch(/\u2022 skill-a\b/);
+    expect(result.stdout).not.toMatch(/\u2022 github\b/);
   });
 
-  it("parses comma-separated list with surrounding whitespace", () => {
+  it("--without-defaults combined with --skills activates only the added skill", () => {
     const catalog = createTemp({
       "air.json": {
         name: "test",
@@ -137,21 +178,25 @@ describe("start command — CLI artifact selection flags", () => {
       "skills/skill-a/SKILL.md": "# A",
       "skills/skill-b/SKILL.md": "# B",
       "roots.json": {
-        myroot: { description: "Test", default_skills: [] },
+        myroot: {
+          description: "Test",
+          default_skills: ["skill-a"],
+        },
       },
     });
 
     const result = tryRun(
-      `start claude --root myroot --dry-run --skills "skill-a , skill-b"`,
+      `start claude --root myroot --dry-run --without-defaults --skills skill-b`,
       { AIR_CONFIG: resolve(catalog, "air.json") }
     );
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("skill-a");
+    expect(result.stdout).toContain("Skills (1)");
     expect(result.stdout).toContain("skill-b");
+    expect(result.stdout).not.toMatch(/\u2022 skill-a\b/);
   });
 
-  it("unspecified categories fall back to root defaults when --skills is passed", () => {
+  it("unspecified categories are unaffected by flags for other categories", () => {
     const catalog = createTemp({
       "air.json": {
         name: "test",
@@ -183,14 +228,15 @@ describe("start command — CLI artifact selection flags", () => {
     );
 
     expect(result.exitCode).toBe(0);
-    // Skill override applied
+    // Skills: default skill-a plus added skill-b
+    expect(result.stdout).toContain("Skills (2)");
+    expect(result.stdout).toContain("skill-a");
     expect(result.stdout).toContain("skill-b");
-    expect(result.stdout).not.toContain("skill-a");
-    // MCP server falls back to root default
+    // MCP untouched: still uses root default
     expect(result.stdout).toContain("github");
   });
 
-  it("treats an empty --skills value as explicit deselect (no skills)", () => {
+  it("parses comma-separated list with surrounding whitespace", () => {
     const catalog = createTemp({
       "air.json": {
         name: "test",
@@ -199,51 +245,68 @@ describe("start command — CLI artifact selection flags", () => {
       },
       "skills.json": {
         "skill-a": { description: "Skill A", path: "skills/skill-a" },
+        "skill-b": { description: "Skill B", path: "skills/skill-b" },
       },
       "skills/skill-a/SKILL.md": "# A",
+      "skills/skill-b/SKILL.md": "# B",
       "roots.json": {
-        myroot: { description: "Test", default_skills: ["skill-a"] },
+        myroot: { description: "Test", default_skills: [] },
       },
     });
 
     const result = tryRun(
-      `start claude --root myroot --dry-run --skills ""`,
+      `start claude --root myroot --dry-run --skills "skill-a , skill-b"`,
       { AIR_CONFIG: resolve(catalog, "air.json") }
     );
 
     expect(result.exitCode).toBe(0);
-    // Empty flag means no skills; root default skill-a should not appear
-    expect(result.stdout).toContain("Skills (0)");
-    expect(result.stdout).not.toContain("skill-a");
+    expect(result.stdout).toContain("skill-a");
+    expect(result.stdout).toContain("skill-b");
+    expect(result.stdout).toContain("Skills (2)");
   });
 
-  it("treats a comma-only --skills value as explicit deselect", () => {
+  it("supports --without-skills and --without-mcp-servers together", () => {
     const catalog = createTemp({
       "air.json": {
         name: "test",
         skills: ["./skills.json"],
+        mcp: ["./mcp.json"],
         roots: ["./roots.json"],
       },
       "skills.json": {
         "skill-a": { description: "Skill A", path: "skills/skill-a" },
+        "skill-b": { description: "Skill B", path: "skills/skill-b" },
       },
       "skills/skill-a/SKILL.md": "# A",
+      "skills/skill-b/SKILL.md": "# B",
+      "mcp.json": {
+        github: { type: "stdio", command: "npx", args: ["gh"] },
+        slack: { type: "stdio", command: "npx", args: ["slack"] },
+      },
       "roots.json": {
-        myroot: { description: "Test", default_skills: ["skill-a"] },
+        myroot: {
+          description: "Test",
+          default_skills: ["skill-a", "skill-b"],
+          default_mcp_servers: ["github", "slack"],
+        },
       },
     });
 
     const result = tryRun(
-      `start claude --root myroot --dry-run --skills ",, ,"`,
+      `start claude --root myroot --dry-run --without-skills skill-a --without-mcp-servers slack`,
       { AIR_CONFIG: resolve(catalog, "air.json") }
     );
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("Skills (0)");
-    expect(result.stdout).not.toContain("skill-a");
+    expect(result.stdout).toContain("Skills (1)");
+    expect(result.stdout).toContain("skill-b");
+    expect(result.stdout).not.toMatch(/\u2022 skill-a\b/);
+    expect(result.stdout).toContain("MCP Servers (1)");
+    expect(result.stdout).toContain("github");
+    expect(result.stdout).not.toMatch(/\u2022 slack\b/);
   });
 
-  it("supports --hooks and --plugins overrides", () => {
+  it("supports --hooks and --plugins adds", () => {
     const catalog = createTemp({
       "air.json": {
         name: "test",
@@ -298,9 +361,49 @@ describe("start command — CLI artifact selection flags", () => {
     );
 
     expect(result.exitCode).toBe(0);
+    // Hooks: default + added
+    expect(result.stdout).toContain("Hooks (2)");
+    expect(result.stdout).toContain("hook-a");
     expect(result.stdout).toContain("hook-b");
+    // Plugins: default + added
+    expect(result.stdout).toContain("Plugins (2)");
+    expect(result.stdout).toContain("plugin-a");
     expect(result.stdout).toContain("plugin-b");
-    expect(result.stdout).not.toContain("hook-a");
-    expect(result.stdout).not.toContain("plugin-a");
+  });
+
+  it("combining --skills and --without-skills within the same category works", () => {
+    const catalog = createTemp({
+      "air.json": {
+        name: "test",
+        skills: ["./skills.json"],
+        roots: ["./roots.json"],
+      },
+      "skills.json": {
+        "skill-a": { description: "Skill A", path: "skills/skill-a" },
+        "skill-b": { description: "Skill B", path: "skills/skill-b" },
+        "skill-c": { description: "Skill C", path: "skills/skill-c" },
+      },
+      "skills/skill-a/SKILL.md": "# A",
+      "skills/skill-b/SKILL.md": "# B",
+      "skills/skill-c/SKILL.md": "# C",
+      "roots.json": {
+        myroot: {
+          description: "Test",
+          default_skills: ["skill-a", "skill-b"],
+        },
+      },
+    });
+
+    const result = tryRun(
+      `start claude --root myroot --dry-run --skills skill-c --without-skills skill-a`,
+      { AIR_CONFIG: resolve(catalog, "air.json") }
+    );
+
+    expect(result.exitCode).toBe(0);
+    // Final: default skill-b + added skill-c; skill-a removed
+    expect(result.stdout).toContain("Skills (2)");
+    expect(result.stdout).toContain("skill-b");
+    expect(result.stdout).toContain("skill-c");
+    expect(result.stdout).not.toMatch(/\u2022 skill-a\b/);
   });
 });
