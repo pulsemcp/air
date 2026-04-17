@@ -21,6 +21,22 @@ export function startCommand(): Command {
       "Don't prompt for confirmation before starting"
     )
     .option(
+      "--skills <ids>",
+      "Comma-separated skill IDs (overrides root defaults, skips interactive TUI)"
+    )
+    .option(
+      "--mcp-servers <ids>",
+      "Comma-separated MCP server IDs (overrides root defaults, skips interactive TUI)"
+    )
+    .option(
+      "--hooks <ids>",
+      "Comma-separated hook IDs (overrides root defaults, skips interactive TUI)"
+    )
+    .option(
+      "--plugins <ids>",
+      "Comma-separated plugin IDs (overrides root defaults, skips interactive TUI)"
+    )
+    .option(
       "--no-subagent-merge",
       "Skip merging subagent roots' artifacts into the parent session (for orchestrators that manage composition externally)"
     )
@@ -32,6 +48,10 @@ export function startCommand(): Command {
           root?: string;
           dryRun?: boolean;
           skipConfirmation?: boolean;
+          skills?: string;
+          mcpServers?: string;
+          hooks?: string;
+          plugins?: string;
           subagentMerge: boolean;
         },
       ) => {
@@ -76,9 +96,31 @@ export function startCommand(): Command {
 
         const skipSubagentMerge = !options.subagentMerge;
 
+        // Parse CLI artifact flags (CSV of IDs). Any flag present implies
+        // non-interactive mode and suppresses the TUI; unspecified categories
+        // fall back to root defaults via prepareSession's default handling.
+        const parseIdList = (value: string | undefined): string[] | undefined =>
+          value ? value.split(",").map((s) => s.trim()).filter(Boolean) : undefined;
+
+        let selectedSkills = parseIdList(options.skills);
+        let selectedMcpServers = parseIdList(options.mcpServers);
+        let selectedHooks = parseIdList(options.hooks);
+        let selectedPlugins = parseIdList(options.plugins);
+
+        const hasArtifactFlags =
+          selectedSkills !== undefined ||
+          selectedMcpServers !== undefined ||
+          selectedHooks !== undefined ||
+          selectedPlugins !== undefined;
+
         // Dry run
         if (options.dryRun) {
-          printDryRun(agent, result.artifacts, root, skipSubagentMerge);
+          printDryRun(agent, result.artifacts, root, skipSubagentMerge, {
+            skills: selectedSkills,
+            mcpServers: selectedMcpServers,
+            hooks: selectedHooks,
+            plugins: selectedPlugins,
+          });
           process.exit(0);
         }
 
@@ -90,15 +132,9 @@ export function startCommand(): Command {
           process.exit(1);
         }
 
-        // Interactive TUI or skip
-        let selectedSkills: string[] | undefined;
-        let selectedMcpServers: string[] | undefined;
-        let selectedHooks: string[] | undefined;
-        let selectedPlugins: string[] | undefined;
-
         const isTTY = process.stdout.isTTY && process.stdin.isTTY;
 
-        if (isTTY && !options.skipConfirmation) {
+        if (isTTY && !options.skipConfirmation && !hasArtifactFlags) {
           const tuiResult = await runInteractiveSelector(
             result.artifacts,
             root,
@@ -167,7 +203,13 @@ function printDryRun(
   agent: string,
   artifacts: ResolvedArtifacts,
   root?: RootEntry,
-  skipSubagentMerge = false
+  skipSubagentMerge = false,
+  overrides: {
+    skills?: string[];
+    mcpServers?: string[];
+    hooks?: string[];
+    plugins?: string[];
+  } = {}
 ) {
   console.log(`\n=== AIR Session Configuration ===`);
   console.log(`Agent: ${agent}`);
@@ -186,10 +228,11 @@ function printDryRun(
       }
     : getMergedDefaults(root, artifacts.roots);
 
-  const mcpIds = merged.mcpServerIds.length > 0 ? merged.mcpServerIds : (root?.default_mcp_servers || Object.keys(artifacts.mcp));
-  const skillIds = merged.skillIds.length > 0 ? merged.skillIds : (root?.default_skills || Object.keys(artifacts.skills));
-  const pluginIds = merged.pluginIds.length > 0 ? merged.pluginIds : (root?.default_plugins || Object.keys(artifacts.plugins));
-  const hookIds = merged.hookIds.length > 0 ? merged.hookIds : (root?.default_hooks || Object.keys(artifacts.hooks));
+  // CLI overrides take precedence over merged defaults for each category
+  const mcpIds = overrides.mcpServers ?? (merged.mcpServerIds.length > 0 ? merged.mcpServerIds : (root?.default_mcp_servers || Object.keys(artifacts.mcp)));
+  const skillIds = overrides.skills ?? (merged.skillIds.length > 0 ? merged.skillIds : (root?.default_skills || Object.keys(artifacts.skills)));
+  const pluginIds = overrides.plugins ?? (merged.pluginIds.length > 0 ? merged.pluginIds : (root?.default_plugins || Object.keys(artifacts.plugins)));
+  const hookIds = overrides.hooks ?? (merged.hookIds.length > 0 ? merged.hookIds : (root?.default_hooks || Object.keys(artifacts.hooks)));
 
   console.log(`\nMCP Servers (${mcpIds.length}):`);
   for (const id of mcpIds) {

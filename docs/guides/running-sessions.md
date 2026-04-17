@@ -36,6 +36,16 @@ The footer shows a cross-artifact selection summary so you can see what's select
 
 When not in a TTY (e.g., in a CI pipeline) or when `--skip-confirmation` is passed, the TUI is skipped and the agent launches with root defaults.
 
+### Non-interactive selection
+
+Pass any of `--skills`, `--mcp-servers`, `--hooks`, or `--plugins` to select artifacts from the command line instead of the TUI. Each flag takes a comma-separated list of IDs and overrides the root defaults for that category. Unspecified categories fall back to root defaults.
+
+```bash
+air start claude --root web-app --skills deploy-staging,initial-pr-review --mcp-servers github,postgres-prod
+```
+
+When any of these flags is provided, `air start` skips the interactive TUI even if stdin/stdout are a TTY.
+
 ### Options
 
 Required argument: `<agent>` — the agent to start (e.g., `claude`).
@@ -45,6 +55,10 @@ Required argument: `<agent>` — the agent to start (e.g., `claude`).
 | `--root <name>` | Activate a specific root |
 | `--dry-run` | Preview configuration without starting |
 | `--skip-confirmation` | Skip the interactive TUI and launch directly |
+| `--skills <ids>` | Comma-separated skill IDs (overrides root defaults, skips the TUI) |
+| `--mcp-servers <ids>` | Comma-separated MCP server IDs (overrides root defaults, skips the TUI) |
+| `--hooks <ids>` | Comma-separated hook IDs (overrides root defaults, skips the TUI) |
+| `--plugins <ids>` | Comma-separated plugin IDs (overrides root defaults, skips the TUI) |
 | `--no-subagent-merge` | Skip merging subagent roots' artifacts |
 
 ### Passing arguments to the agent
@@ -63,6 +77,12 @@ Preview what would be activated:
 
 ```bash
 air start claude --dry-run
+```
+
+Dry run honors the non-interactive selection flags, so you can preview exactly what a scripted invocation would run:
+
+```bash
+air start claude --dry-run --skills deploy-staging --mcp-servers github
 ```
 
 Output:

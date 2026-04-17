@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.30] - 2026-04-17
+
+### Added
+- `air start` now accepts `--skills`, `--mcp-servers`, `--hooks`, and `--plugins` flags — each taking a comma-separated list of IDs — to select artifacts non-interactively. Any flag present suppresses the interactive TUI; unspecified categories fall back to root defaults. `--dry-run` honors these flags so scripted invocations can be previewed.
+
 ## [0.0.29] - 2026-04-14
 
 ### Added
