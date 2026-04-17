@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.31] - 2026-04-17
+
+### Changed
+- Documentation: clarify that `~/.air/air.json` is the single composition surface — purely local artifact directories, remote catalogs, and any mix are all first-class shapes. README's Composition & Layering section now shows local-only, local-catalog + remote-catalog, and stacked-remote examples. `docs/guides/composition-and-overrides.md` gains local-only and local-team-catalog layering patterns. `docs/guides/understanding-air-json.md` explicitly frames `air.json` as the composition point.
+- `air init` blank-mode output now explains that each artifact field accepts an array of local and/or remote index paths, includes an inline example, and links to the composition-and-overrides guide.
+
 ## [0.0.30] - 2026-04-17
 
 ### Added

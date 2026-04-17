@@ -36,7 +36,17 @@ export function initCommand(): Command {
             `Initialized AIR configuration at ${result.airJsonPath}`
           );
           console.log(
-            "\nEdit air.json to configure your setup. Run 'air validate ~/.air/air.json' to check."
+            "\nair.json is the composition point for your sessions — each artifact field" +
+              "\n(skills, mcp, roots, hooks, references, plugins) accepts an ARRAY of index" +
+              "\npaths. Mix local directories and/or remote catalogs; later entries override" +
+              "\nearlier ones by ID. Example:"
+          );
+          console.log(
+            '\n  {\n    "name": "my-config",\n    "skills": [\n      "./skills/skills.json",\n      "github://acme/shared-catalog/skills/skills.json"\n    ]\n  }'
+          );
+          console.log(
+            "\nSee https://github.com/pulsemcp/air/blob/main/docs/guides/composition-and-overrides.md" +
+              "\nValidate with: air validate ~/.air/air.json"
           );
         }
       } catch (err) {
