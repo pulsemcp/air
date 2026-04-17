@@ -92,10 +92,15 @@ export type { ArtifactType, ListArtifactsOptions, ListArtifactsResult } from "./
 export { startSession } from "./start.js";
 export type { StartSessionOptions, StartSessionResult } from "./start.js";
 
-export { prepareSession } from "./prepare.js";
+export {
+  prepareSession,
+  computeMergedDefaults,
+  resolveCategoryOverride,
+} from "./prepare.js";
 export type {
   PrepareSessionOptions,
   PrepareSessionResult,
+  MergedArtifactDefaults,
 } from "./prepare.js";
 
 export { exportMarketplace } from "./export-marketplace.js";
