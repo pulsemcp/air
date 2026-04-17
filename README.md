@@ -71,11 +71,11 @@ AIR organizes agent configuration into **artifact types**, each with its own ind
     └── hooks.json                # Lifecycle hooks index
 ```
 
-Orgs and teams provide default `air.json` files as starting points. Users keep their own at `~/.air/air.json`, pointing to a mix of org-provided and local artifact files.
+Your own `air.json` at `~/.air/air.json` is where you assemble whichever artifacts you want — purely local directories you maintain yourself, catalogs your team ships, remote org-wide defaults, or any combination. Orgs and teams can publish ready-made index files as building blocks; nothing is compulsory.
 
 ### air.json — The Root Config
 
-Every AIR configuration starts with an `air.json` file. Each artifact property is an array of paths to index files. Files are loaded and merged in order — later entries override earlier ones by ID:
+Every AIR configuration starts with an `air.json` file. Each artifact property is an array of paths to index files. Paths can be local (relative to `air.json`) or remote URIs like `github://` when a catalog provider is installed. Files are loaded and merged in order — later entries override earlier ones by ID:
 
 ```json
 {
@@ -94,7 +94,35 @@ Every AIR configuration starts with an `air.json` file. Each artifact property i
 
 ### Composition & Layering
 
-Composition is expressed directly in `air.json`. List multiple sources per artifact type — org-wide configs first, then team or project overrides:
+`~/.air/air.json` is the single composition surface — everything active in a session comes from the arrays you list here. Each artifact field accepts **any number of local or remote index paths**, and you mix and match to fit your situation. A few shapes:
+
+**Local-only.** A solo developer or a small team using only their own artifacts:
+
+```json
+{
+  "name": "just-me",
+  "skills": ["./skills/skills.json"],
+  "mcp": ["./mcp/mcp.json"]
+}
+```
+
+**Local catalog + shared remote catalog.** Your private team skills live in a directory you maintain (e.g., a sibling repo checked into `~/.air/` or an absolute path elsewhere on disk), layered with an org-wide catalog for shared defaults. Local paths resolve relative to `air.json`, so `./platform-team-catalog/...` below points at `~/.air/platform-team-catalog/...`:
+
+```json
+{
+  "name": "platform-team",
+  "skills": [
+    "github://acme/air-org/skills/skills.json",
+    "./platform-team-catalog/skills/skills.json"
+  ],
+  "mcp": [
+    "github://acme/air-org/mcp/mcp.json",
+    "./platform-team-catalog/mcp/mcp.json"
+  ]
+}
+```
+
+**Stacked remotes with local overrides.** Org → team → project, with the local file getting the last word:
 
 ```json
 {

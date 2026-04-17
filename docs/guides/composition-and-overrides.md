@@ -1,6 +1,8 @@
 # Composition and Overrides
 
-AIR's composition model lets you layer configuration across organizational levels — org-wide defaults, team overrides, and project-local customizations. This guide covers the mechanics and advanced patterns.
+AIR's composition model lets you layer configuration from whatever sources make sense for you — purely local directories, catalogs your team ships, remote org-wide defaults, or any mix. This guide covers the mechanics and advanced patterns.
+
+`~/.air/air.json` is the single composition surface: every active artifact in a session comes from the arrays you list there. Nothing else contributes to a session's config, and you are not required to use remote catalogs — a fully local setup is a supported first-class shape.
 
 ## The override model
 
@@ -59,6 +61,43 @@ The result is the team version **only**. The org's `title` and `description` are
 Full replacement is predictable. You never have to wonder which fields came from which layer. The winning entry is exactly what you see in its file. Deep merge creates ambiguity: if a field is present in the result, did it come from the org layer or the team layer? With full replacement, the answer is always "whichever file defined this ID last."
 
 ## Layering patterns
+
+### Local-only
+
+You don't need a remote source to use layering. A team that maintains its skills in a private directory can point `air.json` straight at local index files:
+
+```json
+{
+  "name": "my-team",
+  "skills": ["./skills/skills.json"],
+  "mcp": ["./mcp/mcp.json"]
+}
+```
+
+This is the simplest setup and a fully supported shape — no providers required, no network calls at resolution time.
+
+### Local team catalog + shared remote catalog
+
+A common team shape is a private catalog kept as a sibling directory under `~/.air/` (often a git submodule or a checked-out team repo), composed alongside a shared org-wide catalog:
+
+```json
+{
+  "name": "platform-team",
+  "extensions": ["@pulsemcp/air-provider-github"],
+  "skills": [
+    "github://acme/air-org/skills/skills.json",
+    "./platform-team-catalog/skills/skills.json"
+  ],
+  "mcp": [
+    "github://acme/air-org/mcp/mcp.json",
+    "./platform-team-catalog/mcp/mcp.json"
+  ]
+}
+```
+
+Here the org catalog provides the baseline and the team's local catalog adds team-specific artifacts (and overrides any org defaults it wants to replace). Swap or add paths at will — each artifact field is just an ordered list of sources.
+
+Local paths are resolved relative to the directory containing `air.json` (so `./platform-team-catalog/...` above points at `~/.air/platform-team-catalog/...`). If your catalog lives elsewhere on disk, use an absolute path like `/opt/team-catalog/skills/skills.json`. **Tildes (`~/`) are not expanded** — either use a relative path or spell out the absolute path.
 
 ### Org → Team → Project
 

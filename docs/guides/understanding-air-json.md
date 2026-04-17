@@ -2,9 +2,11 @@
 
 `air.json` is the root configuration file for AIR. It ties together all your artifact indexes — skills, MCP servers, references, plugins, roots, and hooks — into a single, composable configuration.
 
+`air.json` is the **composition point** — it is the one file that decides which artifacts are active in a session. Each artifact field is an array of index paths, so a single `air.json` can assemble any combination you want: purely local directories you maintain, catalogs your team ships, remote org-wide defaults, or a mix of all three. There is no other place to point AIR at artifacts.
+
 ## Location
 
-By default, the CLI looks for `air.json` at `~/.air/air.json`. You can override this with:
+By default, the CLI looks for `air.json` at `~/.air/air.json` — this is where most users keep the `air.json` that governs their sessions. You can override this with:
 
 - The `AIR_CONFIG` environment variable
 - The `--config` flag on commands that support it (`prepare`, `install`)
