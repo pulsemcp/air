@@ -213,7 +213,7 @@ describe("prepare command", () => {
     expect(mcpJson.mcpServers.slack).toBeUndefined();
   });
 
-  it("--skills adds on top of root defaults (union)", () => {
+  it("--skill adds on top of root defaults (union)", () => {
     const catalog = createTemp({
       "air.json": {
         name: "test",
@@ -249,7 +249,7 @@ describe("prepare command", () => {
 
     // Add skill-c on top of the root's default skills
     const result = tryRun(
-      `prepare claude --config ${join(catalog, "air.json")} --root myroot --skills skill-c --target ${target}`
+      `prepare claude --config ${join(catalog, "air.json")} --root myroot --skill skill-c --target ${target}`
     );
     expect(result.exitCode).toBe(0);
 
@@ -265,7 +265,7 @@ describe("prepare command", () => {
     ).toBe(true);
   });
 
-  it("--without-skills removes specific skills from root defaults", () => {
+  it("--without-skill removes specific skills from root defaults", () => {
     const catalog = createTemp({
       "air.json": {
         name: "test",
@@ -289,7 +289,7 @@ describe("prepare command", () => {
     const target = createTemp({});
 
     const result = tryRun(
-      `prepare claude --config ${join(catalog, "air.json")} --root myroot --without-skills skill-a --target ${target}`
+      `prepare claude --config ${join(catalog, "air.json")} --root myroot --without-skill skill-a --target ${target}`
     );
     expect(result.exitCode).toBe(0);
 
@@ -331,7 +331,7 @@ describe("prepare command", () => {
     const target = createTemp({});
 
     const result = tryRun(
-      `prepare claude --config ${join(catalog, "air.json")} --root myroot --without-defaults --skills skill-b --target ${target}`
+      `prepare claude --config ${join(catalog, "air.json")} --root myroot --without-defaults --skill skill-b --target ${target}`
     );
     expect(result.exitCode).toBe(0);
 
@@ -350,7 +350,7 @@ describe("prepare command", () => {
     expect(mcpJson.mcpServers ?? {}).toEqual({});
   });
 
-  it("--mcp-servers adds on top of root defaults (union)", () => {
+  it("--mcp-server adds on top of root defaults (union)", () => {
     const catalog = createTemp({
       "air.json": {
         name: "test",
@@ -373,7 +373,7 @@ describe("prepare command", () => {
 
     // Add slack alongside the root's github default
     const result = tryRun(
-      `prepare claude --config ${join(catalog, "air.json")} --root myroot --mcp-servers slack --target ${target}`
+      `prepare claude --config ${join(catalog, "air.json")} --root myroot --mcp-server slack --target ${target}`
     );
     expect(result.exitCode).toBe(0);
 

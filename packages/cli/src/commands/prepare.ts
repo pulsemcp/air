@@ -36,11 +36,6 @@ function parseArgvFlag(flagName: string): string | undefined {
   return undefined;
 }
 
-function parseIdList(value: string | undefined): string[] | undefined {
-  if (value === undefined) return undefined;
-  return value.split(",").map((s) => s.trim()).filter(Boolean);
-}
-
 export function prepareCommand(): Command {
   const cmd = new Command("prepare")
     .description(
@@ -58,40 +53,40 @@ export function prepareCommand(): Command {
       process.cwd()
     )
     .option(
-      "--skills <ids>",
-      "Comma-separated skill IDs to ADD on top of root defaults"
+      "--skill <id...>",
+      "Skill ID to ADD on top of root defaults (repeatable: --skill a --skill b, or variadic: --skill a b)"
     )
     .option(
-      "--mcp-servers <ids>",
-      "Comma-separated MCP server IDs to ADD on top of root defaults"
+      "--mcp-server <id...>",
+      "MCP server ID to ADD on top of root defaults (repeatable or variadic)"
     )
     .option(
-      "--hooks <ids>",
-      "Comma-separated hook IDs to ADD on top of root defaults"
+      "--hook <id...>",
+      "Hook ID to ADD on top of root defaults (repeatable or variadic)"
     )
     .option(
-      "--plugins <ids>",
-      "Comma-separated plugin IDs to ADD on top of root defaults"
+      "--plugin <id...>",
+      "Plugin ID to ADD on top of root defaults (repeatable or variadic)"
     )
     .option(
-      "--without-skills <ids>",
-      "Comma-separated skill IDs to remove from root defaults"
+      "--without-skill <id...>",
+      "Skill ID to remove from root defaults (repeatable or variadic)"
     )
     .option(
-      "--without-mcp-servers <ids>",
-      "Comma-separated MCP server IDs to remove from root defaults"
+      "--without-mcp-server <id...>",
+      "MCP server ID to remove from root defaults (repeatable or variadic)"
     )
     .option(
-      "--without-hooks <ids>",
-      "Comma-separated hook IDs to remove from root defaults"
+      "--without-hook <id...>",
+      "Hook ID to remove from root defaults (repeatable or variadic)"
     )
     .option(
-      "--without-plugins <ids>",
-      "Comma-separated plugin IDs to remove from root defaults"
+      "--without-plugin <id...>",
+      "Plugin ID to remove from root defaults (repeatable or variadic)"
     )
     .option(
       "--without-defaults",
-      "Ignore all root defaults — start from an empty selection (only artifacts added via --skills / --mcp-servers / --hooks / --plugins will be activated)"
+      "Ignore all root defaults — start from an empty selection (only artifacts added via --skill / --mcp-server / --hook / --plugin will be activated)"
     )
     .option(
       "--no-subagent-merge",
@@ -107,14 +102,14 @@ export function prepareCommand(): Command {
         config?: string;
         root?: string;
         target: string;
-        skills?: string;
-        mcpServers?: string;
-        hooks?: string;
-        plugins?: string;
-        withoutSkills?: string;
-        withoutMcpServers?: string;
-        withoutHooks?: string;
-        withoutPlugins?: string;
+        skill?: string[];
+        mcpServer?: string[];
+        hook?: string[];
+        plugin?: string[];
+        withoutSkill?: string[];
+        withoutMcpServer?: string[];
+        withoutHook?: string[];
+        withoutPlugin?: string[];
         withoutDefaults?: boolean;
         subagentMerge: boolean;
         skipValidation?: boolean;
@@ -155,14 +150,14 @@ export function prepareCommand(): Command {
             root: options.root,
             target: options.target,
             adapter,
-            addSkills: parseIdList(options.skills),
-            addMcpServers: parseIdList(options.mcpServers),
-            addHooks: parseIdList(options.hooks),
-            addPlugins: parseIdList(options.plugins),
-            removeSkills: parseIdList(options.withoutSkills),
-            removeMcpServers: parseIdList(options.withoutMcpServers),
-            removeHooks: parseIdList(options.withoutHooks),
-            removePlugins: parseIdList(options.withoutPlugins),
+            addSkills: options.skill,
+            addMcpServers: options.mcpServer,
+            addHooks: options.hook,
+            addPlugins: options.plugin,
+            removeSkills: options.withoutSkill,
+            removeMcpServers: options.withoutMcpServer,
+            removeHooks: options.withoutHook,
+            removePlugins: options.withoutPlugin,
             withoutDefaults: options.withoutDefaults,
             skipSubagentMerge: !options.subagentMerge,
             skipValidation: options.skipValidation,

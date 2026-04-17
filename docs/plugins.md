@@ -36,7 +36,7 @@ Plugins are registered in `plugins.json`. Each entry declares which AIR artifact
 
 Plugins declare which AIR artifacts they bundle via the `skills`, `mcp_servers`, and `hooks` arrays. These reference IDs of artifacts defined in the corresponding AIR index files (skills.json, mcp.json, hooks.json).
 
-This declarative mapping is designed to enable CLI deduplication — if you request `--skills lint-fix --plugins code-quality` and `code-quality` already bundles `lint-fix`, the CLI can determine that only the plugin needs to be activated.
+This declarative mapping is designed to enable CLI deduplication — if you request `--skill lint-fix --plugin code-quality` and `code-quality` already bundles `lint-fix`, the CLI can determine that only the plugin needs to be activated.
 
 ### Plugin Composition
 

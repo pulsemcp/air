@@ -22,40 +22,40 @@ export function startCommand(): Command {
       "Don't prompt for confirmation before starting"
     )
     .option(
-      "--skills <ids>",
-      "Comma-separated skill IDs to ADD on top of root defaults (skips interactive TUI)"
+      "--skill <id...>",
+      "Skill ID to ADD on top of root defaults (repeatable: --skill a --skill b, or variadic: --skill a b). Skips interactive TUI."
     )
     .option(
-      "--mcp-servers <ids>",
-      "Comma-separated MCP server IDs to ADD on top of root defaults (skips interactive TUI)"
+      "--mcp-server <id...>",
+      "MCP server ID to ADD on top of root defaults (repeatable or variadic). Skips interactive TUI."
     )
     .option(
-      "--hooks <ids>",
-      "Comma-separated hook IDs to ADD on top of root defaults (skips interactive TUI)"
+      "--hook <id...>",
+      "Hook ID to ADD on top of root defaults (repeatable or variadic). Skips interactive TUI."
     )
     .option(
-      "--plugins <ids>",
-      "Comma-separated plugin IDs to ADD on top of root defaults (skips interactive TUI)"
+      "--plugin <id...>",
+      "Plugin ID to ADD on top of root defaults (repeatable or variadic). Skips interactive TUI."
     )
     .option(
-      "--without-skills <ids>",
-      "Comma-separated skill IDs to remove from root defaults"
+      "--without-skill <id...>",
+      "Skill ID to remove from root defaults (repeatable or variadic)"
     )
     .option(
-      "--without-mcp-servers <ids>",
-      "Comma-separated MCP server IDs to remove from root defaults"
+      "--without-mcp-server <id...>",
+      "MCP server ID to remove from root defaults (repeatable or variadic)"
     )
     .option(
-      "--without-hooks <ids>",
-      "Comma-separated hook IDs to remove from root defaults"
+      "--without-hook <id...>",
+      "Hook ID to remove from root defaults (repeatable or variadic)"
     )
     .option(
-      "--without-plugins <ids>",
-      "Comma-separated plugin IDs to remove from root defaults"
+      "--without-plugin <id...>",
+      "Plugin ID to remove from root defaults (repeatable or variadic)"
     )
     .option(
       "--without-defaults",
-      "Ignore all root defaults — start from an empty selection (only artifacts added via --skills / --mcp-servers / --hooks / --plugins will be activated)"
+      "Ignore all root defaults — start from an empty selection (only artifacts added via --skill / --mcp-server / --hook / --plugin will be activated)"
     )
     .option(
       "--no-subagent-merge",
@@ -69,14 +69,14 @@ export function startCommand(): Command {
           root?: string;
           dryRun?: boolean;
           skipConfirmation?: boolean;
-          skills?: string;
-          mcpServers?: string;
-          hooks?: string;
-          plugins?: string;
-          withoutSkills?: string;
-          withoutMcpServers?: string;
-          withoutHooks?: string;
-          withoutPlugins?: string;
+          skill?: string[];
+          mcpServer?: string[];
+          hook?: string[];
+          plugin?: string[];
+          withoutSkill?: string[];
+          withoutMcpServer?: string[];
+          withoutHook?: string[];
+          withoutPlugin?: string[];
           withoutDefaults?: boolean;
           subagentMerge: boolean;
         },
@@ -122,22 +122,17 @@ export function startCommand(): Command {
 
         const skipSubagentMerge = !options.subagentMerge;
 
-        // Parse CLI artifact flags. Values are comma-separated ID lists with
-        // whitespace trimmed and empty entries filtered. `undefined` means the
-        // flag was not passed.
-        const parseIdList = (value: string | undefined): string[] | undefined => {
-          if (value === undefined) return undefined;
-          return value.split(",").map((s) => s.trim()).filter(Boolean);
-        };
-
-        const addSkills = parseIdList(options.skills);
-        const addMcpServers = parseIdList(options.mcpServers);
-        const addHooks = parseIdList(options.hooks);
-        const addPlugins = parseIdList(options.plugins);
-        const removeSkills = parseIdList(options.withoutSkills);
-        const removeMcpServers = parseIdList(options.withoutMcpServers);
-        const removeHooks = parseIdList(options.withoutHooks);
-        const removePlugins = parseIdList(options.withoutPlugins);
+        // Variadic commander options: `undefined` means the flag was not passed;
+        // otherwise we get an array of IDs (supports `--skill a --skill b`,
+        // `--skill a b`, or a mix).
+        const addSkills = options.skill;
+        const addMcpServers = options.mcpServer;
+        const addHooks = options.hook;
+        const addPlugins = options.plugin;
+        const removeSkills = options.withoutSkill;
+        const removeMcpServers = options.withoutMcpServer;
+        const removeHooks = options.withoutHook;
+        const removePlugins = options.withoutPlugin;
         const withoutDefaults = options.withoutDefaults ?? false;
 
         const hasArtifactFlags =
