@@ -38,17 +38,20 @@ When not in a TTY (e.g., in a CI pipeline) or when `--skip-confirmation` is pass
 
 ### Non-interactive selection
 
-Pass any of `--skills`, `--mcp-servers`, `--hooks`, or `--plugins` to tweak the selection from the command line instead of the TUI. Each flag takes a comma-separated list of IDs and **adds** those artifacts on top of the root defaults (union). Use the matching `--without-*` flag to remove specific IDs from the defaults, or `--without-defaults` to opt out of all root defaults and start from an empty set.
+Pass any of `--skill`, `--mcp-server`, `--hook`, or `--plugin` to tweak the selection from the command line instead of the TUI. Each flag names an ID to **add** on top of the root defaults (union). To pass multiple IDs, repeat the flag (`--skill a --skill b`) or list them after a single flag (`--skill a b`). Use the matching `--without-*` flag to remove specific IDs from the defaults, or `--without-defaults` to opt out of all root defaults and start from an empty set.
 
 ```bash
 # Add an extra skill and MCP server on top of web-app's defaults
-air start claude --root web-app --skills deploy-staging --mcp-servers postgres-prod
+air start claude --root web-app --skill deploy-staging --mcp-server postgres-prod
+
+# Add multiple skills after a single flag (variadic)
+air start claude --root web-app --skill deploy-staging initial-pr-review
 
 # Drop a specific hook from the defaults
-air start claude --root web-app --without-hooks prevent-secrets-in-context
+air start claude --root web-app --without-hook prevent-secrets-in-context
 
 # Run with only the explicitly listed artifacts (no root defaults at all)
-air start claude --root web-app --without-defaults --skills pr-review --mcp-servers github
+air start claude --root web-app --without-defaults --skill pr-review --mcp-server github
 ```
 
 When any of these flags is provided, `air start` skips the interactive TUI even if stdin/stdout are a TTY. Flags for unspecified categories leave those categories at their root defaults.
@@ -62,15 +65,15 @@ Required argument: `<agent>` — the agent to start (e.g., `claude`).
 | `--root <name>` | Activate a specific root |
 | `--dry-run` | Preview configuration without starting |
 | `--skip-confirmation` | Skip the interactive TUI and launch directly |
-| `--skills <ids>` | Comma-separated skill IDs to add on top of root defaults (skips the TUI) |
-| `--mcp-servers <ids>` | Comma-separated MCP server IDs to add on top of root defaults (skips the TUI) |
-| `--hooks <ids>` | Comma-separated hook IDs to add on top of root defaults (skips the TUI) |
-| `--plugins <ids>` | Comma-separated plugin IDs to add on top of root defaults (skips the TUI) |
-| `--without-skills <ids>` | Skill IDs to remove from the root defaults |
-| `--without-mcp-servers <ids>` | MCP server IDs to remove from the root defaults |
-| `--without-hooks <ids>` | Hook IDs to remove from the root defaults |
-| `--without-plugins <ids>` | Plugin IDs to remove from the root defaults |
-| `--without-defaults` | Ignore all root defaults — start from an empty set and activate only the artifacts added via `--skills` / `--mcp-servers` / `--hooks` / `--plugins` |
+| `--skill <id...>` | Skill ID(s) to add on top of root defaults — repeat the flag or list multiple IDs after one flag. Skips the TUI. |
+| `--mcp-server <id...>` | MCP server ID(s) to add on top of root defaults (repeatable or variadic). Skips the TUI. |
+| `--hook <id...>` | Hook ID(s) to add on top of root defaults (repeatable or variadic). Skips the TUI. |
+| `--plugin <id...>` | Plugin ID(s) to add on top of root defaults (repeatable or variadic). Skips the TUI. |
+| `--without-skill <id...>` | Skill ID(s) to remove from the root defaults |
+| `--without-mcp-server <id...>` | MCP server ID(s) to remove from the root defaults |
+| `--without-hook <id...>` | Hook ID(s) to remove from the root defaults |
+| `--without-plugin <id...>` | Plugin ID(s) to remove from the root defaults |
+| `--without-defaults` | Ignore all root defaults — start from an empty set and activate only the artifacts added via `--skill` / `--mcp-server` / `--hook` / `--plugin` |
 | `--no-subagent-merge` | Skip merging subagent roots' artifacts |
 
 ### Passing arguments to the agent
@@ -94,7 +97,7 @@ air start claude --dry-run
 Dry run honors the non-interactive selection flags, so you can preview exactly what a scripted invocation would run:
 
 ```bash
-air start claude --dry-run --skills deploy-staging --without-hooks prevent-secrets-in-context
+air start claude --dry-run --skill deploy-staging --without-hook prevent-secrets-in-context
 ```
 
 Output:
@@ -165,14 +168,14 @@ Required argument: `<adapter>` — the agent adapter to use (e.g., `claude`).
 | `--config <path>` | Path to air.json (default: `~/.air/air.json` or `AIR_CONFIG`) |
 | `--root <name>` | Root to activate (auto-detected from cwd if omitted) |
 | `--target <dir>` | Directory to prepare (default: current directory) |
-| `--skills <ids>` | Comma-separated skill IDs to add on top of root defaults |
-| `--mcp-servers <ids>` | Comma-separated MCP server IDs to add on top of root defaults |
-| `--hooks <ids>` | Comma-separated hook IDs to add on top of root defaults |
-| `--plugins <ids>` | Comma-separated plugin IDs to add on top of root defaults |
-| `--without-skills <ids>` | Skill IDs to remove from the root defaults |
-| `--without-mcp-servers <ids>` | MCP server IDs to remove from the root defaults |
-| `--without-hooks <ids>` | Hook IDs to remove from the root defaults |
-| `--without-plugins <ids>` | Plugin IDs to remove from the root defaults |
+| `--skill <id...>` | Skill ID(s) to add on top of root defaults (repeatable or variadic) |
+| `--mcp-server <id...>` | MCP server ID(s) to add on top of root defaults (repeatable or variadic) |
+| `--hook <id...>` | Hook ID(s) to add on top of root defaults (repeatable or variadic) |
+| `--plugin <id...>` | Plugin ID(s) to add on top of root defaults (repeatable or variadic) |
+| `--without-skill <id...>` | Skill ID(s) to remove from the root defaults |
+| `--without-mcp-server <id...>` | MCP server ID(s) to remove from the root defaults |
+| `--without-hook <id...>` | Hook ID(s) to remove from the root defaults |
+| `--without-plugin <id...>` | Plugin ID(s) to remove from the root defaults |
 | `--without-defaults` | Ignore all root defaults — start from an empty set |
 | `--no-subagent-merge` | Skip merging subagent roots' artifacts |
 | `--skip-validation` | Skip `${VAR}` validation |
@@ -221,13 +224,16 @@ Add artifacts on top of root defaults, remove specific IDs, or drop all defaults
 
 ```bash
 # Add a skill and an MCP server on top of the root's defaults
-air prepare claude --skills deploy-staging --mcp-servers postgres-prod
+air prepare claude --skill deploy-staging --mcp-server postgres-prod
+
+# Add multiple skills at once (variadic)
+air prepare claude --skill deploy-staging initial-pr-review
 
 # Remove a hook from the defaults
-air prepare claude --without-hooks prevent-secrets-in-context
+air prepare claude --without-hook prevent-secrets-in-context
 
 # Start from empty and include only what you list
-air prepare claude --without-defaults --skills deploy-staging --mcp-servers github
+air prepare claude --without-defaults --skill deploy-staging --mcp-server github
 ```
 
 ## air export — building plugin marketplaces
@@ -262,14 +268,14 @@ Required argument: `<emitter>` — the target format (e.g., `cowork`).
 |------|-------------|
 | `--output <dir>` | Output directory for the marketplace (required) |
 | `--config <path>` | Path to air.json (default: `~/.air/air.json` or `AIR_CONFIG`) |
-| `--plugins <ids>` | Comma-separated plugin IDs to export (default: all plugins) |
+| `--plugin <id...>` | Plugin ID to export (repeatable: `--plugin a --plugin b`, or variadic: `--plugin a b`). Default: all plugins. |
 | `--marketplace-name <name>` | Override the marketplace display name |
 | `--marketplace-description <desc>` | Override the marketplace description |
 
 ### Output
 
 ```bash
-air export cowork --output ./marketplace --plugins code-quality,deploy-toolkit
+air export cowork --output ./marketplace --plugin code-quality deploy-toolkit
 ```
 
 Produces:

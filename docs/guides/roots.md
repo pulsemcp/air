@@ -189,7 +189,7 @@ Roots (2):
 ## Best practices
 
 - **Scope tightly.** Each root should represent a single project or bounded context. Avoid catch-all roots.
-- **Minimize defaults.** Only include the skills and servers that are genuinely needed for most sessions in that root. Users can always override with `--skills` and `--mcp-servers`.
+- **Minimize defaults.** Only include the skills and servers that are genuinely needed for most sessions in that root. Users can always adjust with `--skill` and `--mcp-server` (or their `--without-*` counterparts).
 - **Set URLs for auto-detection.** Without `url`, the root can only be used with explicit `--root`.
 - **Mark utility roots as non-invocable.** If a root only makes sense as a subagent dependency, set `user_invocable: false`.
 

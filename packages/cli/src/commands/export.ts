@@ -19,8 +19,8 @@ export function exportCommand(): Command {
       "Path to air.json (defaults to AIR_CONFIG env or ~/.air/air.json)"
     )
     .option(
-      "--plugins <ids>",
-      "Comma-separated plugin IDs to export (defaults to all plugins)"
+      "--plugin <id...>",
+      "Plugin ID to export (repeatable: --plugin a --plugin b, or variadic: --plugin a b). Defaults to all plugins when omitted."
     )
     .option(
       "--marketplace-name <name>",
@@ -40,7 +40,7 @@ export function exportCommand(): Command {
         options: {
           output: string;
           config?: string;
-          plugins?: string;
+          plugin?: string[];
           marketplaceName?: string;
           marketplaceDescription?: string;
           marketplaceOwner?: string;
@@ -51,9 +51,7 @@ export function exportCommand(): Command {
             config: options.config,
             emitter,
             output: options.output,
-            plugins: options.plugins
-              ? options.plugins.split(",").map((s) => s.trim())
-              : undefined,
+            plugins: options.plugin,
             marketplaceName: options.marketplaceName,
             marketplaceDescription: options.marketplaceDescription,
             marketplaceOwner: options.marketplaceOwner

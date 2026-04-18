@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { execSync } from "child_process";
+import { spawnSync } from "child_process";
 import { resolve } from "path";
 import { mkdirSync, writeFileSync, rmSync, existsSync } from "fs";
 import { tmpdir } from "os";
@@ -7,21 +7,20 @@ import { tmpdir } from "os";
 const CLI = resolve(__dirname, "../src/index.ts");
 
 const tryRun = (args: string, env?: Record<string, string>) => {
-  try {
-    const stdout = execSync(`npx tsx ${CLI} ${args}`, {
+  const result = spawnSync(
+    "npx",
+    ["tsx", CLI, ...args.match(/(?:[^\s"]+|"[^"]*")+/g)!.map((s) => s.replace(/^"|"$/g, ""))],
+    {
       encoding: "utf-8",
       cwd: resolve(__dirname, "../../.."),
-      stdio: ["pipe", "pipe", "pipe"],
       env: { ...process.env, ...env },
-    });
-    return { stdout, stderr: "", exitCode: 0 };
-  } catch (err: any) {
-    return {
-      stdout: err.stdout?.toString() || "",
-      stderr: err.stderr?.toString() || "",
-      exitCode: err.status ?? 1,
-    };
-  }
+    }
+  );
+  return {
+    stdout: result.stdout ?? "",
+    stderr: result.stderr ?? "",
+    exitCode: result.status ?? 1,
+  };
 };
 
 const tempDirs: string[] = [];
@@ -56,7 +55,7 @@ function createTemp(files: Record<string, unknown>): string {
 // These tests use --dry-run so we don't actually spawn the agent. Dry run
 // respects the CLI artifact flags, which is what we want to verify.
 describe("start command — CLI artifact selection flags", () => {
-  it("--skills adds on top of root defaults (union)", () => {
+  it("--skill adds on top of root defaults (union)", () => {
     const catalog = createTemp({
       "air.json": {
         name: "test",
@@ -80,7 +79,7 @@ describe("start command — CLI artifact selection flags", () => {
     });
 
     const result = tryRun(
-      `start claude --root myroot --dry-run --skills skill-c`,
+      `start claude --root myroot --dry-run --skill skill-c`,
       { AIR_CONFIG: resolve(catalog, "air.json") }
     );
 
@@ -92,7 +91,7 @@ describe("start command — CLI artifact selection flags", () => {
     expect(result.stdout).toContain("Skills (3)");
   });
 
-  it("--without-skills removes specific skills from root defaults", () => {
+  it("--without-skill removes specific skills from root defaults", () => {
     const catalog = createTemp({
       "air.json": {
         name: "test",
@@ -116,7 +115,7 @@ describe("start command — CLI artifact selection flags", () => {
     });
 
     const result = tryRun(
-      `start claude --root myroot --dry-run --without-skills skill-b`,
+      `start claude --root myroot --dry-run --without-skill skill-b`,
       { AIR_CONFIG: resolve(catalog, "air.json") }
     );
 
@@ -164,7 +163,7 @@ describe("start command — CLI artifact selection flags", () => {
     expect(result.stdout).not.toMatch(/\u2022 github\b/);
   });
 
-  it("--without-defaults combined with --skills activates only the added skill", () => {
+  it("--without-defaults combined with --skill activates only the added skill", () => {
     const catalog = createTemp({
       "air.json": {
         name: "test",
@@ -186,7 +185,7 @@ describe("start command — CLI artifact selection flags", () => {
     });
 
     const result = tryRun(
-      `start claude --root myroot --dry-run --without-defaults --skills skill-b`,
+      `start claude --root myroot --dry-run --without-defaults --skill skill-b`,
       { AIR_CONFIG: resolve(catalog, "air.json") }
     );
 
@@ -223,7 +222,7 @@ describe("start command — CLI artifact selection flags", () => {
     });
 
     const result = tryRun(
-      `start claude --root myroot --dry-run --skills skill-b`,
+      `start claude --root myroot --dry-run --skill skill-b`,
       { AIR_CONFIG: resolve(catalog, "air.json") }
     );
 
@@ -236,7 +235,7 @@ describe("start command — CLI artifact selection flags", () => {
     expect(result.stdout).toContain("github");
   });
 
-  it("parses comma-separated list with surrounding whitespace", () => {
+  it("accepts multiple variadic IDs after a single --skill flag", () => {
     const catalog = createTemp({
       "air.json": {
         name: "test",
@@ -255,7 +254,7 @@ describe("start command — CLI artifact selection flags", () => {
     });
 
     const result = tryRun(
-      `start claude --root myroot --dry-run --skills "skill-a , skill-b"`,
+      `start claude --root myroot --dry-run --skill skill-a skill-b`,
       { AIR_CONFIG: resolve(catalog, "air.json") }
     );
 
@@ -265,7 +264,36 @@ describe("start command — CLI artifact selection flags", () => {
     expect(result.stdout).toContain("Skills (2)");
   });
 
-  it("supports --without-skills and --without-mcp-servers together", () => {
+  it("accepts repeated --skill flags (each adds one ID)", () => {
+    const catalog = createTemp({
+      "air.json": {
+        name: "test",
+        skills: ["./skills.json"],
+        roots: ["./roots.json"],
+      },
+      "skills.json": {
+        "skill-a": { description: "Skill A", path: "skills/skill-a" },
+        "skill-b": { description: "Skill B", path: "skills/skill-b" },
+      },
+      "skills/skill-a/SKILL.md": "# A",
+      "skills/skill-b/SKILL.md": "# B",
+      "roots.json": {
+        myroot: { description: "Test", default_skills: [] },
+      },
+    });
+
+    const result = tryRun(
+      `start claude --root myroot --dry-run --skill skill-a --skill skill-b`,
+      { AIR_CONFIG: resolve(catalog, "air.json") }
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("skill-a");
+    expect(result.stdout).toContain("skill-b");
+    expect(result.stdout).toContain("Skills (2)");
+  });
+
+  it("supports --without-skill and --without-mcp-server together", () => {
     const catalog = createTemp({
       "air.json": {
         name: "test",
@@ -293,7 +321,7 @@ describe("start command — CLI artifact selection flags", () => {
     });
 
     const result = tryRun(
-      `start claude --root myroot --dry-run --without-skills skill-a --without-mcp-servers slack`,
+      `start claude --root myroot --dry-run --without-skill skill-a --without-mcp-server slack`,
       { AIR_CONFIG: resolve(catalog, "air.json") }
     );
 
@@ -306,7 +334,7 @@ describe("start command — CLI artifact selection flags", () => {
     expect(result.stdout).not.toMatch(/\u2022 slack\b/);
   });
 
-  it("supports --hooks and --plugins adds", () => {
+  it("supports --hook and --plugin adds", () => {
     const catalog = createTemp({
       "air.json": {
         name: "test",
@@ -356,7 +384,7 @@ describe("start command — CLI artifact selection flags", () => {
     });
 
     const result = tryRun(
-      `start claude --root myroot --dry-run --hooks hook-b --plugins plugin-b`,
+      `start claude --root myroot --dry-run --hook hook-b --plugin plugin-b`,
       { AIR_CONFIG: resolve(catalog, "air.json") }
     );
 
@@ -371,7 +399,7 @@ describe("start command — CLI artifact selection flags", () => {
     expect(result.stdout).toContain("plugin-b");
   });
 
-  it("when an ID appears in both --skills and --without-skills, the removal wins", () => {
+  it("when an ID appears in both --skill and --without-skill, the removal wins", () => {
     const catalog = createTemp({
       "air.json": {
         name: "test",
@@ -393,7 +421,7 @@ describe("start command — CLI artifact selection flags", () => {
     });
 
     const result = tryRun(
-      `start claude --root myroot --dry-run --skills skill-a,skill-b --without-skills skill-a`,
+      `start claude --root myroot --dry-run --skill skill-a skill-b --without-skill skill-a`,
       { AIR_CONFIG: resolve(catalog, "air.json") }
     );
 
@@ -404,7 +432,64 @@ describe("start command — CLI artifact selection flags", () => {
     expect(result.stdout).not.toMatch(/\u2022 skill-a\b/);
   });
 
-  it("combining --skills and --without-skills within the same category works", () => {
+  it("emits a deprecation warning when the old plural --skills flag is used", () => {
+    const catalog = createTemp({
+      "air.json": {
+        name: "test",
+        skills: ["./skills.json"],
+        roots: ["./roots.json"],
+      },
+      "skills.json": {
+        "skill-a": { description: "Skill A", path: "skills/skill-a" },
+      },
+      "skills/skill-a/SKILL.md": "# A",
+      "roots.json": {
+        myroot: {
+          description: "Test",
+          default_skills: ["skill-a"],
+        },
+      },
+    });
+
+    const result = tryRun(
+      `start claude --root myroot --dry-run --skills skill-a`,
+      { AIR_CONFIG: resolve(catalog, "air.json") }
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toContain("--skills was renamed to --skill");
+    expect(result.stderr).toContain("v0.0.32");
+  });
+
+  it("does not warn when an agent passthrough arg after -- happens to match an old flag name", () => {
+    const catalog = createTemp({
+      "air.json": {
+        name: "test",
+        skills: ["./skills.json"],
+        roots: ["./roots.json"],
+      },
+      "skills.json": {
+        "skill-a": { description: "Skill A", path: "skills/skill-a" },
+      },
+      "skills/skill-a/SKILL.md": "# A",
+      "roots.json": {
+        myroot: {
+          description: "Test",
+          default_skills: ["skill-a"],
+        },
+      },
+    });
+
+    const result = tryRun(
+      `start claude --root myroot --dry-run -- --skills something-else`,
+      { AIR_CONFIG: resolve(catalog, "air.json") }
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).not.toContain("was renamed to");
+  });
+
+  it("combining --skill and --without-skill within the same category works", () => {
     const catalog = createTemp({
       "air.json": {
         name: "test",
@@ -428,7 +513,7 @@ describe("start command — CLI artifact selection flags", () => {
     });
 
     const result = tryRun(
-      `start claude --root myroot --dry-run --skills skill-c --without-skills skill-a`,
+      `start claude --root myroot --dry-run --skill skill-c --without-skill skill-a`,
       { AIR_CONFIG: resolve(catalog, "air.json") }
     );
 

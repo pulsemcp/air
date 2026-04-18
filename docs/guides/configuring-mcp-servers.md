@@ -186,13 +186,17 @@ The `title` and `description` fields are stripped during translation (they're AI
 
 ### Selecting specific servers
 
-Override which servers are activated with `air prepare`:
+Add or remove servers when running `air prepare`:
 
 ```bash
-air prepare claude --mcp-servers github,postgres
+# Add github and postgres on top of the root's defaults
+air prepare claude --mcp-server github postgres
+
+# Start from empty and activate only the listed servers
+air prepare claude --without-defaults --mcp-server github postgres
 ```
 
-This activates only the listed servers, ignoring root defaults.
+Pass `--mcp-server <id...>` one or more times (or list multiple IDs after a single flag) to add servers. Pair with `--without-defaults` to ignore root defaults entirely.
 
 ## Listing configured servers
 
