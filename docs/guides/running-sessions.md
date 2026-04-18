@@ -268,14 +268,14 @@ Required argument: `<emitter>` — the target format (e.g., `cowork`).
 |------|-------------|
 | `--output <dir>` | Output directory for the marketplace (required) |
 | `--config <path>` | Path to air.json (default: `~/.air/air.json` or `AIR_CONFIG`) |
-| `--plugins <ids>` | Comma-separated plugin IDs to export (default: all plugins) |
+| `--plugin <id...>` | Plugin ID to export (repeatable: `--plugin a --plugin b`, or variadic: `--plugin a b`). Default: all plugins. |
 | `--marketplace-name <name>` | Override the marketplace display name |
 | `--marketplace-description <desc>` | Override the marketplace description |
 
 ### Output
 
 ```bash
-air export cowork --output ./marketplace --plugins code-quality,deploy-toolkit
+air export cowork --output ./marketplace --plugin code-quality deploy-toolkit
 ```
 
 Produces:
