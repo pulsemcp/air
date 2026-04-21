@@ -1,6 +1,6 @@
 import { relative } from "path";
 import { Command } from "commander";
-import { smartInit, InitFromRepoError } from "@pulsemcp/air-sdk";
+import { smartInit } from "@pulsemcp/air-sdk";
 
 export function initCommand(): Command {
   const cmd = new Command("init")
@@ -47,6 +47,38 @@ export function initCommand(): Command {
           console.log(
             "Local entries in the index files above override the discovered catalog by ID."
           );
+        } else if (result.mode === "topup") {
+          if (result.scaffolded.length === 0) {
+            console.log(
+              `AIR configuration at ${result.airDir} is already fully scaffolded — nothing to do.`
+            );
+            console.log(
+              "To regenerate air.json from scratch, re-run with --force."
+            );
+            console.log(
+              "\nValidate anytime with: air validate " + result.airJsonPath
+            );
+          } else {
+            console.log(
+              `Topped up existing AIR configuration at ${result.airDir}`
+            );
+            console.log(
+              `\nAdded ${result.scaffolded.length} missing file(s):`
+            );
+            for (const file of result.scaffolded) {
+              console.log(
+                `  [${file.kind}] ${relative(result.airDir, file.path)}`
+              );
+            }
+            console.log(
+              "\nYour existing air.json was left untouched. Open the directory" +
+                "\nin your editor — each new index file has a $schema reference," +
+                "\nso you'll get autocomplete as you add entries."
+            );
+            console.log(
+              "\nValidate anytime with: air validate " + result.airJsonPath
+            );
+          }
         } else {
           console.log(
             `Initialized AIR configuration at ${result.airDir}`
@@ -65,10 +97,6 @@ export function initCommand(): Command {
           );
         }
       } catch (err) {
-        if (err instanceof InitFromRepoError && err.code === "EXISTS") {
-          console.error(`Error: ${err.message} Use --force to overwrite.`);
-          process.exit(1);
-        }
         const message =
           err instanceof Error ? err.message : "Unknown error";
         console.error(`Error: ${message}`);

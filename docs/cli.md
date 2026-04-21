@@ -34,6 +34,10 @@ When run inside a git repo with AIR artifact index files, also discovers them au
 
 Open the directory in your editor and start adding entries.
 
+**Re-running on an existing config (top-up mode):** If `~/.air/air.json` already exists and `--force` is not set, `air init` runs in idempotent **top-up mode**: your existing `air.json` is left untouched, and only missing scaffold pieces (index files, `README.md`) are created. This is safe to run repeatedly and gives users who initialized on an older version a way to fill in newer scaffold pieces without losing their configuration.
+
+To regenerate `air.json` from scratch (overwriting the existing file), use `--force`.
+
 Orgs and teams can provide default `air.json` files as starting points. Copy one into `~/.air/air.json` and customize.
 
 ### `air validate <file>`
