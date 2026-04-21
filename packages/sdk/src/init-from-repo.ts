@@ -14,7 +14,12 @@ import {
   getAllSchemaTypes,
   type SchemaType,
 } from "@pulsemcp/air-core";
-import { initConfig, type InitConfigResult } from "./init.js";
+import {
+  initConfig,
+  scaffoldLocalFiles,
+  type InitConfigResult,
+  type ScaffoldedFile,
+} from "./init.js";
 
 /** Artifact types that map to air.json properties (all schema types except "air"). */
 const ARTIFACT_TYPES = getAllSchemaTypes().filter(
@@ -74,6 +79,8 @@ export interface InitFromRepoResult {
   discovered: DiscoveredArtifact[];
   /** Whether an existing config was overwritten. */
   overwritten: boolean;
+  /** Local index files and README scaffolded into `airDir` alongside the discovered remote URIs. */
+  scaffolded: ScaffoldedFile[];
 }
 
 /**
@@ -325,8 +332,10 @@ export function initFromRepo(
   const repoName = repo.split("/")[1] || "my-config";
   const configName = repoName.replace(/[^a-zA-Z0-9_-]/g, "-");
 
-  // Build air.json — only include artifact types that were discovered.
-  // If no roots index exists in the repo, roots are simply omitted.
+  // Build air.json. Every artifact type gets a local index path so users can
+  // compose local entries on top of the discovered remote catalog without
+  // editing air.json first. Later entries win by ID, so the local path goes
+  // last and overrides the github:// URI.
   const airJson: Record<string, unknown> = {
     name: configName,
     extensions: [
@@ -338,14 +347,17 @@ export function initFromRepo(
   };
 
   for (const type of ARTIFACT_TYPES) {
+    const entries: string[] = [];
     if (grouped[type]) {
-      airJson[type] = grouped[type];
+      entries.push(...grouped[type]!);
     }
+    entries.push(`./${type}/${type}.json`);
+    airJson[type] = entries;
   }
 
-  // Write config
   mkdirSync(airDir, { recursive: true });
   writeFileSync(airJsonPath, JSON.stringify(airJson, null, 2) + "\n");
+  const scaffolded = scaffoldLocalFiles(airDir);
 
   return {
     airJsonPath,
@@ -354,6 +366,7 @@ export function initFromRepo(
     branch,
     discovered,
     overwritten,
+    scaffolded,
   };
 }
 

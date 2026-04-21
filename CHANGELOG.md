@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.0.33] - 2026-04-21
 
 ### Changed
-- `air init` blank-mode output (when no git repo or no artifacts are discovered) now scaffolds a ready-to-edit workspace instead of a near-empty `air.json`. The generated `~/.air/` directory contains an `air.json` pre-wired to six local index files (one per artifact type), each containing a `$schema` reference so editors give autocomplete and inline validation, plus a `README.md` with worked examples for adding an MCP server, a skill, and remote catalogs. `initConfig` returns a new `scaffolded` array listing every file written, and `SmartInitResult`'s blank branch now includes the same field.
+- `air init` now always scaffolds a ready-to-edit local workspace at `~/.air/` — six `$schema`-referenced index files (one per artifact type) plus a `README.md` with worked examples — regardless of whether a git repo and GitHub catalog are discovered. When a repo catalog *is* discovered, the generated `air.json` lists each type's `github://` URI followed by the local index path (`./<type>/<type>.json`), so local entries override the shared catalog by ID without the user having to edit `air.json` first. `InitFromRepoResult` gains a `scaffolded` field describing the local files created alongside the remote catalog, and `initConfig` continues to return `scaffolded` for the blank branch. A new `scaffoldLocalFiles(airDir)` helper in `@pulsemcp/air-sdk` is shared between blank and repo modes.
 
 ## [0.0.32] - 2026-04-18
 

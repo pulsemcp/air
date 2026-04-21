@@ -31,7 +31,22 @@ export function initCommand(): Command {
           for (const artifact of result.discovered) {
             console.log(`  [${artifact.type}] ${artifact.repoPath}`);
           }
+
+          if (result.scaffolded.length > 0) {
+            console.log(
+              `\nScaffolded ${result.scaffolded.length} local file(s) for layering on top of the discovered catalog:`
+            );
+            for (const file of result.scaffolded) {
+              console.log(
+                `  [${file.kind}] ${relative(result.airDir, file.path)}`
+              );
+            }
+          }
+
           console.log(`\nConfig written to ${result.airJsonPath}`);
+          console.log(
+            "Local entries in the index files above override the discovered catalog by ID."
+          );
         } else {
           console.log(
             `Initialized AIR configuration at ${result.airDir}`

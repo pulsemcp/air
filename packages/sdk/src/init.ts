@@ -143,6 +143,37 @@ See the full docs at https://github.com/pulsemcp/air/tree/main/docs/guides.
 }
 
 /**
+ * Scaffold the six local artifact index files and the README in `airDir`.
+ *
+ * Idempotent: skips any file that already exists. Returns entries only for
+ * files that were actually written, in creation order. Intended to be shared
+ * between blank-mode `initConfig` and repo-mode `initFromRepo`, so that
+ * local-composition indexes always exist on disk regardless of how `air.json`
+ * was produced.
+ */
+export function scaffoldLocalFiles(airDir: string): ScaffoldedFile[] {
+  mkdirSync(airDir, { recursive: true });
+  const scaffolded: ScaffoldedFile[] = [];
+
+  for (const type of ARTIFACT_TYPES) {
+    const abs = resolve(airDir, indexFileRelPath(type));
+    mkdirSync(dirname(abs), { recursive: true });
+    if (!existsSync(abs)) {
+      writeFileSync(abs, buildIndexFile(type));
+      scaffolded.push({ path: abs, kind: type });
+    }
+  }
+
+  const readmePath = resolve(airDir, "README.md");
+  if (!existsSync(readmePath)) {
+    writeFileSync(readmePath, buildReadme());
+    scaffolded.push({ path: readmePath, kind: "readme" });
+  }
+
+  return scaffolded;
+}
+
+/**
  * Initialize a new AIR configuration directory.
  *
  * Scaffolds a ready-to-edit workspace: `air.json` pre-wired to six local
@@ -167,21 +198,7 @@ export function initConfig(options?: InitConfigOptions): InitConfigResult {
   writeFileSync(airJsonPath, JSON.stringify(buildAirJson(), null, 2) + "\n");
   scaffolded.push({ path: airJsonPath, kind: "air" });
 
-  for (const type of ARTIFACT_TYPES) {
-    const rel = indexFileRelPath(type);
-    const abs = resolve(airDir, rel);
-    mkdirSync(dirname(abs), { recursive: true });
-    if (!existsSync(abs)) {
-      writeFileSync(abs, buildIndexFile(type));
-      scaffolded.push({ path: abs, kind: type });
-    }
-  }
-
-  const readmePath = resolve(airDir, "README.md");
-  if (!existsSync(readmePath)) {
-    writeFileSync(readmePath, buildReadme());
-    scaffolded.push({ path: readmePath, kind: "readme" });
-  }
+  scaffolded.push(...scaffoldLocalFiles(airDir));
 
   return { airJsonPath, airDir, scaffolded };
 }
