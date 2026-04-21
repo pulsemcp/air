@@ -14,7 +14,7 @@ import {
   getAllSchemaTypes,
   type SchemaType,
 } from "@pulsemcp/air-core";
-import { initConfig } from "./init.js";
+import { initConfig, type InitConfigResult } from "./init.js";
 
 /** Artifact types that map to air.json properties (all schema types except "air"). */
 const ARTIFACT_TYPES = getAllSchemaTypes().filter(
@@ -360,11 +360,7 @@ export function initFromRepo(
 /** Result from `smartInit` — discriminated by `mode`. */
 export type SmartInitResult =
   | ({ mode: "repo" } & InitFromRepoResult)
-  | {
-      mode: "blank";
-      airJsonPath: string;
-      airDir: string;
-    };
+  | ({ mode: "blank" } & InitConfigResult);
 
 /**
  * High-level init that tries repo-based discovery first and falls back to

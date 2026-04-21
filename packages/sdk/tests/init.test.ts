@@ -3,6 +3,7 @@ import { resolve } from "path";
 import { mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { initConfig } from "../src/init.js";
+import { getAllSchemaTypes, validateJson } from "@pulsemcp/air-core";
 
 const tempDirs: string[] = [];
 
@@ -25,8 +26,10 @@ function makeTempDir(): string {
   return dir;
 }
 
+const ARTIFACT_TYPES = getAllSchemaTypes().filter((t) => t !== "air");
+
 describe("initConfig", () => {
-  it("creates a minimal air.json", () => {
+  it("scaffolds air.json pre-wired to all six local index files", () => {
     const dir = makeTempDir();
     const airJsonPath = resolve(dir, "air.json");
     const result = initConfig({ path: airJsonPath });
@@ -34,15 +37,66 @@ describe("initConfig", () => {
     expect(result.airJsonPath).toBe(airJsonPath);
     expect(result.airDir).toBe(dir);
 
-    // Verify air.json content — minimal, no empty catalog files
     const airJson = JSON.parse(readFileSync(airJsonPath, "utf-8"));
     expect(airJson.name).toBe("my-config");
-    expect(airJson.skills).toBeUndefined();
-    expect(airJson.mcp).toBeUndefined();
+    expect(airJson.$schema).toContain("air.schema.json");
 
-    // Should not create empty catalog index files
-    expect(existsSync(resolve(dir, "skills/skills.json"))).toBe(false);
-    expect(existsSync(resolve(dir, "mcp/mcp.json"))).toBe(false);
+    for (const type of ARTIFACT_TYPES) {
+      expect(airJson[type]).toEqual([`./${type}/${type}.json`]);
+    }
+  });
+
+  it("creates a $schema-referenced index file for every artifact type", () => {
+    const dir = makeTempDir();
+    initConfig({ path: resolve(dir, "air.json") });
+
+    for (const type of ARTIFACT_TYPES) {
+      const indexPath = resolve(dir, `${type}/${type}.json`);
+      expect(existsSync(indexPath)).toBe(true);
+
+      const content = JSON.parse(readFileSync(indexPath, "utf-8"));
+      expect(content.$schema).toContain(`${type}.schema.json`);
+
+      // Each scaffolded index file must be valid against its own schema.
+      const result = validateJson(content, type);
+      expect(result.valid).toBe(true);
+    }
+  });
+
+  it("scaffolded air.json validates against the air schema", () => {
+    const dir = makeTempDir();
+    const airJsonPath = resolve(dir, "air.json");
+    initConfig({ path: airJsonPath });
+
+    const airJson = JSON.parse(readFileSync(airJsonPath, "utf-8"));
+    const result = validateJson(airJson, "air");
+    expect(result.valid).toBe(true);
+  });
+
+  it("writes a README orienting the user to the layout", () => {
+    const dir = makeTempDir();
+    initConfig({ path: resolve(dir, "air.json") });
+
+    const readmePath = resolve(dir, "README.md");
+    expect(existsSync(readmePath)).toBe(true);
+    const content = readFileSync(readmePath, "utf-8");
+    expect(content).toContain("AIR configuration");
+    expect(content).toContain("air.json");
+  });
+
+  it("reports every scaffolded file in the result", () => {
+    const dir = makeTempDir();
+    const result = initConfig({ path: resolve(dir, "air.json") });
+
+    const kinds = result.scaffolded.map((f) => f.kind);
+    expect(kinds).toContain("air");
+    expect(kinds).toContain("readme");
+    for (const type of ARTIFACT_TYPES) {
+      expect(kinds).toContain(type);
+    }
+    for (const file of result.scaffolded) {
+      expect(existsSync(file.path)).toBe(true);
+    }
   });
 
   it("throws if air.json already exists", () => {

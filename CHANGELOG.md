@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.33] - 2026-04-21
+
+### Changed
+- `air init` blank-mode output (when no git repo or no artifacts are discovered) now scaffolds a ready-to-edit workspace instead of a near-empty `air.json`. The generated `~/.air/` directory contains an `air.json` pre-wired to six local index files (one per artifact type), each containing a `$schema` reference so editors give autocomplete and inline validation, plus a `README.md` with worked examples for adding an MCP server, a skill, and remote catalogs. `initConfig` returns a new `scaffolded` array listing every file written, and `SmartInitResult`'s blank branch now includes the same field.
+
 ## [0.0.32] - 2026-04-18
 
 ### Changed

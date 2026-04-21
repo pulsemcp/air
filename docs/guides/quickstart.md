@@ -53,24 +53,21 @@ air init
 
 When run inside a git repo that contains AIR artifact index files (skills.json, mcp.json, etc.), `air init` **discovers them automatically**, detects the GitHub remote and default branch, and generates an `air.json` with `github://` resolver URIs for each discovered artifact type. Only artifact types with existing index files in the repo are included — nothing is auto-generated. The generated `air.json` includes all officially maintained extensions by default, giving you a batteries-included setup. This is the fastest way to get started with an existing repo.
 
-When no artifacts are found (or you're not in a git repo), it falls back to creating a blank scaffolding:
+When no artifacts are found (or you're not in a git repo), it falls back to scaffolding a ready-to-edit workspace:
 
 ```
 ~/.air/
-├── air.json              # Root configuration file
-├── skills/
-│   └── skills.json       # Skills index (empty)
-├── references/
-│   └── references.json   # References index (empty)
-├── mcp/
-│   └── mcp.json          # MCP servers index (empty)
-├── plugins/
-│   └── plugins.json      # Plugins index (empty)
-├── roots/
-│   └── roots.json        # Roots index (empty)
-└── hooks/
-    └── hooks.json         # Hooks index (empty)
+├── air.json                     # pre-wired to all six local index files
+├── README.md                    # orientation doc with worked examples per type
+├── skills/skills.json           # { "$schema": "…/skills.schema.json" }
+├── references/references.json   # { "$schema": "…/references.schema.json" }
+├── mcp/mcp.json                 # { "$schema": "…/mcp.schema.json" }
+├── plugins/plugins.json         # { "$schema": "…/plugins.schema.json" }
+├── roots/roots.json             # { "$schema": "…/roots.schema.json" }
+└── hooks/hooks.json             # { "$schema": "…/hooks.schema.json" }
 ```
+
+Each index file ships with a `$schema` reference, so editors like VS Code and JetBrains give you autocomplete and inline validation as you add entries. Open the directory in your editor and start typing — `README.md` has a worked example for every artifact type.
 
 Options:
 - `--force` — overwrite an existing `air.json`

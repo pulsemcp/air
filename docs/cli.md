@@ -26,7 +26,13 @@ air init
 
 When run inside a git repo with AIR artifact index files, discovers them automatically and generates `~/.air/air.json` with `github://` resolver URIs for each discovered artifact type. Only artifact types that have existing index files in the repo are included.
 
-When no artifacts are found (or outside a git repo), creates a minimal `~/.air/air.json` scaffold.
+When no artifacts are found (or outside a git repo), falls back to scaffolding a ready-to-edit workspace at `~/.air/`:
+
+- `air.json` pre-wired to local index files for all six artifact types.
+- One `$schema`-referenced index file per type (`skills/skills.json`, `mcp/mcp.json`, etc.) so editors like VS Code give autocomplete and inline validation.
+- `README.md` orienting the user to the layout with worked examples.
+
+Open the directory in your editor and start adding entries.
 
 Orgs and teams can provide default `air.json` files as starting points. Copy one into `~/.air/air.json` and customize.
 

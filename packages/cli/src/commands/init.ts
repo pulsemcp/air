@@ -1,10 +1,11 @@
+import { relative } from "path";
 import { Command } from "commander";
 import { smartInit, InitFromRepoError } from "@pulsemcp/air-sdk";
 
 export function initCommand(): Command {
   const cmd = new Command("init")
     .description(
-      "Initialize an AIR configuration — discovers artifact files in the current git repo and generates ~/.air/air.json with GitHub resolvers"
+      "Initialize an AIR configuration — discovers artifact files in the current git repo and generates ~/.air/air.json with GitHub resolvers, or scaffolds a blank ~/.air/ workspace when no repo is detected"
     )
     .option("--force", "Overwrite existing air.json if it exists")
     .option(
@@ -33,20 +34,19 @@ export function initCommand(): Command {
           console.log(`\nConfig written to ${result.airJsonPath}`);
         } else {
           console.log(
-            `Initialized AIR configuration at ${result.airJsonPath}`
+            `Initialized AIR configuration at ${result.airDir}`
+          );
+          console.log(`\nScaffolded ${result.scaffolded.length} file(s):`);
+          for (const file of result.scaffolded) {
+            console.log(`  [${file.kind}] ${relative(result.airDir, file.path)}`);
+          }
+          console.log(
+            "\nOpen the directory in your editor — each index file has a $schema" +
+              "\nreference, so you'll get autocomplete as you add entries." +
+              "\nREADME.md has worked examples for every artifact type."
           );
           console.log(
-            "\nair.json is the composition point for your sessions — each artifact field" +
-              "\n(skills, mcp, roots, hooks, references, plugins) accepts an ARRAY of index" +
-              "\npaths. Mix local directories and/or remote catalogs; later entries override" +
-              "\nearlier ones by ID. Example:"
-          );
-          console.log(
-            '\n  {\n    "name": "my-config",\n    "skills": [\n      "./skills/skills.json",\n      "github://acme/shared-catalog/skills/skills.json"\n    ]\n  }'
-          );
-          console.log(
-            "\nSee https://github.com/pulsemcp/air/blob/main/docs/guides/composition-and-overrides.md" +
-              "\nValidate with: air validate ~/.air/air.json"
+            "\nValidate anytime with: air validate " + result.airJsonPath
           );
         }
       } catch (err) {
