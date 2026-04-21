@@ -6,6 +6,14 @@ export interface AirConfig {
   name: string;
   description?: string;
   extensions?: string[];
+  /**
+   * Catalog references — each entry is a directory (local path or provider URI)
+   * that follows the standard AIR layout: `<type>/<type>.json` for each of the
+   * six artifact types. Catalogs expand into all six artifact arrays in order;
+   * missing files within a catalog are silently skipped. The per-type arrays
+   * below layer on top of (and can override) catalog-expanded entries.
+   */
+  catalogs?: string[];
   skills?: string[];
   references?: string[];
   mcp?: string[];
@@ -218,6 +226,17 @@ export interface CatalogProvider {
    * Returns a result for each cached entry describing what happened.
    */
   refreshCache?(): Promise<CacheRefreshResult[]>;
+  /**
+   * Check whether the URI resolves to an existing file.
+   * Used during catalog expansion to skip conventional paths that aren't
+   * present in a given catalog. Implementations should throw for real
+   * failures (network, auth, missing repo) and only return false for
+   * "file does not exist in an otherwise-reachable source".
+   *
+   * If omitted, catalog expansion falls back to trying resolve() and
+   * treating any thrown error as "does not exist".
+   */
+  fileExists?(uri: string): Promise<boolean>;
 }
 
 /**

@@ -194,6 +194,19 @@ export class GitHubCatalogProvider implements CatalogProvider {
   }
 
   /**
+   * Check whether the file referenced by a github:// URI exists in the clone.
+   * Ensures the repository is cloned (throwing on real clone failures) and
+   * then checks the file on disk. Used by catalog expansion to skip
+   * conventional artifact paths that a given catalog doesn't provide.
+   */
+  async fileExists(uri: string): Promise<boolean> {
+    const parsed = parseGitHubUri(uri);
+    const ref = parsed.ref || "HEAD";
+    const cloneDir = this.ensureClone(parsed.owner, parsed.repo, ref);
+    return existsSync(resolve(cloneDir, parsed.path));
+  }
+
+  /**
    * Return the local clone directory for a given github:// URI.
    * This allows loadAndMerge to resolve relative path/file fields
    * in artifact entries to absolute paths within the clone.

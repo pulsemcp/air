@@ -116,18 +116,31 @@ Skills live as directories containing a \`SKILL.md\`. Point at one from
 
 ## Adding remote catalogs
 
-Each array in \`air.json\` can mix local paths with remote URIs. Append a
-\`github://\` entry after your local index to layer a team or org catalog on
-top — later entries override earlier ones by ID:
+The simplest way to layer a shared team or org catalog on top of your local
+workspace is the \`catalogs\` field. Each entry is a directory (local path or
+\`github://\` URI) that follows the standard \`<type>/<type>.json\` layout, and
+AIR expands it into all six artifact arrays automatically:
 
 \`\`\`json
 {
-  "skills": [
-    "./skills/skills.json",
-    "github://acme/shared-air-config/skills/skills.json"
-  ]
+  "catalogs": [
+    "github://acme/shared-air-config"
+  ],
+  "skills": ["./skills/skills.json"],
+  "references": ["./references/references.json"],
+  "mcp": ["./mcp/mcp.json"],
+  "plugins": ["./plugins/plugins.json"],
+  "roots": ["./roots/roots.json"],
+  "hooks": ["./hooks/hooks.json"]
 }
 \`\`\`
+
+Catalogs expand first; your per-type arrays layer on top. Later entries
+override earlier ones by ID — so anything you define locally wins over the
+shared catalog.
+
+You can also mix local and remote URIs inside a single per-type array for
+finer-grained overrides, e.g. \`"skills": ["./skills/skills.json", "github://acme/shared/skills/skills.json"]\`.
 
 (Remote URIs require an appropriate catalog provider extension to be
 installed, e.g. \`@pulsemcp/air-provider-github\`.)

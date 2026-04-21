@@ -136,9 +136,95 @@ export interface ResolveOptions {
 }
 
 /**
+ * Artifact types recognized by the standard catalog layout.
+ * A catalog is a directory where each of these types lives at
+ * `<type>/<type>.json` relative to the catalog root.
+ */
+type ArtifactType =
+  | "skills"
+  | "references"
+  | "mcp"
+  | "plugins"
+  | "roots"
+  | "hooks";
+
+const CATALOG_LAYOUT: Record<ArtifactType, string> = {
+  skills: "skills/skills.json",
+  references: "references/references.json",
+  mcp: "mcp/mcp.json",
+  plugins: "plugins/plugins.json",
+  roots: "roots/roots.json",
+  hooks: "hooks/hooks.json",
+};
+
+/** Build the conventional path for a catalog entry + artifact type. */
+function buildCatalogPath(catalog: string, type: ArtifactType): string {
+  return catalog.replace(/\/+$/, "") + "/" + CATALOG_LAYOUT[type];
+}
+
+/**
+ * Expand catalog entries into concrete index paths for a given artifact type,
+ * filtering to only those that actually exist. Missing files (local or remote)
+ * are silently skipped so that a catalog may omit artifact types it doesn't
+ * provide.
+ */
+async function expandCatalogPaths(
+  catalogs: string[],
+  type: ArtifactType,
+  baseDir: string,
+  providers: CatalogProvider[]
+): Promise<string[]> {
+  const result: string[] = [];
+
+  for (const catalog of catalogs) {
+    const candidate = buildCatalogPath(catalog, type);
+    const scheme = getScheme(candidate);
+
+    if (scheme) {
+      const provider = providers.find((prov) => prov.scheme === scheme);
+      if (!provider) {
+        throw new Error(
+          `No catalog provider registered for scheme "${scheme}://" (catalog: ${catalog}). ` +
+            `Install an extension that handles this scheme.`
+        );
+      }
+
+      if (provider.fileExists) {
+        if (await provider.fileExists(candidate)) {
+          result.push(candidate);
+        }
+        continue;
+      }
+
+      // Note: this also swallows real failures (network, auth) for providers
+      // that don't implement fileExists. Providers used for catalogs should
+      // implement fileExists to surface such errors clearly.
+      try {
+        await provider.resolve(candidate, baseDir);
+        result.push(candidate);
+      } catch {
+        // intentionally empty
+      }
+    } else {
+      const resolvedPath = resolve(baseDir, candidate);
+      if (existsSync(resolvedPath)) {
+        result.push(candidate);
+      }
+    }
+  }
+
+  return result;
+}
+
+/**
  * Resolve all artifacts from an air.json file.
  * Each artifact property is an array of paths; files merge in order.
  * Remote URIs are delegated to the matching CatalogProvider.
+ *
+ * `catalogs` entries are expanded first into per-type paths following the
+ * standard layout (`<catalog>/<type>/<type>.json`), then the explicit
+ * per-type arrays layer on top. Missing files within a catalog are
+ * silently skipped.
  *
  * All `path` fields in resolved entries are absolute paths,
  * making artifacts self-contained regardless of source location.
@@ -150,35 +236,46 @@ export async function resolveArtifacts(
   const airConfig = loadAirConfig(airJsonPath);
   const baseDir = dirname(resolve(airJsonPath));
   const providers = options?.providers || [];
+  const catalogs = airConfig.catalogs || [];
+
+  async function paths(type: ArtifactType, explicit: string[]): Promise<string[]> {
+    const fromCatalogs = await expandCatalogPaths(
+      catalogs,
+      type,
+      baseDir,
+      providers
+    );
+    return [...fromCatalogs, ...explicit];
+  }
 
   const resolved: ResolvedArtifacts = {
     skills: await loadAndMerge<SkillEntry>(
-      airConfig.skills || [],
+      await paths("skills", airConfig.skills || []),
       baseDir,
       providers
     ),
     references: await loadAndMerge<ReferenceEntry>(
-      airConfig.references || [],
+      await paths("references", airConfig.references || []),
       baseDir,
       providers
     ),
     mcp: await loadAndMerge<McpServerEntry>(
-      airConfig.mcp || [],
+      await paths("mcp", airConfig.mcp || []),
       baseDir,
       providers
     ),
     plugins: await loadAndMerge<PluginEntry>(
-      airConfig.plugins || [],
+      await paths("plugins", airConfig.plugins || []),
       baseDir,
       providers
     ),
     roots: await loadAndMerge<RootEntry>(
-      airConfig.roots || [],
+      await paths("roots", airConfig.roots || []),
       baseDir,
       providers
     ),
     hooks: await loadAndMerge<HookEntry>(
-      airConfig.hooks || [],
+      await paths("hooks", airConfig.hooks || []),
       baseDir,
       providers
     ),

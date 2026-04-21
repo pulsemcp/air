@@ -60,6 +60,64 @@ The result is the team version **only**. The org's `title` and `description` are
 
 Full replacement is predictable. You never have to wonder which fields came from which layer. The winning entry is exactly what you see in its file. Deep merge creates ambiguity: if a field is present in the result, did it come from the org layer or the team layer? With full replacement, the answer is always "whichever file defined this ID last."
 
+## Whole-catalog composition
+
+When you want to layer two or more full catalogs — say, a shared team catalog and your own local catalog — you don't need to list every artifact type separately. The `catalogs` field in `air.json` accepts an ordered array of catalog roots, and AIR expands each one into all six artifact arrays automatically.
+
+A **catalog** is a directory (local or remote) that follows AIR's standard layout:
+
+```
+<catalog>/
+├── skills/skills.json
+├── references/references.json
+├── mcp/mcp.json
+├── plugins/plugins.json
+├── roots/roots.json
+└── hooks/hooks.json
+```
+
+This is the same layout `air init` creates, and it's what each official example in this repo uses. You don't need all six files — any that are missing are silently skipped, so a catalog that only ships skills and MCP servers works fine.
+
+### Two-catalog composition (the common case)
+
+```json
+{
+  "name": "platform-team",
+  "extensions": ["@pulsemcp/air-provider-github"],
+  "catalogs": [
+    "github://acme/air-org",
+    "./platform-team-catalog"
+  ]
+}
+```
+
+That's it. Both catalogs contribute skills, MCP servers, plugins, roots, hooks, and references. The later catalog (local) overrides the earlier one (org) by ID, following the same full-replacement rule as the per-type arrays.
+
+### Mixing catalogs and explicit arrays
+
+You can use `catalogs` and the per-type arrays together. Catalogs expand first; the per-type arrays layer on top of them and can override anything a catalog contributed:
+
+```json
+{
+  "catalogs": [
+    "github://acme/air-org",
+    "./team-catalog"
+  ],
+  "mcp": [
+    "./local-mcp-overrides.json"
+  ]
+}
+```
+
+Effective load order for MCP servers: `github://acme/air-org/mcp/mcp.json` → `./team-catalog/mcp/mcp.json` → `./local-mcp-overrides.json`. Later wins by ID.
+
+### When to prefer `catalogs` over per-type arrays
+
+- You're layering full catalogs (org + team + local). `catalogs: [A, B, C]` beats writing each of the six artifact arrays for every catalog.
+- The catalog's layout matches the standard `<type>/<type>.json` convention (which is what `air init` produces).
+
+Use the per-type arrays when you want to pull just one artifact type from a source, or when the index file doesn't live at the standard path.
+
 ## Layering patterns
 
 ### Local-only
@@ -78,7 +136,22 @@ This is the simplest setup and a fully supported shape — no providers required
 
 ### Local team catalog + shared remote catalog
 
-A common team shape is a private catalog kept as a sibling directory under `~/.air/` (often a git submodule or a checked-out team repo), composed alongside a shared org-wide catalog:
+A common team shape is a private catalog kept as a sibling directory under `~/.air/` (often a git submodule or a checked-out team repo), composed alongside a shared org-wide catalog. Using the `catalogs` field keeps this compact — one entry per catalog rather than six paths per catalog:
+
+```json
+{
+  "name": "platform-team",
+  "extensions": ["@pulsemcp/air-provider-github"],
+  "catalogs": [
+    "github://acme/air-org",
+    "./platform-team-catalog"
+  ]
+}
+```
+
+The org catalog provides the baseline and the team's local catalog adds team-specific artifacts (and overrides any org defaults it wants to replace).
+
+If your catalogs don't follow the standard layout — or you only need some artifact types from a source — use the per-type arrays instead:
 
 ```json
 {
@@ -94,8 +167,6 @@ A common team shape is a private catalog kept as a sibling directory under `~/.a
   ]
 }
 ```
-
-Here the org catalog provides the baseline and the team's local catalog adds team-specific artifacts (and overrides any org defaults it wants to replace). Swap or add paths at will — each artifact field is just an ordered list of sources.
 
 Local paths are resolved relative to the directory containing `air.json` (so `./platform-team-catalog/...` above points at `~/.air/platform-team-catalog/...`). If your catalog lives elsewhere on disk, use an absolute path like `/opt/team-catalog/skills/skills.json`. **Tildes (`~/`) are not expanded** — either use a relative path or spell out the absolute path.
 
@@ -257,6 +328,8 @@ To effectively "remove" an artifact from an earlier layer, you'd need to overrid
 | Plugin references other plugin | Recursive expansion, parent overrides child |
 | Subagent root artifacts | Merged into parent session, parent takes priority |
 | Remote + local files | Both loaded, same override rules apply |
+| `catalogs` + per-type arrays | Catalogs expand first, per-type arrays layer on top |
+| Catalog missing an artifact file | Silently skipped — the catalog contributes nothing for that type |
 
 ## Next steps
 

@@ -26,6 +26,10 @@ Here's a complete `air.json` with all fields:
     "@pulsemcp/air-secrets-env",
     "@pulsemcp/air-secrets-file"
   ],
+  "catalogs": [
+    "github://acme/air-org",
+    "./platform-team-catalog"
+  ],
   "skills": ["./skills/skills.json"],
   "references": ["./references/references.json"],
   "mcp": ["./mcp/mcp.json"],
@@ -34,6 +38,8 @@ Here's a complete `air.json` with all fields:
   "hooks": ["./hooks/hooks.json"]
 }
 ```
+
+You don't need both `catalogs` and the per-type arrays. Use `catalogs` when you're layering full catalogs (one entry per catalog), use the per-type arrays when you want fine-grained control, or mix them — catalogs expand first and the per-type arrays layer on top.
 
 ## Fields
 
@@ -50,6 +56,7 @@ Here's a complete `air.json` with all fields:
 | `$schema` | string | JSON Schema URI for editor validation and autocomplete. |
 | `description` | string | Human-readable description of this configuration scope. Max 500 characters. |
 | `extensions` | string[] | Extension packages or local paths to load (adapters, providers, transforms). |
+| `catalogs` | string[] | Paths or URIs to artifact catalogs — directories that follow the standard `<type>/<type>.json` layout. Each catalog expands into all six artifact arrays; missing files are silently skipped. |
 | `skills` | string[] | Paths to skills index files. |
 | `references` | string[] | Paths to references index files. |
 | `mcp` | string[] | Paths to MCP server configuration files. |
@@ -101,6 +108,23 @@ Each artifact field is an **ordered array** of index file paths. Files are loade
 If `org-defaults.json` defines a server with ID `"github"` and `team-overrides.json` also defines `"github"`, the team version completely replaces the org version. The org definition is discarded entirely — fields are not merged between the two.
 
 This makes override behavior predictable: you always know which definition wins by looking at array order.
+
+## Whole-catalog composition
+
+For the common case of layering two or more full catalogs, the `catalogs` field lets you reference a catalog root once instead of listing every artifact type separately:
+
+```json
+{
+  "catalogs": [
+    "github://acme/air-org",
+    "./platform-team-catalog"
+  ]
+}
+```
+
+Each entry is a directory that follows the standard AIR layout — `<type>/<type>.json` for each of the six artifact types. AIR expands every catalog into all six artifact arrays at resolution time. Files that aren't present in a catalog are silently skipped, so a catalog can ship only the artifact types it needs.
+
+`catalogs` and the per-type arrays compose: catalogs expand first, then the per-type arrays layer on top. See [Composition and Overrides](composition-and-overrides.md) for details.
 
 ### Example
 

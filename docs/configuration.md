@@ -33,6 +33,22 @@ All composition is expressed in `air.json`. Each artifact property is an array o
 
 There is no separate CLI config file. `air.json` is the single composition point.
 
+### Whole-catalog composition
+
+When you're layering full catalogs that follow the standard `<type>/<type>.json` layout, the `catalogs` field lets you reference each catalog once instead of listing every artifact type separately:
+
+```json
+{
+  "name": "frontend-team",
+  "catalogs": [
+    "github://acme/air-org",
+    "./local-catalog"
+  ]
+}
+```
+
+Each entry expands into all six artifact arrays at resolution time; files that aren't present in a given catalog are silently skipped. `catalogs` and the per-type arrays compose — catalogs expand first, per-type arrays layer on top — so you can mix them to pull most artifacts from catalogs and add targeted overrides via the per-type arrays.
+
 ## Merging Strategy
 
 For each artifact type, files in the array merge by ID:
