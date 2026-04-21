@@ -259,4 +259,51 @@ describe("catalogs", () => {
     const artifacts = await resolveArtifacts(join(dir, "air.json"));
     expect(artifacts.skills["deploy"]).toBeDefined();
   });
+
+  it("treats catalogs: [] as a no-op (equivalent to no catalogs key)", async () => {
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        catalogs: [],
+        skills: ["./skills/skills.json"],
+      },
+      "skills/skills.json": { deploy: exampleSkill("deploy") },
+    });
+    cleanup = c;
+
+    const artifacts = await resolveArtifacts(join(dir, "air.json"));
+    expect(artifacts.skills["deploy"]).toBeDefined();
+    expect(artifacts.mcp).toEqual({});
+  });
+
+  it("expands plugins declared across separate catalogs", async () => {
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        catalogs: ["./org", "./team"],
+      },
+      "org/plugins/plugins.json": {
+        base: examplePlugin("base", {
+          skills: ["shared-skill"],
+        }),
+      },
+      "org/skills/skills.json": {
+        "shared-skill": exampleSkill("shared-skill"),
+      },
+      "team/plugins/plugins.json": {
+        app: examplePlugin("app", {
+          plugins: ["base"],
+        }),
+      },
+    });
+    cleanup = c;
+
+    const artifacts = await resolveArtifacts(join(dir, "air.json"));
+
+    expect(artifacts.plugins["base"]).toBeDefined();
+    expect(artifacts.plugins["app"]).toBeDefined();
+    // app references base from the other catalog; after plugin expansion,
+    // app's primitives should include base's shared-skill.
+    expect(artifacts.plugins["app"].skills).toContain("shared-skill");
+  });
 });
