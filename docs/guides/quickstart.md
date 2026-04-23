@@ -7,7 +7,7 @@ Get from zero to a working AIR setup in under five minutes.
 - Node.js 18 or later
 - npm
 - An AI coding agent (e.g., [Claude Code](https://docs.anthropic.com/en/docs/claude-code))
-- **A repository (recommended).** `air init` works best when run inside a git repo that already has artifact index files (e.g., `skills/skills.json`, `mcp/mcp.json`) — it discovers them automatically and generates a fully wired `air.json`. Without pre-existing artifacts, it falls back to blank scaffolding you can populate manually. See [examples/air.json](../../examples/air.json) for the expected format and [artifact types](../concepts.md#artifact-types) for what kinds of artifacts you can define.
+- **A repository (recommended).** `air init` works best when run inside a git repo that already has artifact index files (e.g., `skills/skills.json`, `mcp/mcp.json`) — it discovers them automatically and wires them into the generated `air.json` alongside the always-present local index files. Without pre-existing artifacts, you still get the local scaffold and populate it manually. See [examples/air.json](../../examples/air.json) for the expected format and [artifact types](../concepts.md#artifact-types) for what kinds of artifacts you can define.
 
 ## How AIR manages configuration
 
@@ -51,26 +51,23 @@ air upgrade --dry-run
 air init
 ```
 
-When run inside a git repo that contains AIR artifact index files (skills.json, mcp.json, etc.), `air init` **discovers them automatically**, detects the GitHub remote and default branch, and generates an `air.json` with `github://` resolver URIs for each discovered artifact type. Only artifact types with existing index files in the repo are included — nothing is auto-generated. The generated `air.json` includes all officially maintained extensions by default, giving you a batteries-included setup. This is the fastest way to get started with an existing repo.
+`air init` always scaffolds a ready-to-edit local workspace at `~/.air/`, and — when you run it inside a git repo that contains AIR artifact index files (skills.json, mcp.json, etc.) — it also **discovers them automatically**, detects the GitHub remote and default branch, and wires `github://` resolver URIs for each discovered type into the generated `air.json`. Local index files are always present alongside any discovered remote catalog, so you can layer personal or workspace-local entries on top without editing `air.json` first. The generated `air.json` includes all officially maintained extensions by default, giving you a batteries-included setup.
 
-When no artifacts are found (or you're not in a git repo), it falls back to creating a blank scaffolding:
+The resulting `~/.air/` directory always looks like this:
 
 ```
 ~/.air/
-├── air.json              # Root configuration file
-├── skills/
-│   └── skills.json       # Skills index (empty)
-├── references/
-│   └── references.json   # References index (empty)
-├── mcp/
-│   └── mcp.json          # MCP servers index (empty)
-├── plugins/
-│   └── plugins.json      # Plugins index (empty)
-├── roots/
-│   └── roots.json        # Roots index (empty)
-└── hooks/
-    └── hooks.json         # Hooks index (empty)
+├── air.json                     # composition surface — references the indexes below, plus any discovered github:// catalog
+├── README.md                    # orientation doc with worked examples per type
+├── skills/skills.json           # { "$schema": "…/skills.schema.json" }
+├── references/references.json   # { "$schema": "…/references.schema.json" }
+├── mcp/mcp.json                 # { "$schema": "…/mcp.schema.json" }
+├── plugins/plugins.json         # { "$schema": "…/plugins.schema.json" }
+├── roots/roots.json             # { "$schema": "…/roots.schema.json" }
+└── hooks/hooks.json             # { "$schema": "…/hooks.schema.json" }
 ```
+
+Each index file ships with a `$schema` reference, so editors like VS Code and JetBrains give you autocomplete and inline validation as you add entries. Open the directory in your editor and start typing — `README.md` has a worked example for every artifact type. When a github:// catalog is discovered, `air.json` lists the remote URI first and your local index file second; since later entries win by ID, anything you add locally overrides the shared catalog.
 
 Options:
 - `--force` — overwrite an existing `air.json`

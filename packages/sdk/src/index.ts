@@ -75,7 +75,11 @@ export { validateFile } from "./validate.js";
 export type { ValidateFileOptions, ValidateFileResult } from "./validate.js";
 
 export { initConfig } from "./init.js";
-export type { InitConfigOptions, InitConfigResult } from "./init.js";
+export type {
+  InitConfigOptions,
+  InitConfigResult,
+  ScaffoldedFile,
+} from "./init.js";
 
 export { initFromRepo, smartInit, InitFromRepoError } from "./init-from-repo.js";
 export type {

@@ -482,17 +482,32 @@ describe("initFromRepo", () => {
       "@pulsemcp/air-secrets-env",
       "@pulsemcp/air-secrets-file",
     ]);
+    // Discovered types merge the github:// URI with a local path so the user
+    // can layer local entries on top of the remote catalog.
     expect(airJson.skills).toEqual([
       "github://acme/air-config@main/skills/skills.json",
+      "./skills/skills.json",
     ]);
     expect(airJson.mcp).toEqual([
       "github://acme/air-config@main/mcp/mcp.json",
+      "./mcp/mcp.json",
     ]);
-    // Should not include artifact types without index files in the repo
-    expect(airJson.roots).toBeUndefined();
-    expect(airJson.references).toBeUndefined();
-    expect(airJson.plugins).toBeUndefined();
-    expect(airJson.hooks).toBeUndefined();
+    // Types without a discovered index still get a local entry so users can
+    // start adding local artifacts without editing air.json first.
+    expect(airJson.roots).toEqual(["./roots/roots.json"]);
+    expect(airJson.references).toEqual(["./references/references.json"]);
+    expect(airJson.plugins).toEqual(["./plugins/plugins.json"]);
+    expect(airJson.hooks).toEqual(["./hooks/hooks.json"]);
+
+    // Local index files and README should be scaffolded on disk.
+    const scaffoldedKinds = result.scaffolded.map((f) => f.kind);
+    expect(scaffoldedKinds).toContain("skills");
+    expect(scaffoldedKinds).toContain("mcp");
+    expect(scaffoldedKinds).toContain("roots");
+    expect(scaffoldedKinds).toContain("readme");
+    for (const file of result.scaffolded) {
+      expect(existsSync(file.path)).toBe(true);
+    }
   });
 
   it("throws InitFromRepoError with EXISTS code when air.json already exists", () => {
@@ -678,12 +693,16 @@ describe("initFromRepo", () => {
     expect(result.discovered).toHaveLength(2);
 
     const airJson = JSON.parse(readFileSync(airJsonPath, "utf-8"));
-    expect(airJson.skills).toHaveLength(2);
+    expect(airJson.skills).toHaveLength(3);
     expect(airJson.skills).toContain(
       "github://acme/config@main/backend/skills.json"
     );
     expect(airJson.skills).toContain(
       "github://acme/config@main/frontend/skills.json"
+    );
+    // Local path is appended last so it overrides the github:// URIs by ID.
+    expect(airJson.skills[airJson.skills.length - 1]).toBe(
+      "./skills/skills.json"
     );
   });
 
@@ -731,13 +750,15 @@ describe("initFromRepo", () => {
     expect(airJson.roots).toBeDefined();
     expect(airJson.hooks).toBeDefined();
 
-    // When repo already has roots.json, only the discovered github:// URI is used
+    // Each discovered type gets its github:// URI followed by a local path
+    // so local entries can override the remote catalog by ID.
     expect(airJson.roots).toEqual([
       "github://acme/full-config@main/roots/roots.json",
+      "./roots/roots.json",
     ]);
   });
 
-  it("does not auto-generate roots.json when none exists in the repo", () => {
+  it("scaffolds a local roots.json when none exists in the repo", () => {
     const repoDir = createGitRepo(
       "https://github.com/acme/my-project.git",
       {
@@ -754,17 +775,21 @@ describe("initFromRepo", () => {
     const outputDir = makeTempDir();
     const airJsonPath = resolve(outputDir, "air.json");
 
-    initFromRepo({
+    const result = initFromRepo({
       cwd: repoDir,
       path: airJsonPath,
     });
 
-    // No roots.json should be created in the repo
+    // The repo is not mutated — the source-of-truth repo never gets an
+    // auto-generated roots.json.
     expect(existsSync(resolve(repoDir, "roots", "roots.json"))).toBe(false);
 
-    // air.json should not include a roots property
+    // But the AIR config dir gets a local roots.json scaffolded, and air.json
+    // points to it so the user can add local roots without editing air.json.
+    expect(existsSync(resolve(outputDir, "roots", "roots.json"))).toBe(true);
     const airJson = JSON.parse(readFileSync(airJsonPath, "utf-8"));
-    expect(airJson.roots).toBeUndefined();
+    expect(airJson.roots).toEqual(["./roots/roots.json"]);
+    expect(result.scaffolded.map((f) => f.kind)).toContain("roots");
   });
 });
 
