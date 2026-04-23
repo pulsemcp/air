@@ -94,6 +94,7 @@ air start claude --skip-confirmation
 | `--root <name>` | Root to start the session in. |
 | `--dry-run` | Show what would be activated without starting the agent. |
 | `--skip-confirmation` | Don't prompt for confirmation before starting. |
+| `--git-protocol <ssh\|https>` | Protocol used by git-based catalog providers when cloning. Defaults to `ssh`. Overrides the `gitProtocol` field in `air.json` and the `AIR_GIT_PROTOCOL` env var for this invocation. |
 
 **What happens on `air start`:**
 
@@ -125,3 +126,5 @@ Shows ID, title (if available), and description for each artifact. Shows the mer
 |----------|-------------|
 | `AIR_CONFIG` | Override path to `air.json` (default: `~/.air/air.json`). |
 | `AIR_NO_COLOR` | Disable colored output. |
+| `AIR_GIT_PROTOCOL` | Force the protocol used by git-based catalog providers (`ssh` or `https`). Overrides the `gitProtocol` field in `air.json`; a `--git-protocol` CLI flag still wins over the env var. |
+| `AIR_GITHUB_TOKEN` | GitHub token used by `@pulsemcp/air-provider-github` for private repos and higher rate limits. Only consumed when protocol is `https`; ignored under `ssh`. |

@@ -116,11 +116,23 @@ The legacy syntax `github://owner/repo/path/to/file.json@ref` is also supported 
 
 It does a shallow clone of the repository to `~/.air/cache/github/{owner}/{repo}/{ref}/` and reads the file from the local clone.
 
-**Authentication:** Set `AIR_GITHUB_TOKEN` for private repositories:
+**Protocol:** Clones default to SSH (`git@github.com:owner/repo.git`), which piggybacks on the SSH keys engineers already have registered with GitHub. To use HTTPS instead — for CI runners without SSH keys, corporate networks that block port 22, or token-based auth — set `"gitProtocol": "https"` in `air.json`, export `AIR_GIT_PROTOCOL=https`, or pass `--git-protocol=https` to `air start` / `air prepare` / `air update`. The CLI flag wins over the env var, which wins over the `air.json` field.
+
+```json
+{
+  "name": "my-config",
+  "gitProtocol": "https",
+  "catalogs": ["github://acme/air-org"]
+}
+```
+
+**Authentication:** When using HTTPS, set `AIR_GITHUB_TOKEN` to access private repositories or raise your rate limit:
 
 ```bash
 export AIR_GITHUB_TOKEN=ghp_xxxxxxxxxxxx
 ```
+
+The token is injected into the HTTPS clone URL and redacted from any error output. When `gitProtocol` is `"ssh"`, the token is ignored — SSH relies on your configured keys.
 
 **Cache:** Clones are cached locally and reused on subsequent runs. When a cached clone is behind the remote, `air start` and `air prepare` print a warning to stderr:
 

@@ -20,6 +20,14 @@ export interface AirConfig {
   plugins?: string[];
   roots?: string[];
   hooks?: string[];
+  /**
+   * Protocol used by git-based catalog providers (e.g., github://) when
+   * cloning remote repositories. Defaults to "ssh". Set to "https" for
+   * environments without SSH keys or when relying on token-based auth
+   * (e.g. AIR_GITHUB_TOKEN). CLI flags and explicit `providerOptions`
+   * passed to `resolveArtifacts` override this value.
+   */
+  gitProtocol?: "ssh" | "https";
 }
 
 export interface ResolvedArtifacts {
@@ -206,6 +214,14 @@ export interface PreparedSession {
 export interface CatalogProvider {
   /** URI scheme this provider handles (e.g., "github", "s3") */
   scheme: string;
+  /**
+   * Apply runtime options merged from air.json and caller overrides before
+   * resolve() or related methods run. Called by the SDK/core once per
+   * `resolveArtifacts`/`refreshCache` invocation. Providers should ignore
+   * unknown keys. Recognized keys include `gitProtocol: "ssh" | "https"`
+   * (for git-based providers).
+   */
+  configure?(options: Record<string, unknown>): void;
   /** Resolve a URI to parsed JSON content */
   resolve(uri: string, baseDir: string): Promise<Record<string, unknown>>;
   /**

@@ -14,14 +14,39 @@ export interface GitHubUri {
   ref?: string;
 }
 
+export type GitProtocol = "ssh" | "https";
+
 export interface GitHubProviderOptions {
   /**
    * GitHub personal access token for authenticating git clone.
-   * Required for private repositories. Optional for public repos.
+   * Required for private repositories over HTTPS. Ignored when
+   * `gitProtocol === "ssh"` — SSH uses key-based auth.
    *
    * Can also be set via the AIR_GITHUB_TOKEN environment variable.
    */
   token?: string;
+  /**
+   * Protocol to use when constructing clone URLs. Defaults to "ssh".
+   * SSH (`git@github.com:owner/repo.git`) avoids credential prompts in
+   * environments where engineers already have keys configured. Set to
+   * "https" for CI without SSH keys, corporate networks that block
+   * port 22, or token-based auth via `AIR_GITHUB_TOKEN`.
+   *
+   * Can also be set via the AIR_GIT_PROTOCOL environment variable or
+   * the `gitProtocol` field in air.json. The SDK/CLI is responsible for
+   * merging those sources and calling `configure({ gitProtocol })`.
+   */
+  gitProtocol?: GitProtocol;
+}
+
+const DEFAULT_GIT_PROTOCOL: GitProtocol = "ssh";
+
+function normalizeGitProtocol(
+  value: unknown,
+  fallback: GitProtocol
+): GitProtocol {
+  if (value === "ssh" || value === "https") return value;
+  return fallback;
 }
 
 /**
@@ -166,9 +191,36 @@ function isImmutableRef(ref: string): boolean {
 export class GitHubCatalogProvider implements CatalogProvider {
   scheme = "github";
   private token: string | undefined;
+  private gitProtocol: GitProtocol;
 
   constructor(options?: GitHubProviderOptions) {
     this.token = options?.token || process.env.AIR_GITHUB_TOKEN;
+    this.gitProtocol = normalizeGitProtocol(
+      options?.gitProtocol ?? process.env.AIR_GIT_PROTOCOL,
+      DEFAULT_GIT_PROTOCOL
+    );
+  }
+
+  /**
+   * Apply runtime options merged from air.json and caller overrides. Called
+   * by the SDK before `resolve()` / `refreshCache()` runs. Currently honors
+   * `gitProtocol: "ssh" | "https"`; unknown keys are ignored.
+   */
+  configure(options: Record<string, unknown>): void {
+    if (options.gitProtocol !== undefined) {
+      this.gitProtocol = normalizeGitProtocol(
+        options.gitProtocol,
+        this.gitProtocol
+      );
+    }
+  }
+
+  /**
+   * Return the effective git protocol in use. Exposed for diagnostics and
+   * test verification — not part of the CatalogProvider contract.
+   */
+  getGitProtocol(): GitProtocol {
+    return this.gitProtocol;
   }
 
   async resolve(
@@ -413,7 +465,7 @@ export class GitHubCatalogProvider implements CatalogProvider {
     }
 
     const repoUrl = this.buildCloneUrl(owner, repo);
-    const publicUrl = `https://github.com/${owner}/${repo}.git`;
+    const publicUrl = this.buildPublicUrl(owner, repo);
 
     try {
       const args = ref === "HEAD"
@@ -424,11 +476,19 @@ export class GitHubCatalogProvider implements CatalogProvider {
     } catch (err) {
       const rawMsg = err instanceof Error ? err.message : String(err);
       const msg = redactToken(rawMsg, this.token);
-      const hint = msg.includes("Authentication failed") || msg.includes("could not read Username")
-        ? " (repository may be private — set AIR_GITHUB_TOKEN or pass token option)"
-        : msg.includes("not found")
-          ? " (repository or ref not found)"
-          : "";
+      const authHint = this.gitProtocol === "ssh"
+        ? " (SSH auth failed — ensure a key is registered with GitHub, " +
+          "or switch to HTTPS: set \"gitProtocol\": \"https\" in air.json or pass --git-protocol=https)"
+        : " (repository may be private — set AIR_GITHUB_TOKEN or pass token option)";
+      const hint =
+        msg.includes("Authentication failed") ||
+        msg.includes("could not read Username") ||
+        msg.includes("Permission denied") ||
+        msg.includes("publickey")
+          ? authHint
+          : msg.includes("not found") || msg.includes("Repository not found")
+            ? " (repository or ref not found)"
+            : "";
       throw new Error(
         `Failed to clone ${owner}/${repo} at ref "${ref}"${hint}\n` +
           `  URL: ${publicUrl}\n` +
@@ -440,11 +500,30 @@ export class GitHubCatalogProvider implements CatalogProvider {
   }
 
   /**
-   * Build the clone URL, injecting token for authentication if available.
+   * Build the clone URL used to invoke `git clone`. Respects the configured
+   * `gitProtocol`. When protocol is HTTPS and a token is available, the
+   * token is injected into the URL for authentication; SSH ignores the
+   * token and relies on the user's configured SSH keys.
+   *
+   * Exposed (non-private) for diagnostic and test use.
    */
-  private buildCloneUrl(owner: string, repo: string): string {
+  buildCloneUrl(owner: string, repo: string): string {
+    if (this.gitProtocol === "ssh") {
+      return `git@github.com:${owner}/${repo}.git`;
+    }
     if (this.token) {
       return `https://${this.token}@github.com/${owner}/${repo}.git`;
+    }
+    return `https://github.com/${owner}/${repo}.git`;
+  }
+
+  /**
+   * Return a public, shareable URL for error messages. This always uses
+   * the protocol in effect but never embeds a token.
+   */
+  private buildPublicUrl(owner: string, repo: string): string {
+    if (this.gitProtocol === "ssh") {
+      return `git@github.com:${owner}/${repo}.git`;
     }
     return `https://github.com/${owner}/${repo}.git`;
   }

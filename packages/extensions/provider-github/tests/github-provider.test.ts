@@ -207,7 +207,13 @@ describe("getClonePath", () => {
 });
 
 describe("GitHubCatalogProvider", () => {
+  // Integration tests below clone pulsemcp/air publicly. CI runners do not have
+  // SSH keys registered with GitHub, so every provider that performs a real
+  // clone in this file must be explicitly configured for HTTPS. The default
+  // remains SSH — see the dedicated "git protocol" block of tests for coverage
+  // of the default.
   const provider = new GitHubCatalogProvider();
+  provider.configure({ gitProtocol: "https" });
 
   it("has scheme 'github'", () => {
     expect(provider.scheme).toBe("github");
@@ -380,5 +386,104 @@ describe("GitHubCatalogProvider", () => {
     } finally {
       process.env.HOME = origHome;
     }
+  });
+});
+
+describe("GitHubCatalogProvider — git protocol", () => {
+  // These tests don't hit the network — they only verify URL construction,
+  // so they're safe to run without SSH keys or tokens.
+
+  afterEach(() => {
+    delete process.env.AIR_GIT_PROTOCOL;
+  });
+
+  it("defaults to SSH when no protocol is configured", () => {
+    delete process.env.AIR_GIT_PROTOCOL;
+    const provider = new GitHubCatalogProvider();
+    expect(provider.getGitProtocol()).toBe("ssh");
+    expect(provider.buildCloneUrl("pulsemcp", "air")).toBe(
+      "git@github.com:pulsemcp/air.git"
+    );
+  });
+
+  it("builds SSH URL with no token injection even when token is set", () => {
+    const provider = new GitHubCatalogProvider({
+      token: "ghp_secrettoken",
+      gitProtocol: "ssh",
+    });
+    const url = provider.buildCloneUrl("pulsemcp", "air");
+    expect(url).toBe("git@github.com:pulsemcp/air.git");
+    expect(url).not.toContain("ghp_secrettoken");
+  });
+
+  it("builds HTTPS URL when gitProtocol is https", () => {
+    const provider = new GitHubCatalogProvider({ gitProtocol: "https" });
+    expect(provider.getGitProtocol()).toBe("https");
+    expect(provider.buildCloneUrl("pulsemcp", "air")).toBe(
+      "https://github.com/pulsemcp/air.git"
+    );
+  });
+
+  it("injects token into HTTPS clone URL when available", () => {
+    const provider = new GitHubCatalogProvider({
+      gitProtocol: "https",
+      token: "ghp_abc123",
+    });
+    expect(provider.buildCloneUrl("pulsemcp", "air")).toBe(
+      "https://ghp_abc123@github.com/pulsemcp/air.git"
+    );
+  });
+
+  it("honors AIR_GIT_PROTOCOL=https environment variable", () => {
+    process.env.AIR_GIT_PROTOCOL = "https";
+    const provider = new GitHubCatalogProvider();
+    expect(provider.getGitProtocol()).toBe("https");
+    expect(provider.buildCloneUrl("pulsemcp", "air")).toBe(
+      "https://github.com/pulsemcp/air.git"
+    );
+  });
+
+  it("falls back to default when AIR_GIT_PROTOCOL has an invalid value", () => {
+    process.env.AIR_GIT_PROTOCOL = "ftp";
+    const provider = new GitHubCatalogProvider();
+    expect(provider.getGitProtocol()).toBe("ssh");
+  });
+
+  it("constructor option takes precedence over env var", () => {
+    process.env.AIR_GIT_PROTOCOL = "https";
+    const provider = new GitHubCatalogProvider({ gitProtocol: "ssh" });
+    expect(provider.getGitProtocol()).toBe("ssh");
+  });
+
+  it("configure() overrides the constructor-time protocol", () => {
+    const provider = new GitHubCatalogProvider({ gitProtocol: "ssh" });
+    expect(provider.getGitProtocol()).toBe("ssh");
+    provider.configure({ gitProtocol: "https" });
+    expect(provider.getGitProtocol()).toBe("https");
+    expect(provider.buildCloneUrl("pulsemcp", "air")).toBe(
+      "https://github.com/pulsemcp/air.git"
+    );
+  });
+
+  it("configure() with no gitProtocol key leaves the protocol unchanged", () => {
+    const provider = new GitHubCatalogProvider({ gitProtocol: "https" });
+    provider.configure({ unrelatedKey: "value" });
+    expect(provider.getGitProtocol()).toBe("https");
+  });
+
+  it("configure() ignores invalid gitProtocol values", () => {
+    const provider = new GitHubCatalogProvider({ gitProtocol: "https" });
+    provider.configure({ gitProtocol: "ftp" });
+    expect(provider.getGitProtocol()).toBe("https");
+  });
+
+  it("builds correct URLs for various owner/repo combinations in SSH mode", () => {
+    const provider = new GitHubCatalogProvider({ gitProtocol: "ssh" });
+    expect(provider.buildCloneUrl("acme", "widgets")).toBe(
+      "git@github.com:acme/widgets.git"
+    );
+    expect(provider.buildCloneUrl("org-with-dash", "repo.with.dots")).toBe(
+      "git@github.com:org-with-dash/repo.with.dots.git"
+    );
   });
 });

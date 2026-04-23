@@ -35,7 +35,8 @@ Here's a complete `air.json` with all fields:
   "mcp": ["./mcp/mcp.json"],
   "plugins": ["./plugins/plugins.json"],
   "roots": ["./roots/roots.json"],
-  "hooks": ["./hooks/hooks.json"]
+  "hooks": ["./hooks/hooks.json"],
+  "gitProtocol": "ssh"
 }
 ```
 
@@ -63,6 +64,7 @@ You don't need both `catalogs` and the per-type arrays. Use `catalogs` when you'
 | `plugins` | string[] | Paths to plugins index files. |
 | `roots` | string[] | Paths to roots index files. |
 | `hooks` | string[] | Paths to hooks index files. |
+| `gitProtocol` | `"ssh"` \| `"https"` | Protocol used by git-based catalog providers (e.g., `github://`) when cloning. Defaults to `"ssh"`. Use `"https"` for CI without SSH keys or token-based auth. Can be overridden per invocation with `--git-protocol` or via `AIR_GIT_PROTOCOL`. |
 
 Additional properties are allowed — you can add custom fields without causing validation errors, but AIR ignores unrecognized fields.
 

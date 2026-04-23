@@ -42,6 +42,7 @@ export {
   mergeArtifacts,
   expandPlugins,
   emptyArtifacts,
+  configureProviders,
 } from "./config.js";
 export type { ResolveOptions } from "./config.js";
 
