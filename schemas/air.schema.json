@@ -60,6 +60,11 @@
       "type": "array",
       "items": { "type": "string" },
       "description": "Paths to hooks index files. Merged in order — later entries override earlier ones by ID."
+    },
+    "gitProtocol": {
+      "type": "string",
+      "enum": ["ssh", "https"],
+      "description": "Protocol to use when git-based catalog providers clone remote repositories. Defaults to \"ssh\". Set to \"https\" for environments without SSH keys (public CI, corporate networks) or when you rely on token-based authentication (e.g. AIR_GITHUB_TOKEN). A CLI --git-protocol flag, if supported by the command, overrides this value."
     }
   },
   "required": ["name"],

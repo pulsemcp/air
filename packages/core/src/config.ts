@@ -133,6 +133,37 @@ export function getAirJsonPath(): string | null {
 export interface ResolveOptions {
   /** Catalog providers for resolving remote URIs (github://, s3://, etc.) */
   providers?: CatalogProvider[];
+  /**
+   * Runtime options passed to each provider's optional `configure()` method.
+   * Values here take precedence over equivalent fields read from air.json
+   * (e.g., `gitProtocol`). Providers ignore unknown keys.
+   */
+  providerOptions?: Record<string, unknown>;
+}
+
+/**
+ * Merge air.json-level provider fields (currently just `gitProtocol`) with
+ * caller-provided overrides and dispatch the result to each provider's
+ * optional `configure()` method.
+ */
+export function configureProviders(
+  providers: CatalogProvider[],
+  airConfig: AirConfig,
+  providerOptions?: Record<string, unknown>
+): void {
+  const merged: Record<string, unknown> = {};
+  if (airConfig.gitProtocol !== undefined) {
+    merged.gitProtocol = airConfig.gitProtocol;
+  }
+  if (providerOptions) {
+    for (const [k, v] of Object.entries(providerOptions)) {
+      if (v !== undefined) merged[k] = v;
+    }
+  }
+  if (Object.keys(merged).length === 0) return;
+  for (const provider of providers) {
+    provider.configure?.(merged);
+  }
 }
 
 /**
@@ -237,6 +268,10 @@ export async function resolveArtifacts(
   const baseDir = dirname(resolve(airJsonPath));
   const providers = options?.providers || [];
   const catalogs = airConfig.catalogs || [];
+
+  // Configure providers with merged options: air.json fields are the base,
+  // explicit providerOptions override them. Providers ignore unknown keys.
+  configureProviders(providers, airConfig, options?.providerOptions);
 
   async function paths(type: ArtifactType, explicit: string[]): Promise<string[]> {
     const fromCatalogs = await expandCatalogPaths(

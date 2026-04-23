@@ -121,6 +121,37 @@ Given this `air.json`:
 
 The local `github` entry completely replaces the org's. The local `postgres` entry is new and added.
 
+## Git Protocol
+
+Remote catalog URIs like `github://owner/repo/...` are resolved by cloning the repository locally. By default, AIR uses **SSH** (`git@github.com:owner/repo.git`) so clones pick up the SSH keys most engineers already have registered with GitHub — no credential prompts, no token needed for public repos.
+
+Set `gitProtocol` to opt back into HTTPS when the environment calls for it:
+
+```json
+{
+  "name": "my-project",
+  "gitProtocol": "https",
+  "catalogs": ["github://acme/air-org"]
+}
+```
+
+Common reasons to use HTTPS:
+
+- **CI runners without SSH keys** — set `gitProtocol` to `"https"` and provide `AIR_GITHUB_TOKEN` for any private repos in the catalog list.
+- **Corporate networks that block port 22** — HTTPS on port 443 is almost always allowed.
+- **Token-based automation** — when you already manage a GitHub token via a secrets manager, HTTPS lets you use it directly.
+
+### Precedence
+
+A session's effective protocol is decided in this order (highest first):
+
+1. `--git-protocol <ssh|https>` on `air start` / `air prepare` / `air update`
+2. The `AIR_GIT_PROTOCOL` environment variable
+3. The `gitProtocol` field in `air.json`
+4. Default: `"ssh"`
+
+Tokens are only injected into the clone URL when protocol is HTTPS; in SSH mode the token is ignored and clones rely on your configured keys.
+
 ## Minimal Configuration
 
 A minimal AIR setup needs just an `air.json`:

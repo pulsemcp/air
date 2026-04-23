@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.35] - 2026-04-23
+
+### Added
+- New `gitProtocol` field on `air.json` (enum `"ssh"` | `"https"`) — selects the protocol used by git-based catalog providers when cloning remote repositories.
+- New `--git-protocol <ssh|https>` CLI flag on `air start`, `air prepare`, and `air update`. Takes precedence over the `gitProtocol` field in `air.json`.
+- New `AIR_GIT_PROTOCOL` environment variable recognized by `GitHubCatalogProvider`. Acts as a lower-precedence fallback (below explicit constructor options and `configure()` calls).
+- New optional `configure(options)` method on the `CatalogProvider` interface. Core calls it from `resolveArtifacts` after merging air.json-level fields with caller-supplied `providerOptions`, giving providers a single place to receive runtime configuration. Unknown keys are ignored.
+- New `configureProviders(providers, airConfig, providerOptions?)` helper exported from `@pulsemcp/air-core` for callers that run provider operations outside of `resolveArtifacts` (e.g., the SDK's `updateProviderCaches`).
+- New `gitProtocol` option on `prepareSession`, `startSession`, and `updateProviderCaches` in `@pulsemcp/air-sdk` — all three route the value through `configureProviders` so every provider in play sees the same protocol.
+
+### Changed
+- **Breaking:** `GitHubCatalogProvider` now defaults to **SSH** for `git clone` URLs (`git@github.com:owner/repo.git`). Previous releases always used HTTPS. SSH avoids credential prompts in interactive environments where engineers already have keys registered with GitHub, but it will fail in environments without SSH keys on the PATH (public CI runners, corporate networks blocking port 22). To restore the old behavior, add `"gitProtocol": "https"` to `air.json`, export `AIR_GIT_PROTOCOL=https`, or pass `--git-protocol=https` on the affected CLI commands. Token-based auth over HTTPS (via `AIR_GITHUB_TOKEN`) continues to work unchanged when `gitProtocol` is `"https"`; tokens are ignored when `gitProtocol` is `"ssh"`.
+- `GitHubCatalogProvider` clone-failure messages now include a protocol-aware hint — SSH auth failures suggest registering a key or switching to HTTPS; HTTPS failures suggest setting `AIR_GITHUB_TOKEN`.
+
 ## [0.0.34] - 2026-04-21
 
 ### Added

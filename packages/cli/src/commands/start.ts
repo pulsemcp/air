@@ -11,6 +11,7 @@ import {
 } from "@pulsemcp/air-sdk";
 import { runInteractiveSelector } from "../tui/interactive-selector.js";
 import { warnOnDeprecatedArtifactFlags } from "./deprecated-flags.js";
+import { parseGitProtocolFlag } from "./git-protocol.js";
 
 export function startCommand(): Command {
   const cmd = new Command("start")
@@ -62,6 +63,10 @@ export function startCommand(): Command {
       "--no-subagent-merge",
       "Skip merging subagent roots' artifacts into the parent session (for orchestrators that manage composition externally)"
     )
+    .option(
+      "--git-protocol <protocol>",
+      "Protocol used by git-based catalog providers: \"ssh\" (default) or \"https\". Overrides the gitProtocol field in air.json."
+    )
     .allowUnknownOption(true)
     .action(
       async (
@@ -80,6 +85,7 @@ export function startCommand(): Command {
           withoutPlugin?: string[];
           withoutDefaults?: boolean;
           subagentMerge: boolean;
+          gitProtocol?: string;
         },
       ) => {
         const dashDashIdx = process.argv.indexOf("--");
@@ -88,11 +94,14 @@ export function startCommand(): Command {
 
         warnOnDeprecatedArtifactFlags(process.argv);
 
+        const gitProtocol = parseGitProtocolFlag(options.gitProtocol);
+
         let result;
         try {
           result = await startSession(agent, {
             root: options.root,
             checkAvailability: !options.dryRun,
+            gitProtocol,
           });
         } catch (err) {
           const message =
@@ -237,6 +246,7 @@ export function startCommand(): Command {
             hooks: tuiHooks,
             plugins: tuiPlugins,
             skipSubagentMerge,
+            gitProtocol,
           });
         } catch (err) {
           const message =

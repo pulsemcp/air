@@ -20,6 +20,11 @@ export interface StartSessionOptions {
   config?: string;
   /** Check whether the agent CLI is installed. Defaults to true. */
   checkAvailability?: boolean;
+  /**
+   * Git protocol override for git-based catalog providers. Takes precedence
+   * over the `gitProtocol` field in air.json.
+   */
+  gitProtocol?: "ssh" | "https";
 }
 
 export interface StartSessionResult {
@@ -76,7 +81,14 @@ export async function startSession(
     const providers = loaded.providers
       .map((ext) => ext.provider!)
       .filter(Boolean);
-    artifacts = await resolveArtifacts(airJsonPath, { providers });
+    const providerOptions: Record<string, unknown> = {};
+    if (options?.gitProtocol !== undefined) {
+      providerOptions.gitProtocol = options.gitProtocol;
+    }
+    artifacts = await resolveArtifacts(airJsonPath, {
+      providers,
+      providerOptions,
+    });
 
     // Check freshness of provider caches (non-blocking — warnings only)
     warnings = await checkProviderFreshness(airConfig, providers);

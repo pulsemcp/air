@@ -81,6 +81,12 @@ export interface PrepareSessionOptions {
    * contributed CLI options.
    */
   extensions?: LoadedExtensions;
+  /**
+   * Git protocol override for git-based catalog providers (e.g., github://).
+   * Takes precedence over the `gitProtocol` field in air.json. Typical
+   * sources: a CLI flag or programmatic opt-in to HTTPS.
+   */
+  gitProtocol?: "ssh" | "https";
 }
 
 export interface PrepareSessionResult {
@@ -150,7 +156,14 @@ export async function prepareSession(
   const providers = loaded.providers
     .map((ext) => ext.provider!)
     .filter(Boolean);
-  const artifacts = await resolveArtifacts(airJsonPath, { providers });
+  const providerOptions: Record<string, unknown> = {};
+  if (options.gitProtocol !== undefined) {
+    providerOptions.gitProtocol = options.gitProtocol;
+  }
+  const artifacts = await resolveArtifacts(airJsonPath, {
+    providers,
+    providerOptions,
+  });
 
   // Check freshness of provider caches (non-blocking — warnings only)
   const warnings = await checkProviderFreshness(airConfig, providers);

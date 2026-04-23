@@ -7,6 +7,7 @@ import {
   loadExtensions,
 } from "@pulsemcp/air-sdk";
 import { warnOnDeprecatedArtifactFlags } from "./deprecated-flags.js";
+import { parseGitProtocolFlag } from "./git-protocol.js";
 
 /**
  * Extract the flag name from a Commander flag string.
@@ -97,6 +98,10 @@ export function prepareCommand(): Command {
       "--skip-validation",
       "Skip final validation for unresolved ${VAR} patterns (for orchestrators that resolve variables themselves)"
     )
+    .option(
+      "--git-protocol <protocol>",
+      "Protocol used by git-based catalog providers: \"ssh\" (default) or \"https\". Overrides the gitProtocol field in air.json."
+    )
     .allowUnknownOption(true)
     .action(
       async (adapter: string, options: {
@@ -114,8 +119,10 @@ export function prepareCommand(): Command {
         withoutDefaults?: boolean;
         subagentMerge: boolean;
         skipValidation?: boolean;
+        gitProtocol?: string;
       }) => {
         warnOnDeprecatedArtifactFlags(process.argv);
+        const gitProtocol = parseGitProtocolFlag(options.gitProtocol);
         try {
           // Load extensions once — pass to SDK to avoid double loading
           const airJsonPath = options.config || getAirJsonPath();
@@ -165,6 +172,7 @@ export function prepareCommand(): Command {
             skipValidation: options.skipValidation,
             extensionOptions,
             extensions: loadedExtensions,
+            gitProtocol,
           });
 
           if (result.rootAutoDetected && result.root) {

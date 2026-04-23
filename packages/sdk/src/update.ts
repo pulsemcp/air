@@ -7,9 +7,11 @@ import {
   loadAirConfig,
   getAirJsonPath,
   getDefaultAirJsonPath,
+  configureProviders,
   type CacheRefreshResult,
   type CatalogProvider,
   type AirExtension,
+  type AirConfig,
 } from "@pulsemcp/air-core";
 import { loadExtensions } from "./extension-loader.js";
 import { resolveEsmEntry } from "./esm-resolve.js";
@@ -50,6 +52,11 @@ export interface UpdateProviderCachesOptions {
    * stub here to simulate upgrade outcomes without touching the network.
    */
   runNpmInstallLatest?: NpmInstallLatest;
+  /**
+   * Git protocol override for git-based catalog providers. Takes precedence
+   * over the `gitProtocol` field in air.json.
+   */
+  gitProtocol?: "ssh" | "https";
 }
 
 export interface UpdateProviderCachesResult {
@@ -375,9 +382,10 @@ export async function updateProviderCaches(
 
   let airJsonDir: string | null = null;
   let extensionSpecs: string[] = [];
+  let airConfig: AirConfig | undefined;
   if (airJsonPath) {
     airJsonDir = dirname(resolve(airJsonPath));
-    const airConfig = loadAirConfig(airJsonPath);
+    airConfig = loadAirConfig(airJsonPath);
     extensionSpecs = airConfig.extensions ?? [];
   }
 
@@ -426,6 +434,22 @@ export async function updateProviderCaches(
     if (provider) {
       providers.set(scheme, provider);
     }
+  }
+
+  // Thread gitProtocol (from air.json and/or caller override) into every
+  // loaded provider before we exercise any of them. This must happen after
+  // auto-heal (which re-imports newer provider modules) so the freshly
+  // loaded instance receives the same runtime configuration.
+  const providerOverride: Record<string, unknown> = {};
+  if (options?.gitProtocol !== undefined) {
+    providerOverride.gitProtocol = options.gitProtocol;
+  }
+  if (airConfig || Object.keys(providerOverride).length > 0) {
+    configureProviders(
+      Array.from(providers.values()),
+      airConfig ?? { name: "__transient__" },
+      providerOverride
+    );
   }
 
   // Index pre-flight outcomes by scheme so we can prepend the upgrade

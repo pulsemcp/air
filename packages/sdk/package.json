@@ -1,6 +1,6 @@
 {
   "name": "@pulsemcp/air-sdk",
-  "version": "0.0.34",
+  "version": "0.0.35",
   "publishConfig": {
     "access": "public"
   },
@@ -29,7 +29,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@pulsemcp/air-core": "0.0.34"
+    "@pulsemcp/air-core": "0.0.35"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
