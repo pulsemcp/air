@@ -142,9 +142,16 @@ export interface ResolveOptions {
 }
 
 /**
- * Merge air.json-level provider fields (currently just `gitProtocol`) with
- * caller-provided overrides and dispatch the result to each provider's
- * optional `configure()` method.
+ * Merge air.json-level provider fields with runtime overrides and dispatch
+ * the result to each provider's optional `configure()` method.
+ *
+ * Precedence (lowest to highest, later wins):
+ *   1. `airConfig.<field>` — values declared in air.json
+ *   2. Well-known AIR env vars — currently `AIR_GIT_PROTOCOL` for `gitProtocol`
+ *   3. `providerOptions.<field>` — CLI-sourced overrides from the SDK
+ *
+ * This mirrors the user-facing contract documented in docs/configuration.md:
+ * CLI flag > env var > air.json > default.
  */
 export function configureProviders(
   providers: CatalogProvider[],
@@ -152,14 +159,24 @@ export function configureProviders(
   providerOptions?: Record<string, unknown>
 ): void {
   const merged: Record<string, unknown> = {};
+
+  // Tier 1 (lowest): air.json
   if (airConfig.gitProtocol !== undefined) {
     merged.gitProtocol = airConfig.gitProtocol;
   }
+
+  // Tier 2: well-known AIR env vars override air.json
+  if (process.env.AIR_GIT_PROTOCOL !== undefined) {
+    merged.gitProtocol = process.env.AIR_GIT_PROTOCOL;
+  }
+
+  // Tier 3 (highest): runtime overrides (CLI flag threaded from SDK)
   if (providerOptions) {
     for (const [k, v] of Object.entries(providerOptions)) {
       if (v !== undefined) merged[k] = v;
     }
   }
+
   if (Object.keys(merged).length === 0) return;
   for (const provider of providers) {
     provider.configure?.(merged);

@@ -5,7 +5,9 @@ import {
   resolveArtifacts,
   mergeArtifacts,
   emptyArtifacts,
+  configureProviders,
 } from "../src/config.js";
+import type { CatalogProvider } from "../src/types.js";
 import {
   createTempAirDir,
   exampleSkill,
@@ -463,5 +465,85 @@ describe("emptyArtifacts", () => {
     expect(empty.plugins).toEqual({});
     expect(empty.roots).toEqual({});
     expect(empty.hooks).toEqual({});
+  });
+});
+
+describe("configureProviders precedence", () => {
+  // A minimal fake provider that records the last configure() payload so we
+  // can verify what core dispatched after merging the precedence tiers.
+  function makeFakeProvider(): CatalogProvider & {
+    lastConfig: Record<string, unknown> | null;
+    configureCallCount: number;
+  } {
+    const provider = {
+      scheme: "fake",
+      lastConfig: null as Record<string, unknown> | null,
+      configureCallCount: 0,
+      resolve: async () => ({}),
+      configure(options: Record<string, unknown>) {
+        this.lastConfig = options;
+        this.configureCallCount += 1;
+      },
+    };
+    return provider;
+  }
+
+  const originalEnv = process.env.AIR_GIT_PROTOCOL;
+  afterEach(() => {
+    if (originalEnv === undefined) {
+      delete process.env.AIR_GIT_PROTOCOL;
+    } else {
+      process.env.AIR_GIT_PROTOCOL = originalEnv;
+    }
+  });
+
+  it("forwards air.json gitProtocol when nothing else is set", () => {
+    delete process.env.AIR_GIT_PROTOCOL;
+    const provider = makeFakeProvider();
+    configureProviders([provider], { name: "t", gitProtocol: "https" });
+    expect(provider.lastConfig).toEqual({ gitProtocol: "https" });
+  });
+
+  it("env var AIR_GIT_PROTOCOL overrides air.json gitProtocol", () => {
+    process.env.AIR_GIT_PROTOCOL = "https";
+    const provider = makeFakeProvider();
+    configureProviders([provider], { name: "t", gitProtocol: "ssh" });
+    expect(provider.lastConfig).toEqual({ gitProtocol: "https" });
+  });
+
+  it("providerOptions (CLI) overrides env var and air.json", () => {
+    process.env.AIR_GIT_PROTOCOL = "https";
+    const provider = makeFakeProvider();
+    configureProviders(
+      [provider],
+      { name: "t", gitProtocol: "https" },
+      { gitProtocol: "ssh" }
+    );
+    expect(provider.lastConfig).toEqual({ gitProtocol: "ssh" });
+  });
+
+  it("does not call configure() when no tier supplies a value", () => {
+    delete process.env.AIR_GIT_PROTOCOL;
+    const provider = makeFakeProvider();
+    configureProviders([provider], { name: "t" });
+    expect(provider.configureCallCount).toBe(0);
+  });
+
+  it("env var alone triggers configure() even without air.json field", () => {
+    process.env.AIR_GIT_PROTOCOL = "https";
+    const provider = makeFakeProvider();
+    configureProviders([provider], { name: "t" });
+    expect(provider.lastConfig).toEqual({ gitProtocol: "https" });
+  });
+
+  it("skips providers that don't implement configure()", () => {
+    process.env.AIR_GIT_PROTOCOL = "https";
+    const unconfigurable: CatalogProvider = {
+      scheme: "fake",
+      resolve: async () => ({}),
+    };
+    // Should not throw
+    configureProviders([unconfigurable], { name: "t" });
+    expect(true).toBe(true);
   });
 });

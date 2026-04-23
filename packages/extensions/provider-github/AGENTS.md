@@ -22,14 +22,15 @@ This package implements the `CatalogProvider` interface from `@pulsemcp/air-core
 
 Clone URLs default to **SSH** (`git@github.com:owner/repo.git`). SSH avoids credential prompts in environments where engineers already have keys configured with GitHub. HTTPS (`https://github.com/owner/repo.git`) is available as an opt-in for CI runners without SSH keys, corporate networks that block port 22, or token-based auth.
 
-Protocol resolution order (highest precedence first):
-1. `configure({ gitProtocol })` — called by the SDK, sourced from the CLI `--git-protocol` flag
-2. `gitProtocol` field in `air.json`
-3. `AIR_GIT_PROTOCOL` environment variable
-4. Constructor option `gitProtocol`
-5. Default: `"ssh"`
+**User-facing precedence** (documented in `docs/configuration.md`; merged by `@pulsemcp/air-core`'s `configureProviders` before this provider ever sees a protocol value):
+1. `--git-protocol <ssh|https>` CLI flag on `air start` / `air prepare` / `air update`
+2. `AIR_GIT_PROTOCOL` environment variable
+3. `gitProtocol` field in `air.json`
+4. Default: `"ssh"`
 
-Merging across those sources is the SDK's responsibility — this provider only honors whatever is passed via constructor options, env vars, or `configure()`.
+**What this provider actually sees.** Merging happens in core; the provider only has two entry points:
+1. `configure(options)` — called by core with the already-merged winning value. Overrides whatever the constructor set.
+2. Constructor option `gitProtocol`, or `AIR_GIT_PROTOCOL` env var as a fallback when the option is omitted. This path only matters when the provider is instantiated standalone without `configureProviders` running.
 
 ### Authentication
 
