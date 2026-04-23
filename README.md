@@ -106,7 +106,19 @@ Every AIR configuration starts with an `air.json` file. Each artifact property i
 }
 ```
 
-**Local catalog + shared remote catalog.** Your private team skills live in a directory you maintain (e.g., a sibling repo checked into `~/.air/` or an absolute path elsewhere on disk), layered with an org-wide catalog for shared defaults. Local paths resolve relative to `air.json`, so `./platform-team-catalog/...` below points at `~/.air/platform-team-catalog/...`:
+**Local catalog + shared remote catalog.** Your private team skills live in a directory you maintain (e.g., a sibling repo checked into `~/.air/` or an absolute path elsewhere on disk), layered with an org-wide catalog for shared defaults. When both sources follow the standard `<type>/<type>.json` layout, `catalogs` lets you reference each one with a single entry:
+
+```json
+{
+  "name": "platform-team",
+  "catalogs": [
+    "github://acme/air-org",
+    "./platform-team-catalog"
+  ]
+}
+```
+
+AIR expands each catalog into all six artifact arrays automatically — missing files within a catalog are silently skipped. If you need finer-grained control (e.g., pull only skills from a remote source), use the per-type arrays instead:
 
 ```json
 {
@@ -121,6 +133,8 @@ Every AIR configuration starts with an `air.json` file. Each artifact property i
   ]
 }
 ```
+
+`catalogs` and the per-type arrays compose: catalogs expand first, per-type arrays layer on top. Local paths resolve relative to `air.json`, so `./platform-team-catalog` above points at `~/.air/platform-team-catalog`.
 
 **Stacked remotes with local overrides.** Org → team → project, with the local file getting the last word:
 

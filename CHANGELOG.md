@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.34] - 2026-04-21
+
+### Added
+- New `catalogs` field on `air.json` — each entry references a whole catalog (directory or provider URI) that follows the standard `<type>/<type>.json` layout, and AIR expands it into all six artifact arrays at resolution time. Makes the common "org catalog + local catalog" setup a two-line config instead of six separate arrays. Missing files inside a catalog are silently skipped, so catalogs can ship only the artifact types they need. Catalogs and the per-type arrays compose: catalogs expand first, per-type arrays layer on top.
+- Optional `fileExists(uri)` method on `CatalogProvider` — used during catalog expansion to skip conventional paths a given catalog doesn't provide. Providers without this method fall back to try/catch around `resolve()`.
+- `GitHubCatalogProvider` now implements `fileExists(uri)` so catalog expansion surfaces real clone failures (network, auth, missing repo) while still silently skipping artifact files that simply don't exist in a given catalog.
+
+### Changed
+- The `air init` scaffolded `README.md` now documents the `catalogs` field as the simplest way to layer on top of the local workspace, alongside the existing per-type array pattern.
+- Documentation updates: `README.md`, `docs/configuration.md`, `docs/guides/understanding-air-json.md`, and `docs/guides/composition-and-overrides.md` all cover the new `catalogs` field alongside the existing per-type arrays.
+
 ## [0.0.33] - 2026-04-21
 
 ### Changed

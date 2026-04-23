@@ -26,6 +26,11 @@
       "maxLength": 500,
       "description": "Human-readable description of this AIR configuration scope (e.g., 'Acme Corp engineering team agent configs')."
     },
+    "catalogs": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Paths or URIs to artifact catalogs. A catalog is a directory that follows the standard layout — each of {skills,references,mcp,plugins,roots,hooks}/<name>.json in its root. Catalogs expand into all six artifact arrays in order; missing files are silently skipped. Later catalogs override earlier ones by ID; the per-type artifact arrays layer on top of catalogs."
+    },
     "skills": {
       "type": "array",
       "items": { "type": "string" },
