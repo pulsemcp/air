@@ -1,5 +1,5 @@
 import { resolve } from "path";
-import { getAirJsonPath } from "@pulsemcp/air-core";
+import { getDefaultAirJsonPath } from "@pulsemcp/air-core";
 import {
   discoverIndexes,
   type DiscoveryResult,
@@ -39,6 +39,23 @@ export interface OfferableDiscoveryResult {
   airJsons: DiscoveredAirJson[];
   /** True if there is anything to offer the user. */
   hasOffers: boolean;
+  /**
+   * Resolved absolute path to the air.json we'll target on accept. Honors
+   * `options.configPath`, then `AIR_CONFIG`, then `~/.air/air.json`. Unlike
+   * `getAirJsonPath()`, this is populated even when the file does not yet
+   * exist so accept-flow scaffolding writes to the right location.
+   */
+  resolvedConfigPath: string;
+}
+
+/**
+ * Resolve the target air.json path consistently across discovery and accept.
+ * `getAirJsonPath()` returns null for missing files, which loses the user's
+ * `AIR_CONFIG` preference on a first-time scaffold — so we do our own
+ * resolution that always returns a real path.
+ */
+function resolveTargetConfigPath(explicit?: string): string {
+  return explicit ?? process.env.AIR_CONFIG ?? getDefaultAirJsonPath();
 }
 
 /**
@@ -50,10 +67,12 @@ export function findOfferableIndexes(
   options?: FindOfferableOptions
 ): OfferableDiscoveryResult {
   const cwd = options?.cwd ?? process.cwd();
-  const configPath = options?.configPath ?? getAirJsonPath();
+  const resolvedConfigPath = resolveTargetConfigPath(options?.configPath);
   const raw = discoverIndexes(cwd);
 
-  const registered = buildRegisteredChecker(configPath);
+  // buildRegisteredChecker tolerates a missing file (returns no-op), so we
+  // can pass the resolved path even if the air.json doesn't exist yet.
+  const registered = buildRegisteredChecker(resolvedConfigPath);
   const prefs = loadPreferences(options?.preferencesPath);
 
   const asDismissed = (indexPath: string): DismissedDiscovery => ({
@@ -88,6 +107,7 @@ export function findOfferableIndexes(
       catalogs.length > 0 ||
       looseIndexes.length > 0 ||
       airJsons.length > 0,
+    resolvedConfigPath,
   };
 }
 
@@ -103,7 +123,10 @@ export function acceptOffers(
   offers: OfferableDiscoveryResult,
   options?: AcceptDiscoveryOptions
 ): EditAirJsonResult {
-  const configPath = options?.configPath;
+  // An explicit override wins; otherwise use the path the discovery already
+  // resolved. This preserves AIR_CONFIG even when the file didn't exist at
+  // discovery time and is about to be scaffolded.
+  const configPath = options?.configPath ?? offers.resolvedConfigPath;
   return addDiscoveredToAirJson(
     {
       catalogs: offers.catalogs,

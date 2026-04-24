@@ -113,8 +113,9 @@ export function resolveAnchor(targetDir: string): {
  *
  * Validation rules:
  * - The file must parse as a JSON object (not array/primitive/null).
- * - If a `$schema` field is present, it must match the expected artifact type.
- * - No `$schema` field is allowed (filename-based detection is enough).
+ * - A missing `$schema` is allowed — filename-based detection is sufficient.
+ * - When `$schema` is present, it must resolve to the expected artifact type;
+ *   a contradictory or non-AIR schema causes the file to be skipped.
  *
  * Returns the parsed data when valid, or `null` to signal "skip this file".
  */

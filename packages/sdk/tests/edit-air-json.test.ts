@@ -253,7 +253,7 @@ describe("buildRegisteredChecker", () => {
     expect(checker.loose("skills", resolve(dir, "other.json"))).toBe(false);
   });
 
-  it("treats a loose index as registered if its catalog directory is already in catalogs[]", () => {
+  it("only dedupes exact matches — catalog expansion is handled upstream", () => {
     const dir = makeTempDir();
     const airJsonPath = resolve(dir, "air.json");
     writeFileSync(
@@ -265,18 +265,16 @@ describe("buildRegisteredChecker", () => {
     );
 
     const checker = buildRegisteredChecker(airJsonPath);
-    // A loose-style skills.json that happens to live under a registered
-    // catalog should still be considered "already covered" — adding it to
-    // skills[] would duplicate the catalog's expansion.
+    // buildRegisteredChecker is intentionally conservative: it only returns
+    // true for exact matches against the arrays in air.json. It does NOT
+    // expand catalog entries into their implied per-type paths — that's
+    // `discoverIndexes` / upstream filtering's job (and in practice, the
+    // scanner never surfaces a loose index whose directory is a detected
+    // catalog, so this case is unreachable via the discovery pipeline).
     expect(
       checker.loose("skills", resolve(dir, "team/skills/skills.json"))
     ).toBe(false);
-    // But a bare team/skills.json (unusual layout) should fall through since
-    // the catalog's standard layout only maps team/skills/skills.json.
-    // buildRegisteredChecker is intentionally conservative: it only dedupes
-    // exact matches, and the catalog expansion is handled by core. Either
-    // outcome is acceptable; the important property is no false-positive
-    // on unrelated paths.
+    // Unrelated paths must not false-positive.
     expect(checker.loose("skills", resolve(dir, "elsewhere.json"))).toBe(false);
   });
 
