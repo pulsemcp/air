@@ -109,10 +109,33 @@ describe("parseGitHubUri", () => {
 
   // --- error cases ---
 
-  it("throws on URI with too few segments", () => {
-    expect(() => parseGitHubUri("github://acme/repo")).toThrow(
-      "Invalid github:// URI"
-    );
+  it("accepts a whole-repo URI without a path (used as catalog root)", () => {
+    const result = parseGitHubUri("github://acme/repo");
+    expect(result).toEqual({
+      owner: "acme",
+      repo: "repo",
+      path: "",
+    });
+  });
+
+  it("accepts a whole-repo URI with @ref but no path (used as catalog root)", () => {
+    const result = parseGitHubUri("github://acme/repo@main");
+    expect(result).toEqual({
+      owner: "acme",
+      repo: "repo",
+      path: "",
+      ref: "main",
+    });
+  });
+
+  it("accepts a subdirectory URI (used as catalog root)", () => {
+    const result = parseGitHubUri("github://acme/repo@main/agents");
+    expect(result).toEqual({
+      owner: "acme",
+      repo: "repo",
+      path: "agents",
+      ref: "main",
+    });
   });
 
   it("throws on URI with only owner", () => {
@@ -155,12 +178,6 @@ describe("parseGitHubUri", () => {
     expect(() =>
       parseGitHubUri("github://acme/repo@main;rm -rf //file.json")
     ).toThrow("Invalid ref");
-  });
-
-  it("gives helpful error for repo@ref with no path", () => {
-    expect(() =>
-      parseGitHubUri("github://acme/repo@main")
-    ).toThrow("Missing file path");
   });
 
   it("rejects empty ref after @ on repo segment", () => {
@@ -311,6 +328,58 @@ describe("GitHubCatalogProvider", () => {
     expect(sourceDir).toBeDefined();
     expect(sourceDir).toContain("examples/skills");
   });
+
+  it("resolve() throws when given a URI with no file path", async () => {
+    await expect(
+      provider.resolve("github://pulsemcp/air", "/tmp")
+    ).rejects.toThrow(/must include a file path/);
+  });
+
+  it("resolveCatalogDir returns the catalog directory within a clone", async () => {
+    // Reuse the clone from earlier tests in this block.
+    const cloneDir = getClonePath("pulsemcp", "air", "HEAD");
+    if (!existsSync(resolve(cloneDir, ".git"))) {
+      await provider.resolve(
+        "github://pulsemcp/air/examples/skills/skills.json",
+        "/tmp"
+      );
+    }
+
+    const catalogDir = await provider.resolveCatalogDir(
+      "github://pulsemcp/air/examples"
+    );
+    expect(catalogDir).toBe(resolve(cloneDir, "examples"));
+    expect(existsSync(catalogDir)).toBe(true);
+  }, 30000);
+
+  it("resolveCatalogDir returns the clone root for a whole-repo catalog URI", async () => {
+    const cloneDir = getClonePath("pulsemcp", "air", "HEAD");
+    if (!existsSync(resolve(cloneDir, ".git"))) {
+      await provider.resolve(
+        "github://pulsemcp/air/examples/skills/skills.json",
+        "/tmp"
+      );
+    }
+
+    const catalogDir = await provider.resolveCatalogDir("github://pulsemcp/air");
+    expect(catalogDir).toBe(cloneDir);
+  }, 30000);
+
+  it("resolveCatalogDir throws when the catalog path is missing from the clone", async () => {
+    const cloneDir = getClonePath("pulsemcp", "air", "HEAD");
+    if (!existsSync(resolve(cloneDir, ".git"))) {
+      await provider.resolve(
+        "github://pulsemcp/air/examples/skills/skills.json",
+        "/tmp"
+      );
+    }
+
+    await expect(
+      provider.resolveCatalogDir(
+        "github://pulsemcp/air/no-such-subdirectory-xyz"
+      )
+    ).rejects.toThrow(/Catalog path not found/);
+  }, 30000);
 
   it("throws when file not found in clone", async () => {
     const cloneDir = getClonePath("pulsemcp", "air", "HEAD");

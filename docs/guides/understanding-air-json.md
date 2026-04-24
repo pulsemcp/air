@@ -57,7 +57,7 @@ You don't need both `catalogs` and the per-type arrays. Use `catalogs` when you'
 | `$schema` | string | JSON Schema URI for editor validation and autocomplete. |
 | `description` | string | Human-readable description of this configuration scope. Max 500 characters. |
 | `extensions` | string[] | Extension packages or local paths to load (adapters, providers, transforms). |
-| `catalogs` | string[] | Paths or URIs to artifact catalogs — directories that follow the standard `<type>/<type>.json` layout. Each catalog expands into all six artifact arrays; missing files are silently skipped. |
+| `catalogs` | string[] | Paths or URIs to artifact catalogs — directories that AIR walks (up to 3 levels deep) to discover artifact index files by filename or `$schema`. `.gitignore` at the catalog root is honored; `node_modules`, `.git`, and common build output directories are skipped. |
 | `skills` | string[] | Paths to skills index files. |
 | `references` | string[] | Paths to references index files. |
 | `mcp` | string[] | Paths to MCP server configuration files. |
@@ -124,9 +124,9 @@ For the common case of layering two or more full catalogs, the `catalogs` field 
 }
 ```
 
-Each entry is a directory that follows the standard AIR layout — `<type>/<type>.json` for each of the six artifact types. AIR expands every catalog into all six artifact arrays at resolution time. Files that aren't present in a catalog are silently skipped, so a catalog can ship only the artifact types it needs.
+Each entry is a directory (local path or provider URI). AIR walks the catalog up to 3 directory levels deep and picks up any file whose filename or `$schema` identifies it as an AIR artifact index (`skills.json`, `roots.json`, `mcp.json`, `references.json`, `plugins.json`, `hooks.json`, or any filename containing those keywords as delimited tokens). Folder names are free — `agents/agent-roots/roots.json`, `config/mcp-servers/mcp.json`, and the conventional `<type>/<type>.json` layout all work.
 
-`catalogs` and the per-type arrays compose: catalogs expand first, then the per-type arrays layer on top. See [Composition and Overrides](composition-and-overrides.md) for details.
+Within a single catalog, if two indexes of the same type are found, they merge in sorted relative-path order with later-wins by ID. Across multiple catalogs, earlier entries are merged first; later catalogs override. Per-type arrays (`skills`, `mcp`, …) layer on top last. See [Composition and Overrides](composition-and-overrides.md) for details.
 
 ### Example
 

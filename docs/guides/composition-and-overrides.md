@@ -64,19 +64,27 @@ Full replacement is predictable. You never have to wonder which fields came from
 
 When you want to layer two or more full catalogs — say, a shared team catalog and your own local catalog — you don't need to list every artifact type separately. The `catalogs` field in `air.json` accepts an ordered array of catalog roots, and AIR expands each one into all six artifact arrays automatically.
 
-A **catalog** is a directory (local or remote) that follows AIR's standard layout:
+A **catalog** is a directory (local or remote) containing AIR artifact index files. AIR walks the catalog root up to 3 directory levels deep and discovers any file that looks like an AIR artifact index — either by filename (`skills.json`, `roots.json`, `mcp.json`, `references.json`, `plugins.json`, `hooks.json`, or any filename with those keywords as delimited tokens) or by `$schema`. Your folder layout is up to you:
 
 ```
 <catalog>/
-├── skills/skills.json
-├── references/references.json
+├── skills/skills.json                 # conventional layout
 ├── mcp/mcp.json
-├── plugins/plugins.json
-├── roots/roots.json
-└── hooks/hooks.json
+├── agents/agent-roots/roots.json      # custom subdirectories work too
+├── config/mcp-servers/mcp.json
+└── hooks.json                         # files at the root work as well
 ```
 
-This is the same layout `air init` creates, and it's what each official example in this repo uses. You don't need all six files — any that are missing are silently skipped, so a catalog that only ships skills and MCP servers works fine.
+This is the same layout `air init` creates by default, and it's what each official example in this repo uses — but any layout up to 3 levels deep is accepted. You don't need all six artifact types — a catalog that only ships skills and MCP servers works fine.
+
+**Traversal rules:**
+
+- **Depth cap**: 3 levels below the catalog root. Indexes deeper than that must be referenced via the explicit per-type arrays.
+- **Skipped directories**: `node_modules`, `.git`, `dist`, `build`, `coverage`, `.next`, `.turbo`, `target`, `vendor`, and any directory starting with `.`.
+- **`.gitignore`** at the catalog root is honored — ignored paths are not descended into.
+- **`$schema` check**: a JSON file whose `$schema` points to a non-AIR schema is skipped even if its filename matches. Files without `$schema` are identified by filename alone.
+
+Within a single catalog, if two indexes of the same type are discovered, they merge in sorted relative-path order with later-wins by ID. Across multiple catalogs, earlier entries are merged first; later catalogs override.
 
 ### Two-catalog composition (the common case)
 
@@ -114,9 +122,9 @@ Effective load order for MCP servers: `github://acme/air-org/mcp/mcp.json` → `
 ### When to prefer `catalogs` over per-type arrays
 
 - You're layering full catalogs (org + team + local). `catalogs: [A, B, C]` beats writing each of the six artifact arrays for every catalog.
-- The catalog's layout matches the standard `<type>/<type>.json` convention (which is what `air init` produces).
+- The catalog's index files live within 3 directory levels of the catalog root.
 
-Use the per-type arrays when you want to pull just one artifact type from a source, or when the index file doesn't live at the standard path.
+Use the per-type arrays when you want to pull just one artifact type from a source, or when an index file lives deeper than the discovery depth cap.
 
 ## Layering patterns
 
@@ -151,7 +159,7 @@ A common team shape is a private catalog kept as a sibling directory under `~/.a
 
 The org catalog provides the baseline and the team's local catalog adds team-specific artifacts (and overrides any org defaults it wants to replace).
 
-If your catalogs don't follow the standard layout — or you only need some artifact types from a source — use the per-type arrays instead:
+If you only need some artifact types from a source, or the indexes live deeper than the 3-level discovery cap, use the per-type arrays instead:
 
 ```json
 {
@@ -330,6 +338,8 @@ To effectively "remove" an artifact from an earlier layer, you'd need to overrid
 | Remote + local files | Both loaded, same override rules apply |
 | `catalogs` + per-type arrays | Catalogs expand first, per-type arrays layer on top |
 | Catalog missing an artifact file | Silently skipped — the catalog contributes nothing for that type |
+| Two indexes of the same type in one catalog | Merged in sorted relative-path order, later-wins by ID |
+| Index deeper than 3 levels in a catalog | Not discovered — reference it via the explicit per-type array instead |
 
 ## Next steps
 

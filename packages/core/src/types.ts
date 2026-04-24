@@ -279,16 +279,16 @@ export interface CatalogProvider {
    */
   refreshCache?(): Promise<CacheRefreshResult[]>;
   /**
-   * Check whether the URI resolves to an existing file.
-   * Used during catalog expansion to skip conventional paths that aren't
-   * present in a given catalog. Implementations should throw for real
-   * failures (network, auth, missing repo) and only return false for
-   * "file does not exist in an otherwise-reachable source".
+   * Resolve a catalog URI to a local directory that AIR can walk to
+   * discover artifact index files. Providers should ensure the source
+   * is available locally (e.g. by cloning a repo) and return an absolute
+   * path to the catalog's root directory on disk.
    *
-   * If omitted, catalog expansion falls back to trying resolve() and
-   * treating any thrown error as "does not exist".
+   * Required for catalog discovery. Providers that cannot expose a local
+   * directory for a catalog URI will cause catalog expansion to fail with
+   * a clear error — `catalogs[]` entries must be traversable.
    */
-  fileExists?(uri: string): Promise<boolean>;
+  resolveCatalogDir?(uri: string): Promise<string>;
 }
 
 /**

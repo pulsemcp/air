@@ -82,14 +82,22 @@ function validateUriComponent(value: string, label: string): void {
  * Parse a github:// URI into its components.
  *
  * Supported formats:
- *   github://owner/repo/path/to/file.json              — default branch
- *   github://owner/repo@ref/path/to/file.json          — ref on repo (preferred)
- *   github://owner/repo/path/to/file.json@ref          — ref on path (legacy)
+ *   github://owner/repo                                  — whole repo (catalogs)
+ *   github://owner/repo@ref                              — whole repo at ref (catalogs)
+ *   github://owner/repo/path/to/file.json                — file at default branch
+ *   github://owner/repo@ref/path/to/file.json            — file at ref (preferred)
+ *   github://owner/repo/path/to/file.json@ref            — legacy ref-on-path syntax
+ *   github://owner/repo/path                             — subdirectory (catalogs)
+ *   github://owner/repo@ref/path                         — subdirectory at ref (catalogs)
  *
  * The repo-level syntax (owner/repo@ref) is preferred because it clearly
  * separates the repository reference from the file path and avoids ambiguity
  * when file paths contain "@" characters. The path-level syntax is supported
  * for backward compatibility.
+ *
+ * When used as a catalog root, the path may be empty (whole-repo) or point
+ * to any directory. `resolve()` separately validates that the path is
+ * non-empty before reading the file.
  *
  * Note: refs containing slashes (e.g., feature/branch) cannot be expressed
  * with the repo-level syntax because the URI is split on "/". Use the legacy
@@ -99,16 +107,9 @@ export function parseGitHubUri(uri: string): GitHubUri {
   const withoutScheme = uri.replace(/^github:\/\//, "");
   const parts = withoutScheme.split("/");
 
-  if (parts.length < 3) {
-    // Detect repo@ref with no path for a more helpful error
-    if (parts.length === 2 && parts[1]?.includes("@")) {
-      throw new Error(
-        `Missing file path in github:// URI: "${uri}". ` +
-          `URI must include a path after the ref: github://owner/repo@ref/path/to/file.json`
-      );
-    }
+  if (parts.length < 2 || !parts[0] || !parts[1]) {
     throw new Error(
-      `Invalid github:// URI: "${uri}". Expected format: github://owner/repo[@ref]/path/to/file.json`
+      `Invalid github:// URI: "${uri}". Expected format: github://owner/repo[@ref][/path]`
     );
   }
 
@@ -124,7 +125,7 @@ export function parseGitHubUri(uri: string): GitHubUri {
     if (ref.length === 0) {
       throw new Error(
         `Empty ref after "@" in github:// URI: "${uri}". ` +
-          `Either remove the "@" or specify a ref: github://owner/repo@ref/path`
+          `Either remove the "@" or specify a ref: github://owner/repo@ref[/path]`
       );
     }
   }
@@ -133,13 +134,13 @@ export function parseGitHubUri(uri: string): GitHubUri {
   let filePath = parts.slice(2).join("/");
 
   // If no ref on repo, check for legacy @ref at the end of the path
-  if (!ref) {
+  if (!ref && filePath) {
     const pathAtIndex = filePath.lastIndexOf("@");
     if (pathAtIndex > 0) {
       ref = filePath.slice(pathAtIndex + 1);
       filePath = filePath.slice(0, pathAtIndex);
     }
-  } else {
+  } else if (ref && filePath) {
     // Repo-level ref already found — reject if path also has @ref (ambiguous)
     const pathAtIndex = filePath.lastIndexOf("@");
     if (pathAtIndex > 0) {
@@ -154,7 +155,7 @@ export function parseGitHubUri(uri: string): GitHubUri {
   validateUriComponent(owner, "owner");
   validateUriComponent(repo, "repo");
   if (ref) validateUriComponent(ref, "ref");
-  validateUriComponent(filePath, "path");
+  if (filePath) validateUriComponent(filePath, "path");
 
   return { owner, repo, path: filePath, ref };
 }
@@ -237,6 +238,12 @@ export class GitHubCatalogProvider implements CatalogProvider {
     _baseDir: string
   ): Promise<Record<string, unknown>> {
     const parsed = parseGitHubUri(uri);
+    if (!parsed.path) {
+      throw new Error(
+        `github:// URI must include a file path: "${uri}". ` +
+          `Expected format: github://owner/repo[@ref]/path/to/file.json`
+      );
+    }
     const ref = parsed.ref || "HEAD";
     const cloneDir = await this.ensureClone(parsed.owner, parsed.repo, ref);
     const filePath = resolve(cloneDir, parsed.path);
@@ -255,16 +262,28 @@ export class GitHubCatalogProvider implements CatalogProvider {
   }
 
   /**
-   * Check whether the file referenced by a github:// URI exists in the clone.
-   * Ensures the repository is cloned (throwing on real clone failures) and
-   * then checks the file on disk. Used by catalog expansion to skip
-   * conventional artifact paths that a given catalog doesn't provide.
+   * Resolve a catalog URI to the local clone directory rooted at the URI's
+   * path within the clone. Ensures the repository is cloned (performing a
+   * shallow clone on first access) before returning. Core then walks the
+   * returned directory to discover artifact index files.
+   *
+   * For a URI like `github://owner/repo@ref/agents`, this returns the
+   * absolute path to `<cloneDir>/agents`.
    */
-  async fileExists(uri: string): Promise<boolean> {
+  async resolveCatalogDir(uri: string): Promise<string> {
     const parsed = parseGitHubUri(uri);
     const ref = parsed.ref || "HEAD";
     const cloneDir = await this.ensureClone(parsed.owner, parsed.repo, ref);
-    return existsSync(resolve(cloneDir, parsed.path));
+    const catalogDir = resolve(cloneDir, parsed.path);
+    if (!existsSync(catalogDir)) {
+      throw new Error(
+        `Catalog path not found in cloned repository: ${parsed.path}\n` +
+          `  Repository: ${parsed.owner}/${parsed.repo}\n` +
+          `  Ref: ${ref}\n` +
+          `  Clone path: ${cloneDir}`
+      );
+    }
+    return catalogDir;
   }
 
   /**

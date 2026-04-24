@@ -1,5 +1,6 @@
-import { readFileSync, existsSync } from "fs";
+import { readFileSync, readdirSync, existsSync, type Dirent } from "fs";
 import { resolve, dirname } from "path";
+import ignore, { type Ignore } from "ignore";
 import type {
   AirConfig,
   ResolvedArtifacts,
@@ -11,6 +12,11 @@ import type {
   HookEntry,
   CatalogProvider,
 } from "./types.js";
+import {
+  detectSchemaType,
+  detectSchemaFromValue,
+  type SchemaType,
+} from "./schemas.js";
 
 function loadJsonFile(filePath: string): Record<string, unknown> {
   if (!existsSync(filePath)) {
@@ -184,9 +190,7 @@ export function configureProviders(
 }
 
 /**
- * Artifact types recognized by the standard catalog layout.
- * A catalog is a directory where each of these types lives at
- * `<type>/<type>.json` relative to the catalog root.
+ * Artifact types recognized as catalog-expandable primitives.
  */
 type ArtifactType =
   | "skills"
@@ -196,83 +200,236 @@ type ArtifactType =
   | "roots"
   | "hooks";
 
-const CATALOG_LAYOUT: Record<ArtifactType, string> = {
-  skills: "skills/skills.json",
-  references: "references/references.json",
-  mcp: "mcp/mcp.json",
-  plugins: "plugins/plugins.json",
-  roots: "roots/roots.json",
-  hooks: "hooks/hooks.json",
-};
+const ARTIFACT_TYPES: ArtifactType[] = [
+  "skills",
+  "references",
+  "mcp",
+  "plugins",
+  "roots",
+  "hooks",
+];
 
-/** Build the conventional path for a catalog entry + artifact type. */
-function buildCatalogPath(catalog: string, type: ArtifactType): string {
-  return catalog.replace(/\/+$/, "") + "/" + CATALOG_LAYOUT[type];
+/**
+ * Directories never descended into when discovering artifact indexes in a
+ * catalog. Covers common build/vendor dirs and VCS internals.
+ */
+const CATALOG_SKIP_DIRS = new Set([
+  "node_modules",
+  ".git",
+  "dist",
+  "build",
+  "coverage",
+  ".next",
+  ".turbo",
+  "target",
+  "vendor",
+]);
+
+/** Maximum directory depth walked under a catalog root (root itself is depth 0). */
+const CATALOG_MAX_DEPTH = 3;
+
+interface DiscoveredIndex {
+  /** Absolute path to the index file. */
+  absPath: string;
+  /** Path relative to the catalog root, forward-slash separated. For deterministic ordering. */
+  relPath: string;
+  /** Artifact type the index provides. */
+  type: ArtifactType;
 }
 
 /**
- * Expand catalog entries into concrete index paths for a given artifact type,
- * filtering to only those that actually exist. Missing files (local or remote)
- * are silently skipped so that a catalog may omit artifact types it doesn't
- * provide.
+ * Read a JSON index file and confirm it is a plausible AIR artifact index of
+ * the given expected type. Returns the detected type or null to signal skip.
+ *
+ * A declared `$schema` always takes precedence over filename detection — a
+ * file named `roots.json` whose `$schema` points at a non-AIR schema is
+ * skipped entirely. Unparseable JSON, arrays, and primitives are skipped.
  */
-async function expandCatalogPaths(
-  catalogs: string[],
-  type: ArtifactType,
+function detectIndexType(
+  absPath: string,
+  filename: string
+): ArtifactType | null {
+  let content: string;
+  try {
+    content = readFileSync(absPath, "utf-8");
+  } catch {
+    return null;
+  }
+  let data: unknown;
+  try {
+    data = JSON.parse(content);
+  } catch {
+    return null;
+  }
+  if (typeof data !== "object" || data === null || Array.isArray(data)) {
+    return null;
+  }
+  const obj = data as Record<string, unknown>;
+
+  let detected: SchemaType | null = null;
+
+  if (typeof obj.$schema === "string") {
+    const bySchema = detectSchemaFromValue(obj.$schema);
+    if (bySchema === null) return null;
+    detected = bySchema;
+  } else {
+    detected = detectSchemaType(filename);
+  }
+
+  if (detected === null) return null;
+  if (detected === "air") return null;
+  if (!ARTIFACT_TYPES.includes(detected as ArtifactType)) return null;
+  return detected as ArtifactType;
+}
+
+/**
+ * Walk a catalog root directory and return all artifact index files found
+ * within `CATALOG_MAX_DEPTH` levels, skipping `CATALOG_SKIP_DIRS`, hidden
+ * entries, and anything matched by a root-level `.gitignore` if present.
+ *
+ * Files are returned sorted by relative path (alphabetic, depth-naive) so
+ * that "later wins" collision semantics within a single catalog are stable
+ * across machines and filesystems.
+ */
+function discoverCatalogIndexes(catalogDir: string): DiscoveredIndex[] {
+  if (!existsSync(catalogDir)) return [];
+
+  const ig: Ignore = ignore();
+  const rootGitignore = resolve(catalogDir, ".gitignore");
+  if (existsSync(rootGitignore)) {
+    try {
+      ig.add(readFileSync(rootGitignore, "utf-8"));
+    } catch {
+      // best effort — a broken .gitignore doesn't block discovery
+    }
+  }
+
+  const discovered: DiscoveredIndex[] = [];
+
+  function recurse(currentDir: string, depth: number, relDir: string): void {
+    let entries: Dirent[];
+    try {
+      entries = readdirSync(currentDir, { withFileTypes: true }) as Dirent[];
+    } catch {
+      return;
+    }
+
+    for (const entry of entries) {
+      const name = entry.name;
+      if (name.startsWith(".")) continue;
+
+      const rel = relDir === "" ? name : `${relDir}/${name}`;
+      const absPath = resolve(currentDir, name);
+
+      if (entry.isDirectory()) {
+        if (CATALOG_SKIP_DIRS.has(name)) continue;
+        // The `ignore` library expects paths without a leading slash; directory
+        // matching conventionally uses a trailing slash.
+        if (ig.ignores(`${rel}/`)) continue;
+        if (depth + 1 > CATALOG_MAX_DEPTH) continue;
+        recurse(absPath, depth + 1, rel);
+      } else if (entry.isFile()) {
+        if (!name.endsWith(".json")) continue;
+        if (ig.ignores(rel)) continue;
+        const type = detectIndexType(absPath, name);
+        if (!type) continue;
+        discovered.push({ absPath, relPath: rel, type });
+      }
+    }
+  }
+
+  recurse(catalogDir, 0, "");
+
+  discovered.sort((a, b) => a.relPath.localeCompare(b.relPath));
+  return discovered;
+}
+
+/**
+ * Resolve a single catalog entry (local path or provider URI) to a local
+ * directory ready to be walked for index discovery. Throws for URIs whose
+ * scheme has no registered provider, or whose provider does not support
+ * catalog discovery (missing `resolveCatalogDir`).
+ */
+async function resolveCatalogRoot(
+  catalog: string,
   baseDir: string,
   providers: CatalogProvider[]
-): Promise<string[]> {
-  const result: string[] = [];
+): Promise<string> {
+  const scheme = getScheme(catalog);
+  if (!scheme) {
+    return resolve(baseDir, catalog);
+  }
+
+  const provider = providers.find((prov) => prov.scheme === scheme);
+  if (!provider) {
+    throw new Error(
+      `No catalog provider registered for scheme "${scheme}://" (catalog: ${catalog}). ` +
+        `Install an extension that handles this scheme.`
+    );
+  }
+  if (!provider.resolveCatalogDir) {
+    throw new Error(
+      `Provider for "${scheme}://" does not support catalog discovery — ` +
+        `it lacks resolveCatalogDir(). Upgrade the provider extension or ` +
+        `reference its artifact indexes via explicit per-type arrays.`
+    );
+  }
+
+  return await provider.resolveCatalogDir(catalog);
+}
+
+/**
+ * Expand every entry in `catalogs[]` into a per-type map of absolute index
+ * file paths. Each catalog is resolved to a local directory and walked for
+ * artifact index files (depth-capped, gitignore-aware, skip-listed).
+ *
+ * Within a single catalog, files of the same type discovered at multiple
+ * locations are merged in sorted relPath order with later-wins semantics —
+ * the downstream `loadAndMerge` consumes the returned arrays in order and
+ * applies the same "later wins by ID" rule as everywhere else in AIR.
+ *
+ * Across catalogs, catalogs earlier in `catalogs[]` are processed first so
+ * that later catalogs override earlier ones, matching the existing contract.
+ */
+async function expandAllCatalogs(
+  catalogs: string[],
+  baseDir: string,
+  providers: CatalogProvider[]
+): Promise<Record<ArtifactType, string[]>> {
+  const result: Record<ArtifactType, string[]> = {
+    skills: [],
+    references: [],
+    mcp: [],
+    plugins: [],
+    roots: [],
+    hooks: [],
+  };
 
   for (const catalog of catalogs) {
-    const candidate = buildCatalogPath(catalog, type);
-    const scheme = getScheme(candidate);
-
-    if (scheme) {
-      const provider = providers.find((prov) => prov.scheme === scheme);
-      if (!provider) {
-        throw new Error(
-          `No catalog provider registered for scheme "${scheme}://" (catalog: ${catalog}). ` +
-            `Install an extension that handles this scheme.`
-        );
-      }
-
-      if (provider.fileExists) {
-        if (await provider.fileExists(candidate)) {
-          result.push(candidate);
-        }
-        continue;
-      }
-
-      // Note: this also swallows real failures (network, auth) for providers
-      // that don't implement fileExists. Providers used for catalogs should
-      // implement fileExists to surface such errors clearly.
-      try {
-        await provider.resolve(candidate, baseDir);
-        result.push(candidate);
-      } catch {
-        // intentionally empty
-      }
-    } else {
-      const resolvedPath = resolve(baseDir, candidate);
-      if (existsSync(resolvedPath)) {
-        result.push(candidate);
-      }
+    const catalogDir = await resolveCatalogRoot(catalog, baseDir, providers);
+    const discovered = discoverCatalogIndexes(catalogDir);
+    for (const entry of discovered) {
+      result[entry.type].push(entry.absPath);
     }
   }
 
   return result;
 }
 
+
 /**
  * Resolve all artifacts from an air.json file.
  * Each artifact property is an array of paths; files merge in order.
  * Remote URIs are delegated to the matching CatalogProvider.
  *
- * `catalogs` entries are expanded first into per-type paths following the
- * standard layout (`<catalog>/<type>/<type>.json`), then the explicit
- * per-type arrays layer on top. Missing files within a catalog are
- * silently skipped.
+ * `catalogs` entries are expanded first via directory-walking discovery —
+ * each catalog is resolved to a local directory (cloned by the relevant
+ * provider for remote URIs) and walked up to `CATALOG_MAX_DEPTH` levels
+ * for artifact index files. Files are identified by `$schema` (preferred)
+ * or filename, and grouped by artifact type. Skip-listed directories
+ * (node_modules, .git, dist, build, etc.) and entries matched by a
+ * root-level `.gitignore` are not descended into. Explicit per-type
+ * arrays layer on top of catalog-discovered indexes.
  *
  * All `path` fields in resolved entries are absolute paths,
  * making artifacts self-contained regardless of source location.
@@ -290,44 +447,40 @@ export async function resolveArtifacts(
   // explicit providerOptions override them. Providers ignore unknown keys.
   configureProviders(providers, airConfig, options?.providerOptions);
 
-  async function paths(type: ArtifactType, explicit: string[]): Promise<string[]> {
-    const fromCatalogs = await expandCatalogPaths(
-      catalogs,
-      type,
-      baseDir,
-      providers
-    );
-    return [...fromCatalogs, ...explicit];
+  const fromCatalogs = await expandAllCatalogs(catalogs, baseDir, providers);
+
+  function paths(type: ArtifactType, explicit: string[]): string[] {
+    return [...fromCatalogs[type], ...explicit];
   }
 
   const resolved: ResolvedArtifacts = {
     skills: await loadAndMerge<SkillEntry>(
-      await paths("skills", airConfig.skills || []),
+      paths("skills", airConfig.skills || []),
       baseDir,
       providers
     ),
     references: await loadAndMerge<ReferenceEntry>(
-      await paths("references", airConfig.references || []),
+      paths("references", airConfig.references || []),
       baseDir,
       providers
     ),
     mcp: await loadAndMerge<McpServerEntry>(
-      await paths("mcp", airConfig.mcp || []),
+      paths("mcp", airConfig.mcp || []),
       baseDir,
       providers
     ),
     plugins: await loadAndMerge<PluginEntry>(
-      await paths("plugins", airConfig.plugins || []),
+      paths("plugins", airConfig.plugins || []),
       baseDir,
       providers
     ),
     roots: await loadAndMerge<RootEntry>(
-      await paths("roots", airConfig.roots || []),
+      paths("roots", airConfig.roots || []),
       baseDir,
       providers
     ),
     hooks: await loadAndMerge<HookEntry>(
-      await paths("hooks", airConfig.hooks || []),
+      paths("hooks", airConfig.hooks || []),
       baseDir,
       providers
     ),

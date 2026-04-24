@@ -181,45 +181,7 @@ describe("catalogs", () => {
     );
   });
 
-  it("uses a provider's fileExists to skip missing catalog files", async () => {
-    const { dir, cleanup: c } = createTempAirDir({
-      "air.json": {
-        name: "test",
-        catalogs: ["mock://catalog-a"],
-      },
-    });
-    cleanup = c;
-
-    const calls: string[] = [];
-    const provider: CatalogProvider = {
-      scheme: "mock",
-      async fileExists(uri: string): Promise<boolean> {
-        calls.push(`exists:${uri}`);
-        return uri.endsWith("skills/skills.json");
-      },
-      async resolve(uri: string): Promise<Record<string, unknown>> {
-        calls.push(`resolve:${uri}`);
-        if (uri.endsWith("skills/skills.json")) {
-          return { deploy: exampleSkill("deploy") };
-        }
-        throw new Error(`Mock provider asked to resolve unexpected URI: ${uri}`);
-      },
-    };
-
-    const artifacts = await resolveArtifacts(join(dir, "air.json"), {
-      providers: [provider],
-    });
-
-    expect(artifacts.skills["deploy"]).toBeDefined();
-    expect(artifacts.mcp).toEqual({});
-    // fileExists was called for every artifact type, resolve only for the existing one
-    const existsCalls = calls.filter((c) => c.startsWith("exists:"));
-    const resolveCalls = calls.filter((c) => c.startsWith("resolve:"));
-    expect(existsCalls).toHaveLength(6);
-    expect(resolveCalls).toEqual(["resolve:mock://catalog-a/skills/skills.json"]);
-  });
-
-  it("falls back to resolve() when a provider does not implement fileExists", async () => {
+  it("throws a clear error when a provider lacks resolveCatalogDir", async () => {
     const { dir, cleanup: c } = createTempAirDir({
       "air.json": {
         name: "test",
@@ -230,11 +192,41 @@ describe("catalogs", () => {
 
     const provider: CatalogProvider = {
       scheme: "mock2",
-      async resolve(uri: string): Promise<Record<string, unknown>> {
-        if (uri.endsWith("mcp/mcp.json")) {
-          return { server: exampleMcpStdio({ title: "Mock Server" }) };
-        }
-        throw new Error("not found");
+      async resolve(): Promise<Record<string, unknown>> {
+        return {};
+      },
+    };
+
+    await expect(
+      resolveArtifacts(join(dir, "air.json"), { providers: [provider] })
+    ).rejects.toThrow(/does not support catalog discovery/);
+  });
+
+  it("delegates to provider.resolveCatalogDir for remote catalog URIs", async () => {
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        catalogs: ["mock://cat-a"],
+      },
+      // Provider clones "mock://cat-a" into this local directory.
+      "remote-clone/agent-roots/roots.json": {
+        "web-app": exampleRoot("web-app"),
+      },
+      "remote-clone/mcp-servers/mcp.json": {
+        github: exampleMcpStdio({ title: "Remote GitHub" }),
+      },
+    });
+    cleanup = c;
+
+    const calls: string[] = [];
+    const provider: CatalogProvider = {
+      scheme: "mock",
+      async resolveCatalogDir(uri: string): Promise<string> {
+        calls.push(`resolveCatalogDir:${uri}`);
+        return join(dir, "remote-clone");
+      },
+      async resolve(): Promise<Record<string, unknown>> {
+        throw new Error("resolve() should not be called for catalog discovery");
       },
     };
 
@@ -242,8 +234,9 @@ describe("catalogs", () => {
       providers: [provider],
     });
 
-    expect(artifacts.mcp["server"]?.title).toBe("Mock Server");
-    expect(artifacts.skills).toEqual({});
+    expect(artifacts.roots["web-app"]).toBeDefined();
+    expect(artifacts.mcp["github"].title).toBe("Remote GitHub");
+    expect(calls).toEqual(["resolveCatalogDir:mock://cat-a"]);
   });
 
   it("allows per-catalog scoping — explicit arrays are unaffected when no catalogs are listed", async () => {
@@ -274,6 +267,255 @@ describe("catalogs", () => {
     const artifacts = await resolveArtifacts(join(dir, "air.json"));
     expect(artifacts.skills["deploy"]).toBeDefined();
     expect(artifacts.mcp).toEqual({});
+  });
+
+  // ---------------------------------------------------------------------
+  // Loose catalog introspection — catalogs may place indexes anywhere in
+  // the tree (not only under the conventional <type>/<type>.json layout).
+  // ---------------------------------------------------------------------
+
+  it("discovers roots.json under a non-conventional subdirectory name", async () => {
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        catalogs: ["./pulsemcp-agents"],
+      },
+      // Mimics pulsemcp/pulsemcp's actual layout from issue #108.
+      "pulsemcp-agents/agent-roots/roots.json": {
+        "air-root": exampleRoot("air-root"),
+      },
+      "pulsemcp-agents/mcp-servers/mcp.json": {
+        github: exampleMcpStdio({ title: "Agent GitHub" }),
+      },
+      // Conventional paths still work alongside.
+      "pulsemcp-agents/skills/skills.json": {
+        deploy: exampleSkill("deploy"),
+      },
+    });
+    cleanup = c;
+
+    const artifacts = await resolveArtifacts(join(dir, "air.json"));
+    expect(artifacts.roots["air-root"]).toBeDefined();
+    expect(artifacts.mcp["github"].title).toBe("Agent GitHub");
+    expect(artifacts.skills["deploy"]).toBeDefined();
+  });
+
+  it("discovers an index by $schema when filename does not match the type keyword", async () => {
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        catalogs: ["./cat"],
+      },
+      // Filename has no catalog-type keyword — only $schema identifies it.
+      "cat/extras/my-config.json": {
+        $schema: "https://pulsemcp.com/air/roots.schema.json",
+        "web-app": exampleRoot("web-app"),
+      },
+    });
+    cleanup = c;
+
+    const artifacts = await resolveArtifacts(join(dir, "air.json"));
+    expect(artifacts.roots["web-app"]).toBeDefined();
+  });
+
+  it("skips JSON files whose $schema points to a non-AIR schema", async () => {
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        catalogs: ["./cat"],
+      },
+      // Filename says "roots" but $schema is explicitly non-AIR — must be skipped.
+      "cat/agent-roots/roots.json": {
+        $schema: "https://example.com/unrelated.schema.json",
+        "web-app": exampleRoot("web-app"),
+      },
+    });
+    cleanup = c;
+
+    const artifacts = await resolveArtifacts(join(dir, "air.json"));
+    expect(artifacts.roots).toEqual({});
+  });
+
+  it("resolves collisions within a single catalog via last-wins by sorted relPath", async () => {
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        catalogs: ["./cat"],
+      },
+      // Sorted alphabetically by relPath: "agent-roots/roots.json" < "experiments/roots/roots.json"
+      // so "experiments" wins when both define the same ID.
+      "cat/agent-roots/roots.json": {
+        "web-app": exampleRoot("web-app", { description: "Agent roots" }),
+      },
+      "cat/experiments/roots/roots.json": {
+        "web-app": exampleRoot("web-app", { description: "Experiments roots" }),
+        "experimental-app": exampleRoot("experimental-app"),
+      },
+    });
+    cleanup = c;
+
+    const artifacts = await resolveArtifacts(join(dir, "air.json"));
+    expect(artifacts.roots["web-app"].description).toBe("Experiments roots");
+    expect(artifacts.roots["experimental-app"]).toBeDefined();
+  });
+
+  it("caps directory walk at depth 3 from the catalog root", async () => {
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        catalogs: ["./cat"],
+      },
+      // Depth 2 from the catalog root — discovered.
+      "cat/agents/roots.json": {
+        "shallow-root": exampleRoot("shallow-root"),
+      },
+      // Depth 4 — beyond the cap.
+      "cat/a/b/c/d/roots.json": {
+        "too-deep-root": exampleRoot("too-deep-root"),
+      },
+    });
+    cleanup = c;
+
+    const artifacts = await resolveArtifacts(join(dir, "air.json"));
+    expect(artifacts.roots["shallow-root"]).toBeDefined();
+    expect(artifacts.roots["too-deep-root"]).toBeUndefined();
+  });
+
+  it("respects .gitignore at the catalog root", async () => {
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        catalogs: ["./cat"],
+      },
+      "cat/.gitignore": "scratch/\ntmp-roots.json\n",
+      "cat/kept/roots.json": {
+        "kept-root": exampleRoot("kept-root"),
+      },
+      // Directory ignored by .gitignore — must not be descended into.
+      "cat/scratch/roots.json": {
+        "ignored-root": exampleRoot("ignored-root"),
+      },
+      // File ignored by .gitignore — must be skipped.
+      "cat/tmp-roots.json": {
+        "tmp-root": exampleRoot("tmp-root"),
+      },
+    });
+    cleanup = c;
+
+    const artifacts = await resolveArtifacts(join(dir, "air.json"));
+    expect(artifacts.roots["kept-root"]).toBeDefined();
+    expect(artifacts.roots["ignored-root"]).toBeUndefined();
+    expect(artifacts.roots["tmp-root"]).toBeUndefined();
+  });
+
+  it("never descends into hardcoded skip directories (node_modules, .git, dist, …)", async () => {
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        catalogs: ["./cat"],
+      },
+      "cat/skills/skills.json": {
+        deploy: exampleSkill("deploy"),
+      },
+      "cat/node_modules/foo/roots.json": {
+        "noise-root": exampleRoot("noise-root"),
+      },
+      "cat/dist/roots.json": {
+        "build-root": exampleRoot("build-root"),
+      },
+    });
+    cleanup = c;
+
+    const artifacts = await resolveArtifacts(join(dir, "air.json"));
+    expect(artifacts.skills["deploy"]).toBeDefined();
+    expect(artifacts.roots["noise-root"]).toBeUndefined();
+    expect(artifacts.roots["build-root"]).toBeUndefined();
+  });
+
+  it("skips hidden directories and files during discovery", async () => {
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        catalogs: ["./cat"],
+      },
+      "cat/skills/skills.json": {
+        deploy: exampleSkill("deploy"),
+      },
+      "cat/.private/roots.json": {
+        "hidden-root": exampleRoot("hidden-root"),
+      },
+      "cat/.stashed-roots.json": {
+        "dotfile-root": exampleRoot("dotfile-root"),
+      },
+    });
+    cleanup = c;
+
+    const artifacts = await resolveArtifacts(join(dir, "air.json"));
+    expect(artifacts.skills["deploy"]).toBeDefined();
+    expect(artifacts.roots["hidden-root"]).toBeUndefined();
+    expect(artifacts.roots["dotfile-root"]).toBeUndefined();
+  });
+
+  it("ignores JSON files whose filename has no AIR type keyword and no $schema", async () => {
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        catalogs: ["./cat"],
+      },
+      "cat/package.json": { name: "not-air", version: "1.0.0" },
+      "cat/tsconfig.json": { compilerOptions: { target: "ES2020" } },
+      "cat/skills/skills.json": {
+        deploy: exampleSkill("deploy"),
+      },
+    });
+    cleanup = c;
+
+    const artifacts = await resolveArtifacts(join(dir, "air.json"));
+    expect(artifacts.skills["deploy"]).toBeDefined();
+  });
+
+  it("skips unparseable JSON files silently", async () => {
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        catalogs: ["./cat"],
+      },
+      "cat/skills/skills.json": {
+        deploy: exampleSkill("deploy"),
+      },
+      // Matches the filename pattern for "roots" but is not valid JSON.
+      "cat/extras/roots.json": "not valid json {{",
+    });
+    cleanup = c;
+
+    const artifacts = await resolveArtifacts(join(dir, "air.json"));
+    expect(artifacts.skills["deploy"]).toBeDefined();
+    expect(artifacts.roots).toEqual({});
+  });
+
+  it("resolves relative path fields against the discovered index's directory", async () => {
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        catalogs: ["./cat"],
+      },
+      "cat/agent-roots/roots.json": {
+        "web-app": {
+          description: "Web app root",
+          default_mcp_servers: [],
+          default_skills: [],
+        },
+      },
+      "cat/custom/skills.json": {
+        "custom-skill": { description: "Custom skill", path: "./actual-dir" },
+      },
+    });
+    cleanup = c;
+
+    const artifacts = await resolveArtifacts(join(dir, "air.json"));
+    expect(artifacts.skills["custom-skill"].path).toBe(
+      join(dir, "cat/custom/actual-dir")
+    );
   });
 
   it("expands plugins declared across separate catalogs", async () => {
