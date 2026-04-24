@@ -365,9 +365,17 @@ describe("catalogs", () => {
         name: "test",
         catalogs: ["./cat"],
       },
+      // Depth 0 — file at the catalog root.
+      "cat/roots.json": {
+        "root-level-root": exampleRoot("root-level-root"),
+      },
       // Depth 2 from the catalog root — discovered.
-      "cat/agents/roots.json": {
+      "cat/agents/agent-roots/roots.json": {
         "shallow-root": exampleRoot("shallow-root"),
+      },
+      // Depth 3 — at the cap, still discovered.
+      "cat/a/b/c/roots.json": {
+        "boundary-root": exampleRoot("boundary-root"),
       },
       // Depth 4 — beyond the cap.
       "cat/a/b/c/d/roots.json": {
@@ -377,7 +385,9 @@ describe("catalogs", () => {
     cleanup = c;
 
     const artifacts = await resolveArtifacts(join(dir, "air.json"));
+    expect(artifacts.roots["root-level-root"]).toBeDefined();
     expect(artifacts.roots["shallow-root"]).toBeDefined();
+    expect(artifacts.roots["boundary-root"]).toBeDefined();
     expect(artifacts.roots["too-deep-root"]).toBeUndefined();
   });
 

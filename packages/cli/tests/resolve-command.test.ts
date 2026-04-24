@@ -230,9 +230,6 @@ export default {
   name: "stub-provider-ext",
   provider: {
     scheme: "stub",
-    async fileExists() {
-      return true;
-    },
     async resolve(uri) {
       // Return synthetic MCP server content so we can assert the provider
       // was actually invoked (not just loaded).

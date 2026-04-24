@@ -9,8 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **Loosened catalog introspection.** `catalogs[]` entries in `air.json` now discover AIR artifact indexes anywhere within 3 directory levels of the catalog root, rather than requiring the rigid `<type>/<type>.json` layout. Files are identified by filename (`skills.json`, `roots.json`, `mcp.json`, `references.json`, `plugins.json`, `hooks.json`, or any filename containing those tokens) or by their `$schema`. `.gitignore` at the catalog root is honored; `node_modules`, `.git`, `dist`, `build`, `coverage`, `.next`, `.turbo`, `target`, `vendor`, and hidden directories are skipped. Within a single catalog, duplicate-type indexes merge in sorted relative-path order with later-wins by ID. This unblocks catalogs like `pulsemcp/pulsemcp` that organize indexes under `agents/agent-roots/roots.json` and `agents/mcp-servers/mcp.json`. Fixes [#108](https://github.com/pulsemcp/air/issues/108).
-- **`CatalogProvider` interface: `fileExists` replaced with `resolveCatalogDir`.** Remote catalog providers now return a local directory that AIR walks to discover indexes. `@pulsemcp/air-provider-github` implements this by cloning the repo and returning the resolved subdirectory path.
 - **`parseGitHubUri` accepts whole-repo URIs.** `github://owner/repo` and `github://owner/repo@ref` are now valid catalog URIs — not just paths with subdirectories — so you can point `catalogs[]` at the repo root.
+
+### Fixed
+- **`detectSchemaFromValue` no longer false-matches schema filenames that appear mid-URL.** Previously an unbounded substring check could classify a third-party JSON whose `$schema` URL happened to contain e.g. `"mcp.schema.json"` as an AIR MCP index. The function now matches the last path segment only (ignoring query strings and fragments).
+
+### Breaking
+- **`CatalogProvider.fileExists` removed; `resolveCatalogDir(uri) => Promise<string>` added in its place.** Remote catalog providers now return a local directory that AIR walks to discover indexes. Third-party providers must implement the new method. `@pulsemcp/air-provider-github` has been updated — it clones the repo and returns the resolved subdirectory path.
 
 ## [0.0.41] - 2026-04-24
 

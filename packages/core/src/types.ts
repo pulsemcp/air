@@ -7,10 +7,15 @@ export interface AirConfig {
   description?: string;
   extensions?: string[];
   /**
-   * Catalog references — each entry is a directory (local path or provider URI)
-   * that follows the standard AIR layout: `<type>/<type>.json` for each of the
-   * six artifact types. Catalogs expand into all six artifact arrays in order;
-   * missing files within a catalog are silently skipped. The per-type arrays
+   * Catalog references — each entry is a directory (local path or provider URI).
+   * AIR walks the catalog up to 3 directory levels deep and discovers any file
+   * identified as an AIR artifact index by filename (`skills.json`, `roots.json`,
+   * `mcp.json`, `references.json`, `plugins.json`, `hooks.json`, or any filename
+   * containing those keywords as delimited tokens) or by `$schema`. `.gitignore`
+   * at the catalog root is honored; `node_modules`, `.git`, and common build
+   * output directories are skipped. Within a single catalog, duplicate-type
+   * indexes merge in sorted relative-path order; across catalogs, earlier
+   * entries merge first and later catalogs override. The per-type arrays
    * below layer on top of (and can override) catalog-expanded entries.
    */
   catalogs?: string[];
