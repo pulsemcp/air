@@ -214,6 +214,30 @@ describe("CoworkEmitter", () => {
       });
     });
 
+    it("passes authServerMetadataUrl and clientSecret through oauth translation", () => {
+      const artifacts = emptyArtifacts();
+      artifacts.mcp = {
+        bigquery: {
+          type: "streamable-http",
+          url: "https://bigquery.googleapis.com/mcp",
+          oauth: {
+            clientId: "my-client",
+            clientSecret: "resolved-secret-value",
+            authServerMetadataUrl:
+              "https://accounts.google.com/.well-known/openid-configuration",
+          },
+        },
+      };
+
+      const result = emitter.buildMcpConfig(artifacts, ["bigquery"]);
+      expect(result.mcpServers.bigquery.oauth).toEqual({
+        clientId: "my-client",
+        clientSecret: "resolved-secret-value",
+        authServerMetadataUrl:
+          "https://accounts.google.com/.well-known/openid-configuration",
+      });
+    });
+
     it("skips unknown server IDs", () => {
       const artifacts = emptyArtifacts();
       artifacts.mcp = {

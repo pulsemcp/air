@@ -93,6 +93,40 @@ describe("validateJson", () => {
       );
       expect(result.valid).toBe(false);
     });
+
+    it("validates a server with oauth.authServerMetadataUrl and oauth.clientSecret", () => {
+      const result = validateJson(
+        {
+          "bigquery": exampleMcpHttp({
+            url: "https://bigquery.googleapis.com/mcp",
+            oauth: {
+              clientId: "my-client",
+              clientSecret: "${BQ_CLIENT_SECRET}",
+              scopes: ["https://www.googleapis.com/auth/bigquery.readonly"],
+              redirectUri: "http://localhost:8888/callback",
+              authServerMetadataUrl:
+                "https://accounts.google.com/.well-known/openid-configuration",
+            },
+          }),
+        },
+        "mcp"
+      );
+      expect(result.valid).toBe(true);
+    });
+
+    it("rejects oauth.authServerMetadataUrl that is not a URI", () => {
+      const result = validateJson(
+        {
+          "bad": exampleMcpHttp({
+            oauth: {
+              authServerMetadataUrl: "not a uri with spaces",
+            },
+          }),
+        },
+        "mcp"
+      );
+      expect(result.valid).toBe(false);
+    });
   });
 
   describe("roots.json", () => {

@@ -108,6 +108,8 @@ Remote servers can use OAuth for authorization. The optional `oauth` object conf
 | `clientId` | string | OAuth client ID. Omit if the server supports Dynamic Client Registration. |
 | `scopes` | string[] | OAuth scopes to request in the authorization request. |
 | `redirectUri` | string | Redirect URI for the OAuth callback. |
+| `authServerMetadataUrl` | string | Explicit OAuth authorization server metadata URL (RFC 8414 / OpenID Connect discovery). Use for servers whose MCP endpoint does not advertise OAuth metadata but whose upstream auth server does. Supports `${ENV_VAR}` interpolation. |
+| `clientSecret` | string | OAuth client secret for confidential clients. Typically sourced via `${ENV_VAR}` interpolation so the raw value stays out of the repo. Supports `${ENV_VAR}` interpolation. |
 
 All fields are optional. Servers with full auto-discovery need no `oauth` config at all:
 

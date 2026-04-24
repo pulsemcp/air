@@ -110,10 +110,12 @@ OAuth fields:
 | `clientId` | OAuth client ID. Omit for Dynamic Client Registration (DCR). |
 | `scopes` | Scopes to request in the authorization flow. |
 | `redirectUri` | Callback URI (typically `http://localhost:{port}/callback` for CLI tools). |
+| `authServerMetadataUrl` | Explicit OAuth authorization server metadata URL (RFC 8414 / OpenID Connect discovery). Use when the MCP endpoint does not advertise OAuth metadata but the upstream auth server does (e.g. `https://accounts.google.com/.well-known/openid-configuration` for servers that delegate to Google). Supports `${ENV_VAR}` interpolation. |
+| `clientSecret` | OAuth client secret for confidential clients. Typically sourced from `${ENV_VAR}` so the raw value is never checked into the repo. Supports `${ENV_VAR}` interpolation. |
 
 ## Environment variable interpolation
 
-MCP server configs support `${ENV_VAR}` and `${ENV_VAR:-default}` interpolation in `command`, `args`, `env` values, `url`, and `headers` values:
+MCP server configs support `${ENV_VAR}` and `${ENV_VAR:-default}` interpolation in all string values — `command`, `args`, `env` values, `url`, `headers` values, and every oauth string field (including `clientId`, `clientSecret`, `redirectUri`, and `authServerMetadataUrl`):
 
 ```json
 {
