@@ -18,6 +18,14 @@ export {
   detectSchemaFromValue,
   getAllSchemaTypes,
   isValidSchemaType,
+  // Manifest
+  MANIFEST_VERSION,
+  getDefaultAirHome,
+  getManifestPath,
+  loadManifest,
+  writeManifest,
+  buildManifest,
+  diffManifest,
 } from "@pulsemcp/air-core";
 
 // Re-export core types
@@ -60,6 +68,10 @@ export type {
   ResolveOptions,
   // Schema types
   SchemaType,
+  // Manifest types
+  Manifest,
+  ManifestSelection,
+  ManifestDiff,
 } from "@pulsemcp/air-core";
 
 // Adapter registry

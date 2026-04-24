@@ -6,6 +6,7 @@ import {
   readFileSync,
   readdirSync,
   copyFileSync,
+  rmSync,
   statSync,
 } from "fs";
 import { join, dirname, relative } from "path";
@@ -21,6 +22,12 @@ import type {
   PrepareSessionOptions,
   PreparedSession,
   LocalArtifacts,
+} from "@pulsemcp/air-core";
+import {
+  buildManifest,
+  diffManifest,
+  loadManifest,
+  writeManifest,
 } from "@pulsemcp/air-core";
 import { scanLocalSkills } from "./scan-local-skills.js";
 
@@ -129,6 +136,13 @@ export class ClaudeAdapter implements AgentAdapter {
     const skillPaths: string[] = [];
     const hookPaths: string[] = [];
 
+    // Load the manifest that records which artifacts this adapter wrote on
+    // the previous run. IDs present here but not in the new selection are
+    // stale and get cleaned up before we write. Missing or corrupt manifests
+    // yield null — that's treated as "no prior state" so the current run is
+    // purely additive.
+    const prevManifest = loadManifest(targetDir);
+
     // 1. Resolve which artifacts to activate (overrides take precedence over root defaults)
     let mcpServerIds = options?.mcpServerOverrides
       ?? root?.default_mcp_servers
@@ -188,9 +202,39 @@ export class ClaudeAdapter implements AgentAdapter {
     // 2. Validate skill IDs
     this.validateIds(artifacts.skills, skillIds, "skill");
 
-    // 3. Write .mcp.json (${VAR} patterns are left as-is for transforms to resolve)
-    const mcpConfig = this.translateMcpServers(mcpServers);
+    // 2a. Reconcile against prior manifest — remove stale artifacts before
+    //     writing new ones. Only IDs previously written by AIR are candidates;
+    //     user-authored content is left untouched.
+    const finalMcpServerIds = [...(mcpServerIds ?? [])];
+    const diff = diffManifest(prevManifest, {
+      skills: skillIds,
+      hooks: hookIds,
+      mcpServers: finalMcpServerIds,
+    });
+
+    for (const staleSkillId of diff.staleSkills) {
+      const staleDir = join(targetDir, ".claude", "skills", staleSkillId);
+      if (existsSync(staleDir)) {
+        rmSync(staleDir, { recursive: true, force: true });
+      }
+    }
+
+    for (const staleHookId of diff.staleHooks) {
+      const staleDir = join(targetDir, ".claude", "hooks", staleHookId);
+      if (existsSync(staleDir)) {
+        rmSync(staleDir, { recursive: true, force: true });
+      }
+    }
+
+    // 3. Write .mcp.json (${VAR} patterns are left as-is for transforms to resolve).
+    //    Preserve any mcpServers keys not managed by AIR (user-authored),
+    //    remove keys for stale IDs, and replace keys for the current selection.
     const mcpConfigPath = join(targetDir, ".mcp.json");
+    const mcpConfig = this.mergeMcpConfig(
+      mcpConfigPath,
+      this.translateMcpServers(mcpServers),
+      diff.staleMcpServers
+    );
     writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig, null, 2) + "\n");
     configFiles.push(mcpConfigPath);
 
@@ -216,44 +260,84 @@ export class ClaudeAdapter implements AgentAdapter {
       }
     }
 
-    // 5. Validate and inject path-based hooks into .claude/hooks/
+    // 5. Validate and inject path-based hooks into .claude/hooks/.
+    //    A hook is "AIR-registered" iff AIR wrote (or previously wrote) its
+    //    directory — i.e. the dir didn't pre-exist as user content before any
+    //    AIR run touched it. `hookPaths` collects dirs to register in
+    //    settings.json (includes both freshly-written dirs and ones carried
+    //    over from the prior manifest run).
     if (hookIds.length > 0) {
       this.validateIds(artifacts.hooks, hookIds, "hook");
     }
+    const prevHookIds = new Set(prevManifest?.hooks ?? []);
+    const registeredHookIds: string[] = [];
     for (const hookId of hookIds) {
       const hook = artifacts.hooks[hookId];
 
       const hookTargetDir = join(targetDir, ".claude", "hooks", hookId);
+      const alreadyExists = existsSync(hookTargetDir);
 
-      // Skip if hook already exists locally (local takes priority)
-      if (existsSync(hookTargetDir)) continue;
+      // A dir that already exists and was NOT tracked in the prior manifest
+      // is user-authored — preserve it and skip both copy and registration.
+      if (alreadyExists && !prevHookIds.has(hookId)) {
+        continue;
+      }
 
-      // Copy hook directory contents (paths are absolute from resolveArtifacts)
-      const hookSourceDir = hook.path;
-      if (existsSync(hookSourceDir)) {
+      // AIR-owned dir: copy (fresh) or re-register (carried over). We always
+      // want it registered in settings.json on this run.
+      if (!alreadyExists) {
+        const hookSourceDir = hook.path;
+        if (!existsSync(hookSourceDir)) {
+          // Source is gone — don't register the hook or track it in the
+          // manifest. Otherwise the ID gets recorded as "AIR-owned" with
+          // nothing backing it, and a later user-created dir at the same
+          // path would be mis-identified as stale on the next run.
+          continue;
+        }
         this.copyDirRecursive(hookSourceDir, hookTargetDir);
-        hookPaths.push(hookTargetDir);
+        if (hook.references && hook.references.length > 0) {
+          this.copyReferences(hook.references, hookTargetDir, artifacts);
+        }
       }
 
-      // Copy referenced documents
-      if (hook.references && hook.references.length > 0) {
-        this.copyReferences(hook.references, hookTargetDir, artifacts);
-      }
+      hookPaths.push(hookTargetDir);
+      registeredHookIds.push(hookId);
     }
 
-    // 6. Register copied hooks in .claude/settings.json
-    if (hookPaths.length > 0) {
-      const settingsPath = this.registerHooksInSettings(targetDir, hookPaths);
+    // 6. Register AIR-owned hooks in .claude/settings.json.
+    //    Always prune settings entries that AIR previously wrote (stale +
+    //    current) so that re-runs don't accumulate duplicates and stale
+    //    entries are cleaned up even when no current hooks are active.
+    const managedHookIds = new Set<string>([
+      ...diff.staleHooks,
+      ...registeredHookIds,
+    ]);
+    const settingsPath = this.reconcileSettingsHooks(
+      targetDir,
+      hookPaths,
+      managedHookIds
+    );
+    if (settingsPath) {
       configFiles.push(settingsPath);
     }
 
-    // 7. Generate ephemeral subagent context for system prompt
+    // 7. Persist the updated manifest so the next run can reconcile against it.
+    //    Only IDs that AIR actually wrote/touched go into the manifest.
+    writeManifest(
+      buildManifest(targetDir, {
+        skills: skillIds,
+        hooks: registeredHookIds,
+        mcpServers: finalMcpServerIds,
+      })
+    );
+
+    // 8. Generate ephemeral subagent context for system prompt
     let subagentContext: string | undefined;
     if (subagentRoots.length > 0) {
       subagentContext = this.buildSubagentContext(subagentRoots);
     }
 
-    // 8. Build start command (include --append-system-prompt if subagent context exists)
+    // 9. Build start command (include --append-system-prompt if subagent context exists)
     // Pass undefined as root — prepareSession already handled all filtering/validation above.
     // Passing root here would cause generateConfig to re-validate with the original (pre-merge)
     // root defaults, which is both redundant and fragile.
@@ -482,21 +566,70 @@ export class ClaudeAdapter implements AgentAdapter {
   }
 
   /**
-   * Read HOOK.json from each copied hook directory and register the hooks
-   * in Claude Code's .claude/settings.json under the mapped event name.
-   * Merges with any existing settings; multiple hooks on the same event
-   * are appended to the event's array.
+   * Reconcile `.claude/settings.json` with the current hook selection.
+   *
+   * Removes any hook entries previously written by AIR (identified via the
+   * `_airHookId` marker on each entry) whose ID is in `managedHookIds`,
+   * leaving user-authored entries untouched. Then registers the hooks in
+   * `newHookPaths` for each mapped event, tagging each new entry with its
+   * hook ID so future runs can identify it.
+   *
+   * Returns the settings path if it was touched (written or an existing file
+   * pruned), otherwise `null` — callers include the path in configFiles only
+   * when relevant.
    */
-  private registerHooksInSettings(targetDir: string, hookPaths: string[]): string {
+  private reconcileSettingsHooks(
+    targetDir: string,
+    newHookPaths: string[],
+    managedHookIds: Set<string>
+  ): string | null {
     const settingsPath = join(targetDir, ".claude", "settings.json");
+    const settingsExists = existsSync(settingsPath);
+
+    // No settings file and nothing to write — nothing to do.
+    if (!settingsExists && newHookPaths.length === 0) {
+      return null;
+    }
+
     let settings: Record<string, unknown> = {};
-    if (existsSync(settingsPath)) {
-      settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
+    if (settingsExists) {
+      try {
+        settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
+      } catch {
+        // Treat an unparseable settings.json as empty — same contract as
+        // the manifest's corrupt-file fallback. The adapter never silently
+        // mangles user state; it just rewrites with the new selection.
+        settings = {};
+      }
     }
 
     const hooks = (settings.hooks ?? {}) as Record<string, unknown[]>;
 
-    for (const hookPath of hookPaths) {
+    for (const event of Object.keys(hooks)) {
+      const matcherGroups = hooks[event];
+      if (!Array.isArray(matcherGroups)) continue;
+      const prunedGroups: unknown[] = [];
+      for (const group of matcherGroups) {
+        if (!group || typeof group !== "object") {
+          prunedGroups.push(group);
+          continue;
+        }
+        const g = group as Record<string, unknown>;
+        const inner = Array.isArray(g.hooks) ? (g.hooks as unknown[]) : [];
+        const keptInner = inner.filter(
+          (h) => !this.isManagedHookEntry(h, managedHookIds)
+        );
+        if (keptInner.length === 0) continue;
+        prunedGroups.push({ ...g, hooks: keptInner });
+      }
+      if (prunedGroups.length === 0) {
+        delete hooks[event];
+      } else {
+        hooks[event] = prunedGroups;
+      }
+    }
+
+    for (const hookPath of newHookPaths) {
       const hookJsonPath = join(hookPath, "HOOK.json");
       if (!existsSync(hookJsonPath)) continue;
 
@@ -516,9 +649,13 @@ export class ClaudeAdapter implements AgentAdapter {
         hookJson.args as string[] | undefined
       );
 
+      // hookPath is .claude/hooks/<id>/, so the last path segment is the id.
+      const hookId = hookPath.split(/[\\/]/).filter(Boolean).pop() || "";
+
       const hookEntry: Record<string, unknown> = {
         type: "command",
         command,
+        _airHookId: hookId,
       };
       if (hookJson.timeout_seconds != null) {
         hookEntry.timeout = hookJson.timeout_seconds;
@@ -535,10 +672,73 @@ export class ClaudeAdapter implements AgentAdapter {
       (hooks[claudeEvent] as unknown[]).push(matcherGroup);
     }
 
-    settings.hooks = hooks;
+    // When the adapter was asked to register new hooks, keep `settings.hooks`
+    // present (even if all registrations were skipped — unknown events,
+    // malformed HOOK.json, etc.) so downstream consumers see a stable shape.
+    // When we're only pruning stale entries, drop an empty hooks object.
+    if (newHookPaths.length > 0 || Object.keys(hooks).length > 0) {
+      settings.hooks = hooks;
+    } else {
+      delete settings.hooks;
+    }
+
     mkdirSync(dirname(settingsPath), { recursive: true });
     writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
     return settingsPath;
+  }
+
+  /**
+   * Check whether a settings hook entry was written by AIR — i.e., carries
+   * an `_airHookId` marker whose value is in the managed set. User-authored
+   * entries (no marker, or a marker AIR doesn't know about) are left alone.
+   */
+  private isManagedHookEntry(entry: unknown, managedHookIds: Set<string>): boolean {
+    if (!entry || typeof entry !== "object") return false;
+    const id = (entry as Record<string, unknown>)._airHookId;
+    if (typeof id !== "string") return false;
+    return managedHookIds.has(id);
+  }
+
+  /**
+   * Merge translated MCP server config with an existing `.mcp.json`,
+   * preserving user-authored keys. Keys listed in `staleIds` are deleted
+   * (they were written by a prior AIR run and are no longer selected),
+   * and keys from `translated.mcpServers` are set/replaced for the current
+   * selection. Other top-level fields in the existing file pass through.
+   */
+  private mergeMcpConfig(
+    mcpConfigPath: string,
+    translated: Record<string, unknown>,
+    staleIds: string[]
+  ): Record<string, unknown> {
+    const translatedServers =
+      (translated.mcpServers as Record<string, unknown>) ?? {};
+
+    let existing: Record<string, unknown> = {};
+    if (existsSync(mcpConfigPath)) {
+      try {
+        existing = JSON.parse(readFileSync(mcpConfigPath, "utf-8"));
+      } catch {
+        // Unparseable existing file — start fresh rather than mangle it.
+        existing = {};
+      }
+    }
+
+    const existingServers =
+      (existing.mcpServers as Record<string, unknown>) ?? {};
+
+    const mergedServers: Record<string, unknown> = { ...existingServers };
+    for (const id of staleIds) {
+      delete mergedServers[id];
+    }
+    for (const [id, config] of Object.entries(translatedServers)) {
+      mergedServers[id] = config;
+    }
+
+    return {
+      ...existing,
+      mcpServers: mergedServers,
+    };
   }
 
   /**

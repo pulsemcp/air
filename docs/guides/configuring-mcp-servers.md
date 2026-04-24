@@ -186,6 +186,8 @@ For Claude Code, AIR writes a `.mcp.json` file with servers wrapped in a `mcpSer
 
 The `title` and `description` fields are stripped during translation (they're AIR metadata, not part of the agent's config format). The `streamable-http` type is translated to `http` for Claude Code compatibility.
 
+If `.mcp.json` already exists, AIR merges rather than overwrites. Keys AIR manages (those AIR wrote on a prior run, tracked in the per-target manifest) are replaced with the current selection — keys that are no longer selected are removed. Any other `mcpServers` keys and top-level fields pass through untouched, so user-added entries survive across runs. See [Cleanup between runs](running-sessions.md#cleanup-between-runs) for details.
+
 ### Selecting specific servers
 
 Add or remove servers when running `air prepare`:

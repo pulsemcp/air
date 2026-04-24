@@ -63,3 +63,19 @@ export {
   isValidSchemaType,
 } from "./schemas.js";
 export type { SchemaType } from "./schemas.js";
+
+// Manifest — tracks air-managed artifacts per target directory
+export {
+  MANIFEST_VERSION,
+  getDefaultAirHome,
+  getManifestPath,
+  loadManifest,
+  writeManifest,
+  buildManifest,
+  diffManifest,
+} from "./manifest.js";
+export type {
+  Manifest,
+  ManifestSelection,
+  ManifestDiff,
+} from "./manifest.js";
