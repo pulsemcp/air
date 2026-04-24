@@ -173,6 +173,7 @@ When you run `air start` or `air prepare`, the adapter:
 2. Copies each skill's directory into the agent workspace (e.g., `.claude/skills/{skill-id}/`)
 3. Copies any referenced documents into `references/` within the skill directory
 4. Skills already present in the workspace are not overwritten (local takes priority)
+5. Skills that AIR wrote on a prior run but are no longer in the selection are removed (the adapter tracks them in a per-target manifest). User-authored skills under `.claude/skills/` are never touched. See [Cleanup between runs](running-sessions.md#cleanup-between-runs) for details.
 
 ### Local skills tracked in the repo
 

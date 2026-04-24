@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.40] - 2026-04-24
+
+### Added
+- New `manifest` module in `@pulsemcp/air-core` that tracks AIR-managed artifact IDs (skills, hooks, MCP servers) per target directory. Persisted at `<airHome>/manifests/<sha256(targetDir)>.json` (default `airHome` is `~/.air`, overridable via `AIR_HOME` for sandboxed tests). Exports `MANIFEST_VERSION`, `buildManifest`, `loadManifest`, `writeManifest`, `diffManifest`, `getManifestPath`, `getDefaultAirHome`, and the `Manifest` / `ManifestSelection` / `ManifestDiff` types. Re-exported from `@pulsemcp/air-sdk`.
+
+### Fixed
+- **`@pulsemcp/air-adapter-claude`: `prepareSession` now cleans up stale artifacts between runs.** On every run, the adapter diffs the prior manifest against the new selection and removes artifacts that were previously AIR-written but are no longer selected — `.claude/skills/<id>/`, `.claude/hooks/<id>/`, and the corresponding entry in `.mcp.json`. User-authored entries in `.mcp.json` and user-authored settings hooks are preserved. Previously, selecting a smaller set on a re-run left orphaned artifacts behind.
+- **`@pulsemcp/air-adapter-claude`: `.mcp.json` is now merged instead of overwritten.** User-added `mcpServers` keys are preserved across runs; only AIR-managed keys are replaced or removed.
+- **`@pulsemcp/air-adapter-claude`: settings.json hook registrations no longer accumulate duplicates.** Each AIR-written hook entry carries an `_airHookId` marker that identifies ownership, so re-runs prune and re-register cleanly without touching user-authored hook entries.
+
 ## [0.0.39] - 2026-04-24
 
 ### Changed
