@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/pulsemcp/air/main/schemas/preferences.schema.json",
+  "title": "AIR Preferences",
+  "description": "Tool-managed user preferences file (~/.air/preferences.json). Kept separate from air.json so machine-written state never collides with the user's hand-edited composition config.",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema reference for validation."
+    },
+    "autoDiscovery": {
+      "type": "object",
+      "description": "State for the auto-discovery prompt shown by `air start` and `air prepare`.",
+      "properties": {
+        "dismissed": {
+          "type": "array",
+          "description": "Discovered (repoRoot, indexPath) pairs the user has asked AIR not to offer again. Granularity is per-path so a new index file added later is still surfaced.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "repoRoot": {
+                "type": "string",
+                "description": "Absolute path to the git repository root (or the target directory if not a git repo) at the time the prompt was dismissed."
+              },
+              "indexPath": {
+                "type": "string",
+                "description": "Path relative to repoRoot for the specific index file the user dismissed. For catalogs, this is the catalog directory path."
+              }
+            },
+            "required": ["repoRoot", "indexPath"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": true
+}

@@ -12,6 +12,7 @@ For detailed reference documentation, see the [docs/](../) directory.
 ## Common Workflows
 
 - **[Managing Skills](managing-skills.md)** — Define reusable skills, list them, and understand how they get injected into agent sessions.
+- **[Managing Skills in Your Repo](managing-skills-in-your-repo.md)** — Patterns for committing AIR configs into a repo (`.claude/skills/`, in-repo indexes, team catalogs) and how auto-discovery wires them into your `air.json`.
 - **[Configuring MCP Servers](configuring-mcp-servers.md)** — Define MCP server entries for local and remote servers, wire them into sessions, and handle secrets.
 - **[Running Sessions](running-sessions.md)** — Use `air start` and `air prepare` to launch agent sessions with the right configuration.
 - **[Validating Configuration](validating-configuration.md)** — Catch config errors early with `air validate` before they cause runtime failures.

@@ -38,6 +38,10 @@ Skills that are already checked into the working directory under `.claude/skills
 
 When not in a TTY (e.g., in a CI pipeline) or when `--skip-confirmation` is passed, the TUI is skipped and the agent launches with root defaults.
 
+### Auto-discovery of repo AIR indexes
+
+If the target repo contains `skills.json` / `mcp.json` / nested `air.json` files that aren't yet registered in your `~/.air/air.json`, AIR will offer to add them before the session loads — a single `[Y/n/d=don't ask again]` prompt per run. Pass `--no-discover` to suppress it. The prompt is TTY-only: in CI, piped invocations, `--dry-run`, `--skip-confirmation`, or any scripted artifact-selection flag, discovery is silent. See [Managing Skills in Your Repo](managing-skills-in-your-repo.md) for the full flow.
+
 ### Non-interactive selection
 
 Pass any of `--skill`, `--mcp-server`, `--hook`, or `--plugin` to tweak the selection from the command line instead of the TUI. Each flag names an ID to **add** on top of the root defaults (union). To pass multiple IDs, repeat the flag (`--skill a --skill b`) or list them after a single flag (`--skill a b`). Use the matching `--without-*` flag to remove specific IDs from the defaults, or `--without-defaults` to opt out of all root defaults and start from an empty set.
@@ -77,6 +81,7 @@ Required argument: `<agent>` — the agent to start (e.g., `claude`).
 | `--without-plugin <id...>` | Plugin ID(s) to remove from the root defaults |
 | `--without-defaults` | Ignore all root defaults — start from an empty set and activate only the artifacts added via `--skill` / `--mcp-server` / `--hook` / `--plugin` |
 | `--no-subagent-merge` | Skip merging subagent roots' artifacts |
+| `--no-discover` | Skip the auto-discovery prompt for unregistered repo AIR index files |
 
 ### Passing arguments to the agent
 
@@ -180,6 +185,7 @@ Required argument: `<adapter>` — the agent adapter to use (e.g., `claude`).
 | `--without-plugin <id...>` | Plugin ID(s) to remove from the root defaults |
 | `--without-defaults` | Ignore all root defaults — start from an empty set |
 | `--no-subagent-merge` | Skip merging subagent roots' artifacts |
+| `--no-discover` | Skip the auto-discovery prompt for unregistered repo AIR index files |
 | `--skip-validation` | Skip `${VAR}` validation |
 
 Extensions can contribute additional flags — see [Extensions System](extensions.md).

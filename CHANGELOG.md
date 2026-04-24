@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.40] - 2026-04-24
+
+### Added
+- `air start` and `air prepare` now auto-discover AIR index files (`skills.json`, `mcp.json`, nested `air.json`, full `<type>/<type>.json` catalog layouts) in the target repo and offer a single interactive `[Y/n/d=don't ask again]` prompt to register them with your `~/.air/air.json`. On accept, catalog directories go into `catalogs[]` and loose indexes into the matching per-type array. Missing `air.json` is scaffolded with a minimal structure. The prompt is TTY-only — CI, piped invocations, `--dry-run`, `--skip-confirmation`, and any scripted artifact-selection flag all silently skip discovery.
+- New `--no-discover` flag on `air start` and `air prepare` to suppress the auto-discovery prompt even in a TTY.
+- New `~/.air/preferences.json` file (and accompanying `schemas/preferences.schema.json`) that records dismissals from the auto-discovery prompt so AIR doesn't re-offer the same paths in the same repo. Load/save helpers exported from `@pulsemcp/air-sdk` as `loadPreferences`, `savePreferences`, `addDismissed`, `isDismissed`.
+- New SDK exports: `discoverIndexes`, `resolveAnchor`, `addDiscoveredToAirJson`, `buildRegisteredChecker`, `findOfferableIndexes`, `acceptOffers`, `dismissOffers` and the corresponding types for programmatic integrations that want to drive the discovery flow themselves.
+- New docs guide: [Managing Skills in Your Repo](docs/guides/managing-skills-in-your-repo.md) covering the three repo patterns (`.claude/skills/`, in-repo indexes, catalog directories) and the auto-discovery flow end-to-end.
+
 ## [0.0.39] - 2026-04-24
 
 ### Changed
