@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.0.40] - 2026-04-24
+## [0.0.41] - 2026-04-24
 
 ### Added
 - `air start` and `air prepare` now auto-discover AIR index files (`skills.json`, `mcp.json`, nested `air.json`, full `<type>/<type>.json` catalog layouts) in the target repo and offer a single interactive `[Y/n/d=don't ask again]` prompt to register them with your `~/.air/air.json`. On accept, catalog directories go into `catalogs[]` and loose indexes into the matching per-type array. Missing `air.json` is scaffolded with a minimal structure. The prompt is TTY-only — CI, piped invocations, `--dry-run`, `--skip-confirmation`, and any scripted artifact-selection flag all silently skip discovery.
@@ -13,6 +13,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New `~/.air/preferences.json` file (and accompanying `schemas/preferences.schema.json`) that records dismissals from the auto-discovery prompt so AIR doesn't re-offer the same paths in the same repo. Load/save helpers exported from `@pulsemcp/air-sdk` as `loadPreferences`, `savePreferences`, `addDismissed`, `isDismissed`.
 - New SDK exports: `discoverIndexes`, `resolveAnchor`, `addDiscoveredToAirJson`, `buildRegisteredChecker`, `findOfferableIndexes`, `acceptOffers`, `dismissOffers` and the corresponding types for programmatic integrations that want to drive the discovery flow themselves.
 - New docs guide: [Managing Skills in Your Repo](docs/guides/managing-skills-in-your-repo.md) covering the three repo patterns (`.claude/skills/`, in-repo indexes, catalog directories) and the auto-discovery flow end-to-end.
+
+## [0.0.40] - 2026-04-24
+
+### Fixed
+- `GitHubCatalogProvider.ensureClone()` in `@pulsemcp/air-provider-github` no longer races when multiple processes hit an empty cache at the same time. Previously, two callers could race on a fresh cache, one would see `.git/` exist while the working-tree checkout was still in flight, and fail with `File not found in cloned repository: …`. This surfaced as ~5–15 sessions failing per deploy in environments that restart in-flight sessions against an empty cache. Fixes [#101](https://github.com/pulsemcp/air/issues/101).
+  - Concurrent clones into the same `~/.air/cache/github/{owner}/{repo}/{ref}` path are now serialized by an advisory file lock (`proper-lockfile`).
+  - Each clone lands atomically via a same-directory `renameSync` from a sibling temp directory (created with `mkdtempSync`) — so readers either see no `.git` (and acquire the lock themselves) or a complete working tree, never a partial one.
+  - A partial `cloneDir` left behind by a crashed older-version process is cleaned up inside the lock before re-cloning.
+  - `resolve()` and `fileExists()` signatures are unchanged; the private `ensureClone()` is now `async` (both internal callers already `await` it).
+  - New dependency: `proper-lockfile@^4.1.2`.
 
 ## [0.0.39] - 2026-04-24
 

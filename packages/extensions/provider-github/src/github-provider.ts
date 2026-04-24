@@ -1,6 +1,15 @@
 import { execFileSync } from "child_process";
-import { existsSync, readFileSync, readdirSync } from "fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+} from "fs";
 import { resolve, dirname } from "path";
+import lockfile from "proper-lockfile";
 import type {
   CatalogProvider,
   CacheFreshnessWarning,
@@ -229,7 +238,7 @@ export class GitHubCatalogProvider implements CatalogProvider {
   ): Promise<Record<string, unknown>> {
     const parsed = parseGitHubUri(uri);
     const ref = parsed.ref || "HEAD";
-    const cloneDir = this.ensureClone(parsed.owner, parsed.repo, ref);
+    const cloneDir = await this.ensureClone(parsed.owner, parsed.repo, ref);
     const filePath = resolve(cloneDir, parsed.path);
 
     if (!existsSync(filePath)) {
@@ -254,7 +263,7 @@ export class GitHubCatalogProvider implements CatalogProvider {
   async fileExists(uri: string): Promise<boolean> {
     const parsed = parseGitHubUri(uri);
     const ref = parsed.ref || "HEAD";
-    const cloneDir = this.ensureClone(parsed.owner, parsed.repo, ref);
+    const cloneDir = await this.ensureClone(parsed.owner, parsed.repo, ref);
     return existsSync(resolve(cloneDir, parsed.path));
   }
 
@@ -454,46 +463,126 @@ export class GitHubCatalogProvider implements CatalogProvider {
   }
 
   /**
-   * Ensure the repository is cloned locally. If the clone already exists,
-   * reuse it. Returns the path to the clone directory.
+   * Ensure the repository is cloned locally. Concurrent callers are
+   * serialized by an advisory file lock and the clone itself lands via
+   * a temp-dir-then-rename dance — so readers either see no `.git` and
+   * trigger their own clone, or a complete clone, never a partial one.
+   *
+   * Returns the path to the clone directory.
    */
-  private ensureClone(owner: string, repo: string, ref: string): string {
+  private async ensureClone(
+    owner: string,
+    repo: string,
+    ref: string
+  ): Promise<string> {
     const cloneDir = getClonePath(owner, repo, ref);
 
+    // Fast path: a fully-populated clone already exists. Because clones
+    // land via tmp-dir-then-rename, the presence of `.git` implies the
+    // working tree is complete.
     if (existsSync(resolve(cloneDir, ".git"))) {
       return cloneDir;
     }
 
-    const repoUrl = this.buildCloneUrl(owner, repo);
-    const publicUrl = this.buildPublicUrl(owner, repo);
+    // Make sure the parent directory exists so the lock file has a home.
+    mkdirSync(dirname(cloneDir), { recursive: true });
+
+    // Serialize check-and-clone across processes. `realpath: false` lets us
+    // lock a path that does not yet exist — proper-lockfile creates a
+    // sibling `.lock` directory as the cross-process mutex.
+    const release = await lockfile.lock(cloneDir, {
+      realpath: false,
+      // Wait up to ~2 minutes (480 × 250 ms) for another process to finish
+      // cloning. With factor: 1, each retry sleeps minTimeout — the exponential
+      // backoff is disabled so waits stay predictable and tight.
+      retries: {
+        retries: 480,
+        minTimeout: 250,
+        maxTimeout: 1000,
+        factor: 1,
+      },
+      // Reclaim the lock if the holder crashed and never released it.
+      // Significantly longer than the clone timeout below so we don't steal
+      // from a slow-but-healthy clone, even on a sluggish filesystem where
+      // proper-lockfile's mtime refresh (every stale/2) might lag.
+      stale: 180_000,
+    });
 
     try {
-      const args = ref === "HEAD"
-        ? ["clone", "--depth", "1", repoUrl, cloneDir]
-        : ["clone", "--depth", "1", "--branch", ref, repoUrl, cloneDir];
+      // Re-check under the lock: another process may have won the race.
+      if (existsSync(resolve(cloneDir, ".git"))) {
+        return cloneDir;
+      }
 
-      execFileSync("git", args, { stdio: "pipe", timeout: 60000 });
-    } catch (err) {
-      const rawMsg = err instanceof Error ? err.message : String(err);
-      const msg = redactToken(rawMsg, this.token);
-      const authHint = this.gitProtocol === "ssh"
-        ? " (SSH auth failed — ensure a key is registered with GitHub, " +
-          "or switch to HTTPS: set \"gitProtocol\": \"https\" in air.json or pass --git-protocol=https)"
-        : " (repository may be private — set AIR_GITHUB_TOKEN or pass token option)";
-      const hint =
-        msg.includes("Authentication failed") ||
-        msg.includes("could not read Username") ||
-        msg.includes("Permission denied") ||
-        msg.includes("publickey")
-          ? authHint
-          : msg.includes("not found") || msg.includes("Repository not found")
-            ? " (repository or ref not found)"
-            : "";
-      throw new Error(
-        `Failed to clone ${owner}/${repo} at ref "${ref}"${hint}\n` +
-          `  URL: ${publicUrl}\n` +
-          `  Error: ${msg}`
-      );
+      // Clean up any debris from a crashed clone (e.g., a partial cloneDir
+      // left behind by an older version of this code). Safe because we
+      // hold the lock.
+      if (existsSync(cloneDir)) {
+        rmSync(cloneDir, { recursive: true, force: true });
+      }
+
+      const repoUrl = this.buildCloneUrl(owner, repo);
+      const publicUrl = this.buildPublicUrl(owner, repo);
+      // Sibling of cloneDir so the final renameSync is a same-directory
+      // rename — atomic on local filesystems (ext4, xfs, apfs, ntfs).
+      // mkdtempSync guarantees a unique suffix even if two clones in the
+      // same process hit the same millisecond.
+      const tmpDir = mkdtempSync(`${cloneDir}.tmp-`);
+
+      try {
+        // git clone refuses a non-empty target; mkdtempSync gave us an
+        // empty directory which git accepts.
+        const args =
+          ref === "HEAD"
+            ? ["clone", "--depth", "1", repoUrl, tmpDir]
+            : ["clone", "--depth", "1", "--branch", ref, repoUrl, tmpDir];
+
+        execFileSync("git", args, { stdio: "pipe", timeout: 60_000 });
+
+        // Atomic publish: readers only ever see a complete clone at
+        // cloneDir, never a half-populated one.
+        renameSync(tmpDir, cloneDir);
+      } catch (err) {
+        // Best-effort cleanup of the partial tmp dir so it does not pile up.
+        if (existsSync(tmpDir)) {
+          try {
+            rmSync(tmpDir, { recursive: true, force: true });
+          } catch {
+            // ignore — the clone itself is the error worth reporting
+          }
+        }
+
+        const rawMsg = err instanceof Error ? err.message : String(err);
+        const msg = redactToken(rawMsg, this.token);
+        const authHint =
+          this.gitProtocol === "ssh"
+            ? " (SSH auth failed — ensure a key is registered with GitHub, " +
+              'or switch to HTTPS: set "gitProtocol": "https" in air.json or pass --git-protocol=https)'
+            : " (repository may be private — set AIR_GITHUB_TOKEN or pass token option)";
+        const hint =
+          msg.includes("Authentication failed") ||
+          msg.includes("could not read Username") ||
+          msg.includes("Permission denied") ||
+          msg.includes("publickey")
+            ? authHint
+            : msg.includes("not found") || msg.includes("Repository not found")
+              ? " (repository or ref not found)"
+              : "";
+        throw new Error(
+          `Failed to clone ${owner}/${repo} at ref "${ref}"${hint}\n` +
+            `  URL: ${publicUrl}\n` +
+            `  Error: ${msg}`
+        );
+      }
+    } finally {
+      try {
+        await release();
+      } catch {
+        // release() can throw if proper-lockfile detected the lock was
+        // compromised (e.g., stale-reclaimed by another process). The clone
+        // itself has already been atomically published via renameSync, so
+        // there is nothing to clean up.
+      }
     }
 
     return cloneDir;

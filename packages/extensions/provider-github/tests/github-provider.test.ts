@@ -266,6 +266,41 @@ describe("GitHubCatalogProvider", () => {
     expect(Object.keys(result).length).toBeGreaterThan(0);
   }, 30000);
 
+  it("serializes concurrent resolve() calls against an empty cache", async () => {
+    // Start from an empty cache so every concurrent caller races on the
+    // clone — this is the real-world scenario that produced
+    // "File not found in cloned repository" before the lock + tmp-rename fix.
+    const cloneDir = getClonePath("pulsemcp", "air", "HEAD");
+    if (existsSync(cloneDir)) {
+      rmSync(cloneDir, { recursive: true, force: true });
+    }
+
+    const results = await Promise.all([
+      provider.resolve(
+        "github://pulsemcp/air/examples/skills/skills.json",
+        "/tmp"
+      ),
+      provider.resolve(
+        "github://pulsemcp/air/examples/skills/skills.json",
+        "/tmp"
+      ),
+      provider.resolve(
+        "github://pulsemcp/air/examples/mcp/mcp.json",
+        "/tmp"
+      ),
+      provider.resolve(
+        "github://pulsemcp/air/examples/skills/skills.json",
+        "/tmp"
+      ),
+    ]);
+
+    expect(results).toHaveLength(4);
+    for (const r of results) {
+      expect(Object.keys(r).length).toBeGreaterThan(0);
+    }
+    expect(existsSync(resolve(cloneDir, ".git"))).toBe(true);
+  }, 60000);
+
   it("resolveSourceDir returns directory of the file within clone", () => {
     const cloneDir = getClonePath("pulsemcp", "air", "HEAD");
     if (!existsSync(cloneDir)) return;
