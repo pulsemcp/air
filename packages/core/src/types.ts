@@ -152,6 +152,40 @@ export interface AgentAdapter {
     targetDir: string,
     options?: PrepareSessionOptions
   ): Promise<PreparedSession>;
+
+  /**
+   * Enumerate artifacts that exist in the target directory outside of AIR's
+   * management — e.g. skills checked into `.claude/skills/` in the user's
+   * repository. These are "always on" from the agent's perspective because
+   * the agent discovers them by walking the filesystem; AIR can surface them
+   * to the user (as read-only in the TUI) but must not toggle, overwrite, or
+   * delete them. Adapters that don't have filesystem-discovered artifacts
+   * can omit this method.
+   */
+  listLocalArtifacts?(targetDir: string): Promise<LocalArtifacts>;
+}
+
+/**
+ * Artifacts discovered in the target directory outside of AIR's management.
+ * Currently limited to skills; other artifact types may be added later.
+ */
+export interface LocalArtifacts {
+  skills: LocalSkillEntry[];
+}
+
+/**
+ * A skill discovered on the filesystem in the target directory (e.g. under
+ * `.claude/skills/`), independent of any catalog or `air.json` config.
+ */
+export interface LocalSkillEntry {
+  /** Stable identifier, typically the skill's directory name. */
+  id: string;
+  /** Short human-readable description (pulled from frontmatter if present). */
+  description: string;
+  /** Optional display title (pulled from frontmatter if present). */
+  title?: string;
+  /** Absolute path to the skill's directory. */
+  path: string;
 }
 
 export interface PrepareSessionOptions {

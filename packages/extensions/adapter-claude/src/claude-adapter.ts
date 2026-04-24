@@ -20,7 +20,9 @@ import type {
   PluginEntry,
   PrepareSessionOptions,
   PreparedSession,
+  LocalArtifacts,
 } from "@pulsemcp/air-core";
+import { scanLocalSkills } from "./scan-local-skills.js";
 
 export class ClaudeAdapter implements AgentAdapter {
   name = "claude";
@@ -265,6 +267,16 @@ export class ClaudeAdapter implements AgentAdapter {
     }
 
     return { configFiles, skillPaths, hookPaths, startCommand, subagentContext };
+  }
+
+  /**
+   * Enumerate skills checked into `<targetDir>/.claude/skills/`. These are
+   * loaded by Claude Code directly from the filesystem regardless of AIR's
+   * involvement, so they're always active and must not be overwritten or
+   * removed. The TUI uses this list to surface them as read-only entries.
+   */
+  async listLocalArtifacts(targetDir: string): Promise<LocalArtifacts> {
+    return { skills: scanLocalSkills(targetDir) };
   }
 
   /**

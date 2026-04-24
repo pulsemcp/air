@@ -61,6 +61,15 @@ export function render(state: TuiState, viewportHeight: number): string[] {
 
   if (activeCat && !isOverridable) {
     lines.push(chalk.dim("  (read-only \u2014 override not yet supported)"));
+  } else if (
+    activeCat === "skills" &&
+    visibleItems.some((it) => it.readOnly)
+  ) {
+    lines.push(
+      chalk.dim(
+        "  \ud83d\udd12 local skills are tracked in this repo \u2014 remove the directory to disable"
+      )
+    );
   }
 
   if (visibleItems.length === 0) {
@@ -171,11 +180,18 @@ function renderItem(
   isCursor: boolean,
   isOverridable: boolean
 ): string {
-  const marker = item.selected ? chalk.green("●") : chalk.dim("○");
+  const marker = item.readOnly
+    ? chalk.cyan("🔒")
+    : item.selected
+      ? chalk.green("●")
+      : chalk.dim("○");
 
   let id: string;
   let desc: string;
-  if (!isOverridable) {
+  if (item.readOnly) {
+    id = chalk.cyan(item.id);
+    desc = chalk.dim(` — ${truncate(item.description, 60)}`);
+  } else if (!isOverridable) {
     id = chalk.dim(item.id);
     desc = chalk.dim(` — ${truncate(item.description, 60)}`);
   } else if (item.selected) {

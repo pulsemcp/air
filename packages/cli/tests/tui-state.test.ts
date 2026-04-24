@@ -461,6 +461,128 @@ describe("getMergedDefaults", () => {
   });
 });
 
+describe("buildInitialState with local skills", () => {
+  it("marks catalog skills that collide with a local skill as readOnly+selected", () => {
+    const state = buildInitialState(
+      makeArtifacts({
+        skills: {
+          "shared-skill": {
+            description: "Catalog version",
+            path: "/skills/shared",
+          },
+          "catalog-only": {
+            description: "Catalog only",
+            path: "/skills/catalog-only",
+          },
+        },
+      }),
+      undefined,
+      undefined,
+      false,
+      false,
+      {
+        skills: [
+          {
+            id: "shared-skill",
+            description: "Local version",
+            path: "/repo/.claude/skills/shared-skill",
+          },
+        ],
+      }
+    );
+
+    const shared = state.items.skills.find((i) => i.id === "shared-skill");
+    expect(shared?.readOnly).toBe(true);
+    expect(shared?.selected).toBe(true);
+
+    const catalogOnly = state.items.skills.find((i) => i.id === "catalog-only");
+    expect(catalogOnly?.readOnly).toBeFalsy();
+  });
+
+  it("appends local-only skills as readOnly+selected entries", () => {
+    const state = buildInitialState(
+      makeArtifacts({
+        skills: {
+          catalog: { description: "Catalog skill", path: "/skills/catalog" },
+        },
+      }),
+      undefined,
+      undefined,
+      false,
+      false,
+      {
+        skills: [
+          {
+            id: "local-only",
+            description: "A local skill",
+            path: "/repo/.claude/skills/local-only",
+          },
+        ],
+      }
+    );
+
+    const ids = state.items.skills.map((i) => i.id);
+    expect(ids).toEqual(["catalog", "local-only"]);
+
+    const local = state.items.skills.find((i) => i.id === "local-only");
+    expect(local?.readOnly).toBe(true);
+    expect(local?.selected).toBe(true);
+    expect(local?.description).toBe("A local skill");
+  });
+
+  it("excludes readOnly items from getSelectedIds output", () => {
+    const state = buildInitialState(
+      makeArtifacts({
+        skills: {
+          "catalog-skill": {
+            description: "Catalog skill",
+            path: "/skills/catalog-skill",
+          },
+        },
+      }),
+      { description: "r", default_skills: ["catalog-skill"] },
+      "r",
+      false,
+      false,
+      {
+        skills: [
+          {
+            id: "local-only",
+            description: "Local",
+            path: "/repo/.claude/skills/local-only",
+          },
+        ],
+      }
+    );
+
+    const result = getSelectedIds(state);
+    expect(result.skills).toEqual(["catalog-skill"]);
+    expect(result.skills).not.toContain("local-only");
+  });
+
+  it("falls back to title when local skill description is empty", () => {
+    const state = buildInitialState(
+      makeArtifacts(),
+      undefined,
+      undefined,
+      false,
+      false,
+      {
+        skills: [
+          {
+            id: "local",
+            description: "",
+            title: "My Title",
+            path: "/repo/.claude/skills/local",
+          },
+        ],
+      }
+    );
+
+    expect(state.items.skills[0].description).toBe("My Title");
+  });
+});
+
 describe("buildInitialState with subagent merge", () => {
   it("pre-selects subagent MCP servers when merge is enabled", () => {
     const state = buildInitialState(

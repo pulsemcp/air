@@ -1,4 +1,8 @@
-import type { ResolvedArtifacts, RootEntry } from "@pulsemcp/air-sdk";
+import type {
+  LocalArtifacts,
+  ResolvedArtifacts,
+  RootEntry,
+} from "@pulsemcp/air-sdk";
 
 export type ArtifactCategory = "mcp" | "skills" | "hooks" | "plugins";
 
@@ -6,6 +10,13 @@ export interface ArtifactItem {
   id: string;
   description: string;
   selected: boolean;
+  /**
+   * Locally-tracked artifacts (e.g. skills checked into `.claude/skills/`)
+   * are always active from the agent's perspective. They show up in the TUI
+   * for visibility but cannot be toggled here — to disable, the user must
+   * remove or move the directory in their repo.
+   */
+  readOnly?: boolean;
 }
 
 export interface TuiState {
@@ -103,7 +114,8 @@ export function buildInitialState(
   root?: RootEntry,
   rootId?: string,
   rootAutoDetected = false,
-  skipSubagentMerge = false
+  skipSubagentMerge = false,
+  localArtifacts?: LocalArtifacts
 ): TuiState {
   const buildItems = (
     entries: Record<string, { description?: string; title?: string }>,
@@ -136,7 +148,10 @@ export function buildInitialState(
 
   const items: Record<ArtifactCategory, ArtifactItem[]> = {
     mcp: buildItems(artifacts.mcp, mcpDefaults),
-    skills: buildItems(artifacts.skills, skillDefaults),
+    skills: mergeLocalSkills(
+      buildItems(artifacts.skills, skillDefaults),
+      localArtifacts?.skills ?? []
+    ),
     hooks: buildItems(artifacts.hooks, hookDefaults),
     plugins: buildItems(artifacts.plugins, pluginDefaults),
   };
@@ -163,20 +178,53 @@ export function buildInitialState(
 }
 
 export function getSelectedIds(state: TuiState): TuiResult {
+  // Read-only items (e.g. local skills already in `.claude/skills/`) are
+  // excluded — they're not part of AIR's override set, and some may have
+  // IDs that don't exist in `artifacts.skills`, which would fail validation
+  // downstream.
+  const pickSelected = (items: ArtifactItem[]): string[] =>
+    items.filter((i) => i.selected && !i.readOnly).map((i) => i.id);
+
   return {
-    mcpServers: state.items.mcp
-      .filter((i) => i.selected)
-      .map((i) => i.id),
-    skills: state.items.skills
-      .filter((i) => i.selected)
-      .map((i) => i.id),
-    hooks: state.items.hooks
-      .filter((i) => i.selected)
-      .map((i) => i.id),
-    plugins: state.items.plugins
-      .filter((i) => i.selected)
-      .map((i) => i.id),
+    mcpServers: pickSelected(state.items.mcp),
+    skills: pickSelected(state.items.skills),
+    hooks: pickSelected(state.items.hooks),
+    plugins: pickSelected(state.items.plugins),
   };
+}
+
+/**
+ * Fold local skills (checked into `.claude/skills/`) into the skills list.
+ * If a local skill's ID matches a catalog skill, replace the catalog entry
+ * with a read-only marker (the adapter's "local wins" rule means the
+ * catalog version won't be written anyway). Local skills with no catalog
+ * counterpart are appended as standalone read-only entries.
+ */
+function mergeLocalSkills(
+  catalogItems: ArtifactItem[],
+  localSkills: { id: string; title?: string; description: string }[]
+): ArtifactItem[] {
+  if (localSkills.length === 0) return catalogItems;
+
+  const byId = new Map(catalogItems.map((it) => [it.id, it]));
+
+  for (const local of localSkills) {
+    const description = local.description || local.title || "(local skill)";
+    const existing = byId.get(local.id);
+    if (existing) {
+      existing.readOnly = true;
+      existing.selected = true;
+    } else {
+      byId.set(local.id, {
+        id: local.id,
+        description,
+        selected: true,
+        readOnly: true,
+      });
+    }
+  }
+
+  return [...byId.values()].sort((a, b) => a.id.localeCompare(b.id));
 }
 
 /** Get selection summary across all artifact types */

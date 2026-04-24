@@ -1,5 +1,9 @@
 import * as readline from "readline";
-import type { ResolvedArtifacts, RootEntry } from "@pulsemcp/air-sdk";
+import type {
+  LocalArtifacts,
+  ResolvedArtifacts,
+  RootEntry,
+} from "@pulsemcp/air-sdk";
 import {
   buildInitialState,
   getSelectedIds,
@@ -75,9 +79,17 @@ export async function runInteractiveSelector(
   root?: RootEntry,
   rootId?: string,
   rootAutoDetected = false,
-  skipSubagentMerge = false
+  skipSubagentMerge = false,
+  localArtifacts?: LocalArtifacts
 ): Promise<TuiResult | null> {
-  const state = buildInitialState(artifacts, root, rootId, rootAutoDetected, skipSubagentMerge);
+  const state = buildInitialState(
+    artifacts,
+    root,
+    rootId,
+    rootAutoDetected,
+    skipSubagentMerge,
+    localArtifacts
+  );
 
   if (state.tabs.length === 0) {
     return getSelectedIds(state);
@@ -187,7 +199,7 @@ export async function runInteractiveSelector(
             const item = state.items[activeCat].find(
               (i) => i.id === targetId
             );
-            if (item) item.selected = !item.selected;
+            if (item && !item.readOnly) item.selected = !item.selected;
           }
           draw(state);
           return;
@@ -261,27 +273,37 @@ export async function runInteractiveSelector(
 
       if (key.name === "space" && items.length > 0) {
         const idx = state.cursors[activeCat];
-        items[idx].selected = !items[idx].selected;
+        if (!items[idx].readOnly) {
+          items[idx].selected = !items[idx].selected;
+        }
         draw(state);
         return;
       }
 
       if (str === "a") {
-        for (const item of items) item.selected = true;
+        for (const item of items) {
+          if (!item.readOnly) item.selected = true;
+        }
         draw(state);
         return;
       }
 
       if (str === "n") {
-        for (const item of items) item.selected = false;
+        for (const item of items) {
+          if (!item.readOnly) item.selected = false;
+        }
         draw(state);
         return;
       }
 
       if (str === "o" && items.length > 0) {
         const idx = state.cursors[activeCat];
-        for (const item of items) item.selected = false;
-        items[idx].selected = true;
+        if (!items[idx].readOnly) {
+          for (const item of items) {
+            if (!item.readOnly) item.selected = false;
+          }
+          items[idx].selected = true;
+        }
         draw(state);
         return;
       }

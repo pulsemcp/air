@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.36] - 2026-04-24
+
+### Added
+- New optional `listLocalArtifacts(targetDir)` method on the `AgentAdapter` interface. Adapters that implement it can surface filesystem-discovered artifacts that live outside AIR's control (e.g. skills committed under `.claude/skills/`). Core exposes corresponding `LocalArtifacts` and `LocalSkillEntry` types.
+- `@pulsemcp/air-adapter-claude` now implements `listLocalArtifacts` by scanning the target directory's `.claude/skills/` tree and parsing each `SKILL.md`'s YAML frontmatter for a description.
+- `startSession()` in `@pulsemcp/air-sdk` now returns the discovered `localArtifacts` when the adapter supports scanning. A new `localScanDir` option controls the scan directory (defaults to `process.cwd()`, pass `null` to disable).
+- `air start` TUI now shows local skills (those committed under `.claude/skills/`) as read-only entries marked with a 🔒 icon. They are always active and cannot be toggled off — space, `a`, `n`, and `o` skip read-only items. A footer hint explains how to disable one (remove the directory in the repo). When a local skill's ID collides with a catalog skill, the catalog entry is replaced by the read-only local entry in the TUI.
+
 ## [0.0.35] - 2026-04-23
 
 ### Added

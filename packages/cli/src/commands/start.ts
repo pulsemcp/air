@@ -221,7 +221,8 @@ export function startCommand(): Command {
             root,
             rootId,
             rootAutoDetected,
-            skipSubagentMerge
+            skipSubagentMerge,
+            result.localArtifacts
           );
 
           if (!tuiResult) {

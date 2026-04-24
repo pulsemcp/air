@@ -34,6 +34,8 @@ When run in a TTY, `air start` opens an interactive terminal UI where you can:
 
 The footer shows a cross-artifact selection summary so you can see what's selected across all types.
 
+Skills that are already checked into the working directory under `.claude/skills/` show up in the Skills tab with a 🔒 marker and cannot be toggled. They're always active (the adapter never overwrites them). To disable one, remove or move its directory in the repo. See [Local skills tracked in the repo](managing-skills.md#local-skills-tracked-in-the-repo) for details.
+
 When not in a TTY (e.g., in a CI pipeline) or when `--skip-confirmation` is passed, the TUI is skipped and the agent launches with root defaults.
 
 ### Non-interactive selection

@@ -10,6 +10,8 @@ export type {
   PluginEntry,
   RootEntry,
   HookEntry,
+  LocalArtifacts,
+  LocalSkillEntry,
 } from "./types.js";
 
 // Extension interfaces

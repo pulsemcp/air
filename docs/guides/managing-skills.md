@@ -174,6 +174,16 @@ When you run `air start` or `air prepare`, the adapter:
 3. Copies any referenced documents into `references/` within the skill directory
 4. Skills already present in the workspace are not overwritten (local takes priority)
 
+### Local skills tracked in the repo
+
+If your repository already contains skills under `.claude/skills/` (for example, skills you've committed and want every contributor to use), AIR never deletes them. The Claude adapter scans `.claude/skills/` at session start and surfaces each skill it finds in the `air start` TUI marked with a 🔒 icon:
+
+- **Always active.** Local skills are available to the agent regardless of AIR selection state — the adapter's "local wins" rule means they won't be overwritten by catalog entries.
+- **Read-only in the TUI.** You cannot toggle a local skill off from `air start`. Space, `a`, `n`, and `o` all skip read-only items.
+- **Disable by removing the directory.** To stop activating a local skill, delete or move its directory under `.claude/skills/`. A catalog version with the same ID can then be selected normally.
+
+If a local skill's ID matches a catalog skill, the catalog entry is replaced in the TUI by the read-only local entry (since the adapter would not write the catalog version anyway).
+
 ### Selecting specific skills
 
 Add or remove skills when running `air prepare`:
