@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.37] - 2026-04-24
+
+### Added
+- New `air resolve --json` CLI command that loads the active `air.json` (respecting `AIR_CONFIG`), runs configured catalog providers, and prints the full merged `ResolvedArtifacts` tree to stdout as JSON. Enables non-Node consumers (Ruby apps, dashboards, orchestrators) to inspect the resolved artifact tree without reimplementing resolution, providers, or `catalogs` / `gitProtocol` handling.
+- New `resolveFullArtifacts()` helper in `@pulsemcp/air-sdk` that wires provider loading to `resolveArtifacts()`. Used internally by `air resolve --json`; also the programmatic entry point for the same behavior.
+
 ## [0.0.36] - 2026-04-24
 
 ### Added

@@ -115,6 +115,9 @@ export type {
   ExportMarketplaceResult,
 } from "./export-marketplace.js";
 
+export { resolveFullArtifacts } from "./resolve.js";
+export type { ResolveFullArtifactsOptions } from "./resolve.js";
+
 // Extension installer
 export { installExtensions } from "./install.js";
 export type {

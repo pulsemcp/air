@@ -238,6 +238,52 @@ air prepare claude --without-hook prevent-secrets-in-context
 air prepare claude --without-defaults --skill deploy-staging --mcp-server github
 ```
 
+## air resolve — inspecting the merged artifact tree
+
+`air resolve --json` loads `air.json`, runs the configured catalog providers, and prints the full merged `ResolvedArtifacts` object to stdout as JSON. It's the read-only companion to `air prepare` for orchestrators, dashboards, and non-Node consumers that need to know *what* artifacts AIR would make available without actually preparing a session.
+
+```bash
+air resolve --json
+```
+
+### What it does
+
+1. Loads `air.json` (respects `AIR_CONFIG` and `--config`, same as `air prepare`)
+2. Loads extensions declared under `extensions` and extracts their catalog providers
+3. Calls `resolveArtifacts()` with those providers — remote URIs like `github://` are resolved in full
+4. Prints the merged `ResolvedArtifacts` JSON to stdout (no filesystem writes)
+
+### Output shape
+
+```json
+{
+  "skills":     { "<id>": { "description": "...", "path": "/abs/path" } },
+  "references": { "<id>": { "description": "...", "path": "/abs/path" } },
+  "mcp":        { "<id>": { "type": "stdio", "command": "...", "args": [] } },
+  "plugins":    { "<id>": { "description": "...", "skills": [], "mcp_servers": [] } },
+  "roots":      { "<id>": { "description": "...", "default_skills": [] } },
+  "hooks":      { "<id>": { "description": "...", "path": "/abs/path" } }
+}
+```
+
+All `path` fields are absolute, matching what `resolveArtifacts()` returns from `@pulsemcp/air-core`. Unused artifact types are emitted as empty objects.
+
+### Options
+
+| Flag | Description |
+|------|-------------|
+| `--json` | Emit JSON output (currently the only supported format) |
+| `--config <path>` | Path to air.json (default: `~/.air/air.json` or `AIR_CONFIG`) |
+| `--git-protocol <ssh\|https>` | Protocol used by git-based catalog providers when cloning |
+
+### When to use it
+
+- **Non-Node consumers** (Ruby apps, Python scripts, dashboards) that need the resolved artifact tree without reimplementing composition, providers, or `catalogs` / `gitProtocol` handling
+- **Orchestrators** that show users "what skills/roots are available" before they pick a root for `air prepare`
+- **Debugging** — confirm that `github://` URIs and `catalogs` entries resolve to the expected merged view
+
+For programmatic TypeScript/JavaScript consumers, use `resolveFullArtifacts()` from `@pulsemcp/air-sdk` instead — it returns the same object without spawning a subprocess.
+
 ## air export — building plugin marketplaces
 
 `air export` builds distributable plugin directories from AIR artifacts. It's designed for producing Claude Co-work marketplaces that can be synced via GitHub.
