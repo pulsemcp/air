@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, beforeEach } from "vitest";
 import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "fs";
-import { resolve, join } from "path";
+import { resolve, join, dirname } from "path";
 import { tmpdir } from "os";
 import { ClaudeAdapter } from "../src/claude-adapter.js";
 import type {
@@ -2272,9 +2272,7 @@ describe("ClaudeAdapter", () => {
         // try to load. diffManifest should see `null` and do nothing stale.
         const { getManifestPath } = await import("@pulsemcp/air-core");
         const manifestPath = getManifestPath(dir);
-        mkdirSync(join(manifestPath, "..").replace(/\/+$/, "") || "/", {
-          recursive: true,
-        });
+        mkdirSync(dirname(manifestPath), { recursive: true });
         writeFileSync(manifestPath, "{ not valid json");
 
         await expect(
@@ -2314,6 +2312,55 @@ describe("ClaudeAdapter", () => {
             root: { description: "Test", default_skills: [] },
           })
         ).resolves.toBeDefined();
+      });
+
+      it("preserves a user-authored .claude/hooks/<id>/ dir when an AIR hook with the same id is selected", async () => {
+        const dir = createTempDir();
+
+        // User pre-populates .claude/hooks/hook-a/ with their own content
+        // BEFORE any AIR run touches this target. The prior manifest is
+        // therefore empty/missing, so the adapter must treat this dir as
+        // user-authored: do not overwrite it and do not register it in
+        // settings.json (the user's HOOK.json may not exist or may differ).
+        const userHookDir = join(dir, ".claude", "hooks", "hook-a");
+        mkdirSync(userHookDir, { recursive: true });
+        writeFileSync(join(userHookDir, "marker.txt"), "user-content");
+
+        const artifacts = emptyArtifacts();
+        artifacts.hooks["hook-a"] = {
+          description: "A",
+          path: writeHookSrc(dir, "hook-a", "air-cmd"),
+        };
+
+        await adapter.prepareSession(artifacts, dir, {
+          root: { description: "Test", default_hooks: ["hook-a"] },
+        });
+
+        // User's content survives — the catalog version was NOT copied over.
+        expect(
+          readFileSync(join(userHookDir, "marker.txt"), "utf-8")
+        ).toBe("user-content");
+        expect(existsSync(join(userHookDir, "HOOK.json"))).toBe(false);
+
+        // The hook was NOT registered in settings.json: the user's dir
+        // is theirs to register however they like.
+        const settingsPath = join(dir, ".claude", "settings.json");
+        if (existsSync(settingsPath)) {
+          const settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
+          const sessionStart = settings.hooks?.SessionStart ?? [];
+          const airEntries = sessionStart.flatMap(
+            (g: { hooks?: Array<{ _airHookId?: string }> }) =>
+              (g.hooks ?? []).filter((h) => h._airHookId === "hook-a")
+          );
+          expect(airEntries).toHaveLength(0);
+        }
+
+        // The next run with an empty selection must NOT delete the user's
+        // dir — it isn't in the manifest, so it isn't a cleanup candidate.
+        await adapter.prepareSession(artifacts, dir, {
+          root: { description: "Test", default_hooks: [] },
+        });
+        expect(existsSync(join(userHookDir, "marker.txt"))).toBe(true);
       });
     });
   });
