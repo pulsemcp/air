@@ -8,6 +8,7 @@ import {
   type RootEntry,
   type AgentSessionConfig,
   type StartCommand,
+  type LocalArtifacts,
 } from "@pulsemcp/air-core";
 import { findAdapter, listAvailableAdapters } from "./adapter-registry.js";
 import { loadExtensions } from "./extension-loader.js";
@@ -25,6 +26,12 @@ export interface StartSessionOptions {
    * over the `gitProtocol` field in air.json.
    */
   gitProtocol?: "ssh" | "https";
+  /**
+   * Directory to scan for adapter-owned local artifacts (e.g. skills
+   * checked into `.claude/skills/`). Defaults to `process.cwd()`. Set to
+   * `null` to skip the local scan entirely.
+   */
+  localScanDir?: string | null;
 }
 
 export interface StartSessionResult {
@@ -42,6 +49,13 @@ export interface StartSessionResult {
   adapterDisplayName: string;
   /** Warnings from provider cache freshness checks (e.g., stale GitHub clones). */
   warnings?: string[];
+  /**
+   * Artifacts discovered in the target directory outside of AIR's
+   * management (e.g. skills checked into `.claude/skills/`). Populated
+   * when the adapter implements `listLocalArtifacts` and `localScanDir`
+   * is not set to `null`.
+   */
+  localArtifacts?: LocalArtifacts;
 }
 
 /**
@@ -128,6 +142,16 @@ export async function startSession(
     : undefined;
   const startCommand = adapter.buildStartCommand(sessionConfig);
 
+  let localArtifacts: LocalArtifacts | undefined;
+  if (options?.localScanDir !== null && adapter.listLocalArtifacts) {
+    const scanDir = options?.localScanDir ?? process.cwd();
+    try {
+      localArtifacts = await adapter.listLocalArtifacts(scanDir);
+    } catch {
+      // Best-effort scan — a failure here must not break session startup.
+    }
+  }
+
   return {
     artifacts,
     root,
@@ -136,5 +160,6 @@ export async function startSession(
     startCommand,
     adapterDisplayName: adapter.displayName,
     warnings: warnings.length > 0 ? warnings : undefined,
+    localArtifacts,
   };
 }

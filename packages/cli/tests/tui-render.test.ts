@@ -172,6 +172,44 @@ describe("render legend", () => {
     expect(legend).toContain("only");
   });
 
+  it("renders a read-only hint and lock marker for local skills", () => {
+    const state = buildInitialState(
+      makeArtifacts({
+        skills: {
+          "catalog-skill": {
+            description: "Catalog skill",
+            path: "/skills/catalog-skill",
+          },
+        },
+      }),
+      undefined,
+      undefined,
+      false,
+      false,
+      {
+        skills: [
+          {
+            id: "local-skill",
+            description: "Local skill",
+            path: "/repo/.claude/skills/local-skill",
+          },
+        ],
+      }
+    );
+    // Skills tab is present, make it active
+    state.activeTab = state.tabs.indexOf("skills");
+
+    const lines = render(state, 10).map(stripAnsi);
+    const hint = lines.find((l) =>
+      l.includes("local skills are tracked in this repo")
+    );
+    expect(hint).toBeDefined();
+
+    const localLine = lines.find((l) => l.includes("local-skill"));
+    expect(localLine).toBeDefined();
+    expect(localLine).toContain("\u{1f512}");
+  });
+
   it("shows Space toggle in search mode on hooks tab (now overridable)", () => {
     const state = buildInitialState(
       makeArtifacts({

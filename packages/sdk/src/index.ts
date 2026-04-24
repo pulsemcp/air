@@ -51,6 +51,8 @@ export type {
   StartCommand,
   PrepareSessionOptions as CorePrepareSessionOptions,
   PreparedSession,
+  LocalArtifacts,
+  LocalSkillEntry,
   // Validation types
   ValidationResult,
   ValidationError,
