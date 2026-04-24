@@ -9,6 +9,13 @@ import {
 export interface InitConfigOptions {
   /** Override the default air.json path (~/.air/air.json). */
   path?: string;
+  /**
+   * When true, treat an existing `air.json` as pre-existing and leave it
+   * untouched instead of throwing. Missing scaffold pieces (index files,
+   * README) are still created. Use this to provide an upgrade path for
+   * users who initialized before newer scaffold pieces existed.
+   */
+  topUp?: boolean;
 }
 
 export interface ScaffoldedFile {
@@ -194,13 +201,19 @@ export function scaffoldLocalFiles(airDir: string): ScaffoldedFile[] {
  * so editors give autocomplete out of the box, plus a README orienting the
  * user to the layout.
  *
- * @throws Error if air.json already exists at the target path.
+ * Existing index files and README are always left untouched. By default,
+ * an existing `air.json` causes an error; pass `topUp: true` to instead
+ * leave it in place and only scaffold any missing pieces.
+ *
+ * @throws Error if `air.json` exists and `topUp` is not set.
  */
 export function initConfig(options?: InitConfigOptions): InitConfigResult {
   const airJsonPath = options?.path ?? getDefaultAirJsonPath();
   const airDir = dirname(airJsonPath);
+  const topUp = options?.topUp ?? false;
 
-  if (existsSync(airJsonPath)) {
+  const airJsonExists = existsSync(airJsonPath);
+  if (airJsonExists && !topUp) {
     throw new Error(`${airJsonPath} already exists.`);
   }
 
@@ -208,8 +221,10 @@ export function initConfig(options?: InitConfigOptions): InitConfigResult {
 
   const scaffolded: ScaffoldedFile[] = [];
 
-  writeFileSync(airJsonPath, JSON.stringify(buildAirJson(), null, 2) + "\n");
-  scaffolded.push({ path: airJsonPath, kind: "air" });
+  if (!airJsonExists) {
+    writeFileSync(airJsonPath, JSON.stringify(buildAirJson(), null, 2) + "\n");
+    scaffolded.push({ path: airJsonPath, kind: "air" });
+  }
 
   scaffolded.push(...scaffoldLocalFiles(airDir));
 

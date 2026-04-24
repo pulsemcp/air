@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.38] - 2026-04-24
+
+### Added
+- `air init` is now idempotent: re-running it on an existing `~/.air/` no longer errors. When `air.json` already exists, the command runs in **top-up mode** — your `air.json` is left untouched, and only missing scaffold pieces (index files, `README.md`) are created. This gives users who initialized on an older version a clean upgrade path to fill in newer scaffold files without losing their configuration. Pass `--force` to regenerate `air.json` from scratch.
+- New `topUp` option on the SDK's `initConfig` function for invoking this behavior programmatically.
+- New `mode: "topup"` variant on `SmartInitResult`'s discriminated union so CLI consumers can tell top-up from fresh blank init.
+
 ## [0.0.37] - 2026-04-24
 
 ### Added

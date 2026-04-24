@@ -115,4 +115,86 @@ describe("initConfig", () => {
     expect(existsSync(airJsonPath)).toBe(true);
     expect(result.airDir).toBe(resolve(dir, "nested/deep"));
   });
+
+  describe("topUp option", () => {
+    it("leaves an existing air.json untouched and scaffolds missing pieces", () => {
+      const dir = makeTempDir();
+      const airJsonPath = resolve(dir, "air.json");
+      const originalContent = '{"name":"my-own-config","custom":true}\n';
+      writeFileSync(airJsonPath, originalContent);
+
+      const result = initConfig({ path: airJsonPath, topUp: true });
+
+      // Existing air.json is untouched
+      expect(readFileSync(airJsonPath, "utf-8")).toBe(originalContent);
+
+      // `air` is NOT in scaffolded since it pre-existed
+      const kinds = result.scaffolded.map((f) => f.kind);
+      expect(kinds).not.toContain("air");
+
+      // All six indexes + README were created
+      for (const type of ARTIFACT_TYPES) {
+        expect(kinds).toContain(type);
+        expect(existsSync(resolve(dir, `${type}/${type}.json`))).toBe(true);
+      }
+      expect(kinds).toContain("readme");
+      expect(existsSync(resolve(dir, "README.md"))).toBe(true);
+    });
+
+    it("only fills in the specific index files that are missing", () => {
+      const dir = makeTempDir();
+      const airJsonPath = resolve(dir, "air.json");
+      writeFileSync(airJsonPath, '{"name":"existing"}\n');
+
+      // Pre-create skills.json and README.md with custom contents
+      mkdirSync(resolve(dir, "skills"), { recursive: true });
+      const customSkills = '{"my-skill":{"description":"mine","path":"p"}}\n';
+      writeFileSync(resolve(dir, "skills/skills.json"), customSkills);
+      const customReadme = "# my custom readme\n";
+      writeFileSync(resolve(dir, "README.md"), customReadme);
+
+      const result = initConfig({ path: airJsonPath, topUp: true });
+
+      // Custom files remain intact
+      expect(readFileSync(resolve(dir, "skills/skills.json"), "utf-8")).toBe(
+        customSkills
+      );
+      expect(readFileSync(resolve(dir, "README.md"), "utf-8")).toBe(
+        customReadme
+      );
+
+      // Skills and readme were skipped, other indexes were created
+      const kinds = result.scaffolded.map((f) => f.kind);
+      expect(kinds).not.toContain("skills");
+      expect(kinds).not.toContain("readme");
+      expect(kinds).not.toContain("air");
+      for (const type of ARTIFACT_TYPES) {
+        if (type === "skills") continue;
+        expect(kinds).toContain(type);
+      }
+    });
+
+    it("returns an empty scaffolded array when nothing is missing", () => {
+      const dir = makeTempDir();
+      const airJsonPath = resolve(dir, "air.json");
+
+      // Fresh init creates everything
+      initConfig({ path: airJsonPath });
+
+      // Second call in topUp mode should find nothing to do
+      const result = initConfig({ path: airJsonPath, topUp: true });
+      expect(result.scaffolded).toEqual([]);
+    });
+
+    it("creates a fresh scaffold when air.json does not exist (topUp is a no-op)", () => {
+      const dir = makeTempDir();
+      const airJsonPath = resolve(dir, "air.json");
+
+      const result = initConfig({ path: airJsonPath, topUp: true });
+
+      // Same behavior as a fresh init — all files scaffolded
+      expect(result.scaffolded.map((f) => f.kind)).toContain("air");
+      expect(existsSync(airJsonPath)).toBe(true);
+    });
+  });
 });

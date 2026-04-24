@@ -834,7 +834,7 @@ describe("smartInit", () => {
     expect(existsSync(airJsonPath)).toBe(true);
   });
 
-  it("throws EXISTS error when config exists without force", () => {
+  it("returns topup mode when config exists without force (leaves air.json untouched)", () => {
     const repoDir = createGitRepo(
       "https://github.com/acme/config.git",
       {
@@ -846,14 +846,54 @@ describe("smartInit", () => {
 
     const outputDir = makeTempDir();
     const airJsonPath = resolve(outputDir, "air.json");
-    writeFileSync(airJsonPath, "{}");
+    const originalContent = '{"name":"my-existing-config"}\n';
+    writeFileSync(airJsonPath, originalContent);
 
-    try {
-      smartInit({ cwd: repoDir, path: airJsonPath });
-      expect.unreachable("should have thrown");
-    } catch (err) {
-      expect(err).toBeInstanceOf(InitFromRepoError);
-      expect((err as InitFromRepoError).code).toBe("EXISTS");
+    const result = smartInit({ cwd: repoDir, path: airJsonPath });
+
+    expect(result.mode).toBe("topup");
+    // Existing air.json must not be rewritten
+    expect(readFileSync(airJsonPath, "utf-8")).toBe(originalContent);
+
+    if (result.mode === "topup") {
+      // Some scaffold pieces should have been added
+      expect(result.scaffolded.length).toBeGreaterThan(0);
+      // But never the air.json itself
+      expect(result.scaffolded.map((f) => f.kind)).not.toContain("air");
+    }
+  });
+
+  it("topup mode reports empty scaffolded array when everything is already present", () => {
+    const dir = makeTempDir();
+    const airJsonPath = resolve(dir, "air.json");
+
+    // First call: fresh blank init creates the full scaffold
+    const first = smartInit({ cwd: dir, path: airJsonPath });
+    expect(first.mode).toBe("blank");
+
+    // Second call: top-up finds nothing to add
+    const second = smartInit({ cwd: dir, path: airJsonPath });
+    expect(second.mode).toBe("topup");
+    if (second.mode === "topup") {
+      expect(second.scaffolded).toEqual([]);
+    }
+  });
+
+  it("topup mode fills in missing scaffold pieces without touching air.json", () => {
+    const dir = makeTempDir();
+    const airJsonPath = resolve(dir, "air.json");
+    const originalContent = '{"name":"existing"}\n';
+    writeFileSync(airJsonPath, originalContent);
+
+    const result = smartInit({ cwd: dir, path: airJsonPath });
+
+    expect(result.mode).toBe("topup");
+    expect(readFileSync(airJsonPath, "utf-8")).toBe(originalContent);
+    if (result.mode === "topup") {
+      const kinds = result.scaffolded.map((f) => f.kind);
+      expect(kinds).toContain("skills");
+      expect(kinds).toContain("mcp");
+      expect(kinds).toContain("readme");
     }
   });
 

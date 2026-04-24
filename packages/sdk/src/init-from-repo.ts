@@ -373,17 +373,23 @@ export function initFromRepo(
 /** Result from `smartInit` — discriminated by `mode`. */
 export type SmartInitResult =
   | ({ mode: "repo" } & InitFromRepoResult)
-  | ({ mode: "blank" } & InitConfigResult);
+  | ({ mode: "blank" } & InitConfigResult)
+  | ({ mode: "topup" } & InitConfigResult);
 
 /**
  * High-level init that tries repo-based discovery first and falls back to
  * blank scaffolding when no git context or artifacts are available.
  *
- * @throws InitFromRepoError with code "EXISTS" if config exists and force is false.
- * @throws Error for unexpected failures.
+ * When `air.json` already exists and `--force` isn't set, falls back to
+ * "topup" mode: leaves the existing config untouched but scaffolds any
+ * missing index files or README. This provides a safe upgrade path for
+ * users initialized on older versions that didn't scaffold all pieces.
+ *
+ * @throws Error for unexpected failures (non-InitFromRepoError).
  */
 export function smartInit(options?: InitFromRepoOptions): SmartInitResult {
   const force = options?.force ?? false;
+  const targetPath = options?.path ?? getDefaultAirJsonPath();
 
   try {
     const result = initFromRepo(options);
@@ -391,15 +397,16 @@ export function smartInit(options?: InitFromRepoOptions): SmartInitResult {
   } catch (err) {
     if (!(err instanceof InitFromRepoError)) throw err;
 
-    // Config already exists — don't silently fall back
-    if (err.code === "EXISTS") throw err;
+    // Config already exists — scaffold any missing pieces without touching air.json.
+    // Forced overwrite is handled by initFromRepo itself (re-run not needed here).
+    if (err.code === "EXISTS") {
+      const result = initConfig({ path: options?.path, topUp: true });
+      return { mode: "topup", ...result };
+    }
 
     // Fallback conditions: no git, no remote, non-GitHub remote, no artifacts
-    if (force) {
-      const targetPath = options?.path ?? getDefaultAirJsonPath();
-      if (existsSync(targetPath)) {
-        unlinkSync(targetPath);
-      }
+    if (force && existsSync(targetPath)) {
+      unlinkSync(targetPath);
     }
 
     const result = initConfig({ path: options?.path });
