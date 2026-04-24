@@ -42,9 +42,7 @@ export async function resolveFullArtifacts(
   const airConfig = loadAirConfig(airJsonPath);
   const loaded = await loadExtensions(airConfig.extensions || [], airJsonDir);
 
-  const providers = loaded.providers
-    .map((ext) => ext.provider!)
-    .filter(Boolean);
+  const providers = loaded.providers.map((ext) => ext.provider!);
   const providerOptions: Record<string, unknown> = {};
   if (options.gitProtocol !== undefined) {
     providerOptions.gitProtocol = options.gitProtocol;

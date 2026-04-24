@@ -13,7 +13,7 @@ export function resolveCommand(): Command {
     )
     .option(
       "--json",
-      "Emit JSON output (currently the only supported format)"
+      "Emit JSON output (default and currently the only supported format; accepted for forward-compat)"
     )
     .option(
       "--git-protocol <protocol>",

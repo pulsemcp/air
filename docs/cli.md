@@ -122,7 +122,7 @@ Shows ID, title (if available), and description for each artifact. Shows the mer
 
 ### `air resolve --json`
 
-Resolve the active `air.json` and print the full merged artifact tree as JSON to stdout.
+Resolve the active `air.json` and print the full merged artifact tree as JSON to stdout. The `--json` flag is optional (JSON is the default and currently only supported format) — it is accepted for forward compatibility so downstream callers can pin the output format explicitly.
 
 ```bash
 # Resolve the default ~/.air/air.json
@@ -156,7 +156,7 @@ All `path` fields are absolute, making the output self-contained regardless of w
 
 | Flag | Description |
 |------|-------------|
-| `--json` | Emit JSON output (currently the only supported format). |
+| `--json` | Emit JSON output (default and currently the only supported format; accepted for forward-compat). |
 | `--config <path>` | Path to `air.json`. Defaults to `AIR_CONFIG` env or `~/.air/air.json`. |
 | `--git-protocol <ssh\|https>` | Protocol used by git-based catalog providers when cloning. Defaults to `ssh`. Overrides the `gitProtocol` field in `air.json` and the `AIR_GIT_PROTOCOL` env var for this invocation. |
 

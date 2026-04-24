@@ -215,6 +215,55 @@ describe("resolve command", () => {
     expect(result.stderr).toContain("Error");
   });
 
+  it("loads extension-provided catalog providers and resolves custom URI schemes", () => {
+    // Stub extension with a catalog provider for a custom `stub://` scheme.
+    // If `resolveFullArtifacts` doesn't load extensions, the URI would fail
+    // with "No catalog provider registered for scheme stub://".
+    const catalog = createTemp({
+      "air.json": {
+        name: "test",
+        extensions: ["./stub-provider-ext.js"],
+        mcp: ["stub://virtual-servers"],
+      },
+      "stub-provider-ext.js": `
+export default {
+  name: "stub-provider-ext",
+  provider: {
+    scheme: "stub",
+    async fileExists() {
+      return true;
+    },
+    async resolve(uri) {
+      // Return synthetic MCP server content so we can assert the provider
+      // was actually invoked (not just loaded).
+      return {
+        "provider-resolved-server": {
+          type: "stdio",
+          command: "echo",
+          args: ["from-stub-provider"],
+        },
+      };
+    },
+    resolveSourceDir() {
+      return "/tmp";
+    },
+  },
+};
+`,
+    });
+
+    const result = tryRun(
+      `resolve --json --config ${join(catalog, "air.json")}`
+    );
+    expect(result.exitCode).toBe(0);
+
+    const output = JSON.parse(result.stdout);
+    expect(output.mcp["provider-resolved-server"]).toBeDefined();
+    expect(output.mcp["provider-resolved-server"].args).toEqual([
+      "from-stub-provider",
+    ]);
+  });
+
   it("expands plugins into their constituent artifacts", () => {
     const catalog = createTemp({
       "air.json": {

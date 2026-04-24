@@ -273,7 +273,7 @@ All `path` fields are absolute, matching what `resolveArtifacts()` returns from 
 | Flag | Description |
 |------|-------------|
 | `--json` | Emit JSON output (currently the only supported format) |
-| `--config <path>` | Path to air.json (default: `~/.air/air.json` or `AIR_CONFIG`) |
+| `--config <path>` | Path to air.json (default: `AIR_CONFIG` env or `~/.air/air.json`) |
 | `--git-protocol <ssh\|https>` | Protocol used by git-based catalog providers when cloning |
 
 ### When to use it
