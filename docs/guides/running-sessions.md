@@ -152,14 +152,16 @@ The adapter argument is required — it specifies which agent adapter to use (e.
 2. Resolves artifacts (including remote URIs via providers)
 3. Auto-detects the root from the target directory's git context (or uses `--root`)
 4. Calls the adapter's `prepareSession()`:
-   - Writes `.mcp.json` to the target directory
+   - Loads the prior-run manifest (if any) and cleans up stale artifacts — see [Cleanup between runs](#cleanup-between-runs)
+   - Writes `.mcp.json` to the target directory (merges with existing user-added entries; replaces AIR-managed ones)
    - Copies skills into the agent's skill directory
    - Copies hook directories into the agent's hook directory
    - Copies referenced documents
 5. Runs transforms on `.mcp.json` and `HOOK.json` files (e.g., secrets injection)
-6. Registers hooks in the agent's settings (e.g., `.claude/settings.json`)
-7. Validates no `${VAR}` patterns remain unresolved in `.mcp.json` or `HOOK.json`
-8. Outputs structured JSON to stdout
+6. Registers hooks in the agent's settings (e.g., `.claude/settings.json`), tagging each AIR-written entry with `_airHookId` so future runs can identify it
+7. Writes an updated manifest recording the artifact IDs AIR owns in this run
+8. Validates no `${VAR}` patterns remain unresolved in `.mcp.json` or `HOOK.json`
+9. Outputs structured JSON to stdout
 
 ### Options
 
@@ -237,6 +239,18 @@ air prepare claude --without-hook prevent-secrets-in-context
 # Start from empty and include only what you list
 air prepare claude --without-defaults --skill deploy-staging --mcp-server github
 ```
+
+### Cleanup between runs
+
+AIR records which artifact IDs it wrote to each target directory in a per-user manifest at `~/.air/manifests/<hash>.json` (the filename is the SHA-256 of the absolute target path). On every subsequent `air prepare` or `air start` into the same directory, the adapter diffs the new selection against the prior manifest and removes artifacts that are no longer selected:
+
+- **Skills** — `.claude/skills/<id>/` directories are deleted for IDs dropped from the selection
+- **Hooks** — `.claude/hooks/<id>/` directories are deleted, and their entries in `.claude/settings.json` (identified by the `_airHookId` marker the adapter writes alongside each entry) are removed
+- **MCP servers** — the corresponding keys in `.mcp.json` are deleted; user-added keys and other top-level fields pass through unchanged
+
+Artifacts AIR didn't write are never touched. If you manually place a `.claude/skills/<id>/` or `.claude/hooks/<id>/` directory before the first `air prepare` run, AIR recognizes it as user-authored and leaves it alone — both the files and any `.claude/settings.json` hook registrations that reference it.
+
+If the manifest is missing or unreadable, the current run is treated as "no prior state" — nothing is cleaned up, and a fresh manifest is written at the end. You can point AIR at a different state directory for testing by setting `AIR_HOME` (defaults to `~/.air`).
 
 ## air resolve — inspecting the merged artifact tree
 
