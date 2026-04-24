@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.40] - 2026-04-24
+
+### Added
+- New optional `authServerMetadataUrl` field on the `mcp.json` `OAuthConfiguration` schema (RFC 8414 / OpenID Connect discovery). Use for servers whose MCP endpoint does not advertise OAuth metadata but whose upstream auth server does (e.g. servers delegating to Google). `ClaudeAdapter` and `CoworkEmitter` pass the value through unchanged — Claude Code reads it inline from `.mcp.json`.
+- New optional `clientSecret` field on the `mcp.json` `OAuthConfiguration` schema for confidential OAuth clients. Intended to be sourced via `${ENV_VAR}` interpolation (resolved by `@pulsemcp/air-secrets-env` before `.mcp.json` is written) so the raw value is never checked into the repo. `ClaudeAdapter` and `CoworkEmitter` write the resolved value into `.mcp.json` alongside the other oauth fields.
+
 ## [0.0.39] - 2026-04-24
 
 ### Changed
