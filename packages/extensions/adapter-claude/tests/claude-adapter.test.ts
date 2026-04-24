@@ -1,6 +1,6 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, beforeEach } from "vitest";
 import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "fs";
-import { resolve, join } from "path";
+import { resolve, join, dirname } from "path";
 import { tmpdir } from "os";
 import { ClaudeAdapter } from "../src/claude-adapter.js";
 import type {
@@ -126,6 +126,75 @@ describe("ClaudeAdapter", () => {
         clientId: "my-client",
         scopes: ["read", "write"],
         callbackPort: 3456,
+      });
+    });
+
+    it("passes authServerMetadataUrl through to the generated oauth object", () => {
+      const servers: Record<string, McpServerEntry> = {
+        bigquery: {
+          type: "streamable-http",
+          url: "https://bigquery.googleapis.com/mcp",
+          oauth: {
+            clientId: "my-client",
+            authServerMetadataUrl:
+              "https://accounts.google.com/.well-known/openid-configuration",
+          },
+        },
+      };
+
+      const result = adapter.translateMcpServers(servers) as any;
+      expect(result.mcpServers.bigquery.oauth).toEqual({
+        clientId: "my-client",
+        authServerMetadataUrl:
+          "https://accounts.google.com/.well-known/openid-configuration",
+      });
+    });
+
+    it("passes clientSecret through as-is (interpolation is a transform concern)", () => {
+      const servers: Record<string, McpServerEntry> = {
+        authed: {
+          type: "streamable-http",
+          url: "https://mcp.example.com/mcp",
+          oauth: {
+            clientId: "my-client",
+            clientSecret: "${OAUTH_CLIENT_SECRET}",
+          },
+        },
+      };
+
+      const result = adapter.translateMcpServers(servers) as any;
+      // Adapter writes the raw ${VAR} pattern; secret-transform extensions
+      // (e.g. @pulsemcp/air-secrets-env) resolve it when walking .mcp.json.
+      expect(result.mcpServers.authed.oauth).toEqual({
+        clientId: "my-client",
+        clientSecret: "${OAUTH_CLIENT_SECRET}",
+      });
+    });
+
+    it("plumbs all expanded oauth fields together", () => {
+      const servers: Record<string, McpServerEntry> = {
+        bigquery: {
+          type: "streamable-http",
+          url: "https://bigquery.googleapis.com/mcp",
+          oauth: {
+            clientId: "my-client",
+            clientSecret: "${BQ_CLIENT_SECRET}",
+            scopes: ["https://www.googleapis.com/auth/bigquery.readonly"],
+            redirectUri: "http://localhost:8888/callback",
+            authServerMetadataUrl:
+              "https://accounts.google.com/.well-known/openid-configuration",
+          },
+        },
+      };
+
+      const result = adapter.translateMcpServers(servers) as any;
+      expect(result.mcpServers.bigquery.oauth).toEqual({
+        clientId: "my-client",
+        clientSecret: "${BQ_CLIENT_SECRET}",
+        scopes: ["https://www.googleapis.com/auth/bigquery.readonly"],
+        callbackPort: 8888,
+        authServerMetadataUrl:
+          "https://accounts.google.com/.well-known/openid-configuration",
       });
     });
   });
@@ -265,6 +334,8 @@ describe("ClaudeAdapter", () => {
 
   describe("prepareSession", () => {
     let tempDir: string;
+    let airHomeDir: string;
+    let originalAirHome: string | undefined;
 
     function createTempDir(): string {
       tempDir = resolve(
@@ -275,9 +346,27 @@ describe("ClaudeAdapter", () => {
       return tempDir;
     }
 
+    beforeEach(() => {
+      // Sandbox the per-user AIR home so manifest writes don't pollute ~/.air/
+      airHomeDir = resolve(
+        tmpdir(),
+        `air-home-test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      );
+      originalAirHome = process.env.AIR_HOME;
+      process.env.AIR_HOME = airHomeDir;
+    });
+
     afterEach(() => {
       if (tempDir && existsSync(tempDir)) {
         rmSync(tempDir, { recursive: true, force: true });
+      }
+      if (airHomeDir && existsSync(airHomeDir)) {
+        rmSync(airHomeDir, { recursive: true, force: true });
+      }
+      if (originalAirHome === undefined) {
+        delete process.env.AIR_HOME;
+      } else {
+        process.env.AIR_HOME = originalAirHome;
       }
     });
 
@@ -2052,6 +2141,295 @@ describe("ClaudeAdapter", () => {
 
         const mcpJson = JSON.parse(readFileSync(join(dir, ".mcp.json"), "utf-8"));
         expect(Object.keys(mcpJson.mcpServers)).toEqual(["github"]);
+      });
+    });
+
+    describe("manifest-based reconciliation", () => {
+      // End-to-end: run prepareSession twice with different selections and
+      // assert that artifacts removed from the selection are cleaned up,
+      // while user-authored artifacts and pre-existing .mcp.json keys are
+      // preserved. This exercises the full manifest round-trip: build →
+      // write → load → diff → cleanup.
+
+      function writeSkillSrc(dir: string, id: string): string {
+        const src = join(dir, "..", `src-${id}`, "skills", id);
+        mkdirSync(src, { recursive: true });
+        writeFileSync(join(src, "SKILL.md"), `---\nname: ${id}\n---\n# ${id}`);
+        return resolve(src);
+      }
+
+      function writeHookSrc(dir: string, id: string, command: string): string {
+        const src = join(dir, "..", `src-${id}`, "hooks", id);
+        mkdirSync(src, { recursive: true });
+        writeFileSync(
+          join(src, "HOOK.json"),
+          JSON.stringify({ event: "session_start", command })
+        );
+        return resolve(src);
+      }
+
+      it("removes stale skills, hooks, and MCP servers on re-run with a different selection", async () => {
+        const dir = createTempDir();
+
+        const artifacts = emptyArtifacts();
+        artifacts.skills["skill-a"] = {
+          description: "A",
+          path: writeSkillSrc(dir, "skill-a"),
+        };
+        artifacts.skills["skill-b"] = {
+          description: "B",
+          path: writeSkillSrc(dir, "skill-b"),
+        };
+        artifacts.hooks["hook-a"] = {
+          description: "A",
+          path: writeHookSrc(dir, "hook-a", "cmd-a"),
+        };
+        artifacts.hooks["hook-b"] = {
+          description: "B",
+          path: writeHookSrc(dir, "hook-b", "cmd-b"),
+        };
+        artifacts.mcp["mcp-a"] = { type: "stdio", command: "cmd-a" };
+        artifacts.mcp["mcp-b"] = { type: "stdio", command: "cmd-b" };
+
+        // First run: selection A (everything).
+        await adapter.prepareSession(artifacts, dir, {
+          root: {
+            description: "Test",
+            default_skills: ["skill-a", "skill-b"],
+            default_hooks: ["hook-a", "hook-b"],
+            default_mcp_servers: ["mcp-a", "mcp-b"],
+          },
+        });
+
+        expect(existsSync(join(dir, ".claude", "skills", "skill-a"))).toBe(true);
+        expect(existsSync(join(dir, ".claude", "skills", "skill-b"))).toBe(true);
+        expect(existsSync(join(dir, ".claude", "hooks", "hook-a"))).toBe(true);
+        expect(existsSync(join(dir, ".claude", "hooks", "hook-b"))).toBe(true);
+        {
+          const mcp = JSON.parse(readFileSync(join(dir, ".mcp.json"), "utf-8"));
+          expect(Object.keys(mcp.mcpServers).sort()).toEqual(["mcp-a", "mcp-b"]);
+          const settings = JSON.parse(
+            readFileSync(join(dir, ".claude", "settings.json"), "utf-8")
+          );
+          expect(settings.hooks.SessionStart).toHaveLength(2);
+        }
+
+        // Second run: selection B (drops -b of each type).
+        await adapter.prepareSession(artifacts, dir, {
+          root: {
+            description: "Test",
+            default_skills: ["skill-a"],
+            default_hooks: ["hook-a"],
+            default_mcp_servers: ["mcp-a"],
+          },
+        });
+
+        expect(existsSync(join(dir, ".claude", "skills", "skill-a"))).toBe(true);
+        expect(existsSync(join(dir, ".claude", "skills", "skill-b"))).toBe(false);
+        expect(existsSync(join(dir, ".claude", "hooks", "hook-a"))).toBe(true);
+        expect(existsSync(join(dir, ".claude", "hooks", "hook-b"))).toBe(false);
+
+        const mcp = JSON.parse(readFileSync(join(dir, ".mcp.json"), "utf-8"));
+        expect(Object.keys(mcp.mcpServers)).toEqual(["mcp-a"]);
+
+        const settings = JSON.parse(
+          readFileSync(join(dir, ".claude", "settings.json"), "utf-8")
+        );
+        expect(settings.hooks.SessionStart).toHaveLength(1);
+        expect(settings.hooks.SessionStart[0].hooks[0].command).toBe("cmd-a");
+      });
+
+      it("preserves user-authored MCP servers and settings hooks across re-runs", async () => {
+        const dir = createTempDir();
+
+        const artifacts = emptyArtifacts();
+        artifacts.hooks["hook-a"] = {
+          description: "A",
+          path: writeHookSrc(dir, "hook-a", "cmd-a"),
+        };
+        artifacts.mcp["mcp-a"] = { type: "stdio", command: "cmd-a" };
+
+        // Seed .mcp.json and .claude/settings.json with user-authored entries
+        // that AIR must never touch.
+        mkdirSync(join(dir, ".claude"), { recursive: true });
+        writeFileSync(
+          join(dir, ".mcp.json"),
+          JSON.stringify({
+            mcpServers: {
+              "user-mcp": { type: "stdio", command: "user-cmd" },
+            },
+          })
+        );
+        writeFileSync(
+          join(dir, ".claude", "settings.json"),
+          JSON.stringify({
+            permissions: { allow: ["Bash(*)"] },
+            hooks: {
+              SessionStart: [
+                {
+                  matcher: "",
+                  hooks: [{ type: "command", command: "user-hook.sh" }],
+                },
+              ],
+            },
+          })
+        );
+
+        // First run: AIR adds mcp-a and hook-a.
+        await adapter.prepareSession(artifacts, dir, {
+          root: {
+            description: "Test",
+            default_hooks: ["hook-a"],
+            default_mcp_servers: ["mcp-a"],
+          },
+        });
+
+        // Second run: AIR removes mcp-a and hook-a. User entries must remain.
+        await adapter.prepareSession(artifacts, dir, {
+          root: {
+            description: "Test",
+            default_hooks: [],
+            default_mcp_servers: [],
+          },
+        });
+
+        const mcp = JSON.parse(readFileSync(join(dir, ".mcp.json"), "utf-8"));
+        expect(mcp.mcpServers["user-mcp"]).toEqual({
+          type: "stdio",
+          command: "user-cmd",
+        });
+        expect(mcp.mcpServers["mcp-a"]).toBeUndefined();
+
+        const settings = JSON.parse(
+          readFileSync(join(dir, ".claude", "settings.json"), "utf-8")
+        );
+        expect(settings.permissions).toEqual({ allow: ["Bash(*)"] });
+        expect(settings.hooks.SessionStart).toHaveLength(1);
+        expect(settings.hooks.SessionStart[0].hooks[0].command).toBe(
+          "user-hook.sh"
+        );
+        expect(existsSync(join(dir, ".claude", "hooks", "hook-a"))).toBe(false);
+      });
+
+      it("treats a missing manifest as no prior state (no cleanup, no error)", async () => {
+        const dir = createTempDir();
+
+        const artifacts = emptyArtifacts();
+        artifacts.skills["skill-a"] = {
+          description: "A",
+          path: writeSkillSrc(dir, "skill-a"),
+        };
+
+        // No prior manifest on disk → first run should just write artifacts.
+        await adapter.prepareSession(artifacts, dir, {
+          root: { description: "Test", default_skills: ["skill-a"] },
+        });
+
+        expect(existsSync(join(dir, ".claude", "skills", "skill-a"))).toBe(true);
+      });
+
+      it("treats a corrupt manifest as no prior state (falls back cleanly)", async () => {
+        const dir = createTempDir();
+
+        const artifacts = emptyArtifacts();
+        artifacts.skills["skill-a"] = {
+          description: "A",
+          path: writeSkillSrc(dir, "skill-a"),
+        };
+
+        // Write a corrupt manifest file at the exact path the adapter will
+        // try to load. diffManifest should see `null` and do nothing stale.
+        const { getManifestPath } = await import("@pulsemcp/air-core");
+        const manifestPath = getManifestPath(dir);
+        mkdirSync(dirname(manifestPath), { recursive: true });
+        writeFileSync(manifestPath, "{ not valid json");
+
+        await expect(
+          adapter.prepareSession(artifacts, dir, {
+            root: { description: "Test", default_skills: ["skill-a"] },
+          })
+        ).resolves.toBeDefined();
+
+        expect(existsSync(join(dir, ".claude", "skills", "skill-a"))).toBe(true);
+      });
+
+      it("does not error when user has already deleted a previously-managed artifact", async () => {
+        const dir = createTempDir();
+
+        const artifacts = emptyArtifacts();
+        artifacts.skills["skill-a"] = {
+          description: "A",
+          path: writeSkillSrc(dir, "skill-a"),
+        };
+
+        // First run: writes skill-a and records it in the manifest.
+        await adapter.prepareSession(artifacts, dir, {
+          root: { description: "Test", default_skills: ["skill-a"] },
+        });
+        expect(existsSync(join(dir, ".claude", "skills", "skill-a"))).toBe(true);
+
+        // User manually deletes the skill between runs.
+        rmSync(join(dir, ".claude", "skills", "skill-a"), {
+          recursive: true,
+          force: true,
+        });
+
+        // Second run with an empty selection: cleanup should be a no-op,
+        // not throw on the missing directory.
+        await expect(
+          adapter.prepareSession(artifacts, dir, {
+            root: { description: "Test", default_skills: [] },
+          })
+        ).resolves.toBeDefined();
+      });
+
+      it("preserves a user-authored .claude/hooks/<id>/ dir when an AIR hook with the same id is selected", async () => {
+        const dir = createTempDir();
+
+        // User pre-populates .claude/hooks/hook-a/ with their own content
+        // BEFORE any AIR run touches this target. The prior manifest is
+        // therefore empty/missing, so the adapter must treat this dir as
+        // user-authored: do not overwrite it and do not register it in
+        // settings.json (the user's HOOK.json may not exist or may differ).
+        const userHookDir = join(dir, ".claude", "hooks", "hook-a");
+        mkdirSync(userHookDir, { recursive: true });
+        writeFileSync(join(userHookDir, "marker.txt"), "user-content");
+
+        const artifacts = emptyArtifacts();
+        artifacts.hooks["hook-a"] = {
+          description: "A",
+          path: writeHookSrc(dir, "hook-a", "air-cmd"),
+        };
+
+        await adapter.prepareSession(artifacts, dir, {
+          root: { description: "Test", default_hooks: ["hook-a"] },
+        });
+
+        // User's content survives — the catalog version was NOT copied over.
+        expect(
+          readFileSync(join(userHookDir, "marker.txt"), "utf-8")
+        ).toBe("user-content");
+        expect(existsSync(join(userHookDir, "HOOK.json"))).toBe(false);
+
+        // The hook was NOT registered in settings.json: the user's dir
+        // is theirs to register however they like.
+        const settingsPath = join(dir, ".claude", "settings.json");
+        if (existsSync(settingsPath)) {
+          const settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
+          const sessionStart = settings.hooks?.SessionStart ?? [];
+          const airEntries = sessionStart.flatMap(
+            (g: { hooks?: Array<{ _airHookId?: string }> }) =>
+              (g.hooks ?? []).filter((h) => h._airHookId === "hook-a")
+          );
+          expect(airEntries).toHaveLength(0);
+        }
+
+        // The next run with an empty selection must NOT delete the user's
+        // dir — it isn't in the manifest, so it isn't a cleanup candidate.
+        await adapter.prepareSession(artifacts, dir, {
+          root: { description: "Test", default_hooks: [] },
+        });
+        expect(existsSync(join(userHookDir, "marker.txt"))).toBe(true);
       });
     });
   });

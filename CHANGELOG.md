@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.41] - 2026-04-24
+
+### Added
+- `air start` and `air prepare` now auto-discover AIR index files (`skills.json`, `mcp.json`, nested `air.json`, full `<type>/<type>.json` catalog layouts) in the target repo and offer a single interactive `[Y/n/d=don't ask again]` prompt to register them with your `~/.air/air.json`. On accept, catalog directories go into `catalogs[]` and loose indexes into the matching per-type array. Missing `air.json` is scaffolded with a minimal structure. The prompt is TTY-only — CI, piped invocations, `--dry-run`, `--skip-confirmation`, and any scripted artifact-selection flag all silently skip discovery.
+- New `--no-discover` flag on `air start` and `air prepare` to suppress the auto-discovery prompt even in a TTY.
+- New `~/.air/preferences.json` file (and accompanying `schemas/preferences.schema.json`) that records dismissals from the auto-discovery prompt so AIR doesn't re-offer the same paths in the same repo. Load/save helpers exported from `@pulsemcp/air-sdk` as `loadPreferences`, `savePreferences`, `addDismissed`, `isDismissed`.
+- New SDK exports: `discoverIndexes`, `resolveAnchor`, `addDiscoveredToAirJson`, `buildRegisteredChecker`, `findOfferableIndexes`, `acceptOffers`, `dismissOffers` and the corresponding types for programmatic integrations that want to drive the discovery flow themselves.
+- New docs guide: [Managing Skills in Your Repo](docs/guides/managing-skills-in-your-repo.md) covering the three repo patterns (`.claude/skills/`, in-repo indexes, catalog directories) and the auto-discovery flow end-to-end.
+- New optional `authServerMetadataUrl` field on the `mcp.json` `OAuthConfiguration` schema (RFC 8414 / OpenID Connect discovery). Use for servers whose MCP endpoint does not advertise OAuth metadata but whose upstream auth server does (e.g. servers delegating to Google). `ClaudeAdapter` and `CoworkEmitter` pass the value through unchanged — Claude Code reads it inline from `.mcp.json`.
+- New optional `clientSecret` field on the `mcp.json` `OAuthConfiguration` schema for confidential OAuth clients. Intended to be sourced via `${ENV_VAR}` interpolation (resolved by `@pulsemcp/air-secrets-env` before `.mcp.json` is written) so the raw value is never checked into the repo. `ClaudeAdapter` and `CoworkEmitter` write the resolved value into `.mcp.json` alongside the other oauth fields.
+- New `manifest` module in `@pulsemcp/air-core` that tracks AIR-managed artifact IDs (skills, hooks, MCP servers) per target directory. Persisted at `<airHome>/manifests/<sha256(targetDir)>.json` (default `airHome` is `~/.air`, overridable via `AIR_HOME` for sandboxed tests). Exports `MANIFEST_VERSION`, `buildManifest`, `loadManifest`, `writeManifest`, `diffManifest`, `getManifestPath`, `getDefaultAirHome`, and the `Manifest` / `ManifestSelection` / `ManifestDiff` types. Re-exported from `@pulsemcp/air-sdk`.
+
+### Fixed
+- **`@pulsemcp/air-adapter-claude`: `prepareSession` now cleans up stale artifacts between runs.** On every run, the adapter diffs the prior manifest against the new selection and removes artifacts that were previously AIR-written but are no longer selected — `.claude/skills/<id>/`, `.claude/hooks/<id>/`, and the corresponding entry in `.mcp.json`. User-authored entries in `.mcp.json` and user-authored settings hooks are preserved. Previously, selecting a smaller set on a re-run left orphaned artifacts behind.
+- **`@pulsemcp/air-adapter-claude`: `.mcp.json` is now merged instead of overwritten.** User-added `mcpServers` keys are preserved across runs; only AIR-managed keys are replaced or removed.
+- **`@pulsemcp/air-adapter-claude`: settings.json hook registrations no longer accumulate duplicates.** Each AIR-written hook entry carries an `_airHookId` marker that identifies ownership, so re-runs prune and re-register cleanly without touching user-authored hook entries.
+
 ## [0.0.40] - 2026-04-24
 
 ### Fixed

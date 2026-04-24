@@ -18,6 +18,14 @@ export {
   detectSchemaFromValue,
   getAllSchemaTypes,
   isValidSchemaType,
+  // Manifest
+  MANIFEST_VERSION,
+  getDefaultAirHome,
+  getManifestPath,
+  loadManifest,
+  writeManifest,
+  buildManifest,
+  diffManifest,
 } from "@pulsemcp/air-core";
 
 // Re-export core types
@@ -60,6 +68,10 @@ export type {
   ResolveOptions,
   // Schema types
   SchemaType,
+  // Manifest types
+  Manifest,
+  ManifestSelection,
+  ManifestDiff,
 } from "@pulsemcp/air-core";
 
 // Adapter registry
@@ -150,3 +162,55 @@ export {
   validateNoUnresolvedVars,
   unresolvedVarsMessage,
 } from "./validate-config.js";
+
+// Repo-level index discovery (for `air start` / `air prepare` auto-registration)
+export {
+  discoverIndexes,
+  resolveAnchor,
+  CATALOG_TYPES,
+} from "./discover-indexes.js";
+export type {
+  DiscoveryResult,
+  DiscoveredCatalog,
+  DiscoveredLooseIndex,
+  DiscoveredAirJson,
+  DiscoverIndexesOptions,
+  CatalogType,
+} from "./discover-indexes.js";
+
+// User preferences (auto-discovery dismiss-set lives here)
+export {
+  loadPreferences,
+  savePreferences,
+  addDismissed,
+  isDismissed,
+  getDefaultPreferencesPath,
+} from "./preferences.js";
+export type { AirPreferences, DismissedDiscovery } from "./preferences.js";
+
+// air.json editing (adds discovered entries)
+export {
+  addDiscoveredToAirJson,
+  buildRegisteredChecker,
+  entryAlreadyListed,
+} from "./edit-air-json.js";
+export type {
+  AirJsonAddition,
+  EditAirJsonOptions,
+  EditAirJsonResult,
+  AddDiscoveredEntries,
+  RegisteredChecker,
+} from "./edit-air-json.js";
+
+// Auto-discovery orchestration (used by `air start` / `air prepare`)
+export {
+  findOfferableIndexes,
+  acceptOffers,
+  dismissOffers,
+} from "./auto-discovery.js";
+export type {
+  FindOfferableOptions,
+  OfferableDiscoveryResult,
+  AcceptDiscoveryOptions,
+  DismissDiscoveryOptions,
+} from "./auto-discovery.js";

@@ -246,7 +246,8 @@ Produces this entry in `.claude/settings.json`:
           {
             "type": "command",
             "command": "npx lint-staged",
-            "timeout": 30
+            "timeout": 30,
+            "_airHookId": "lint-staged"
           }
         ]
       }
@@ -255,7 +256,9 @@ Produces this entry in `.claude/settings.json`:
 }
 ```
 
-If `.claude/settings.json` already exists, new hook entries are merged — existing settings and hooks are preserved.
+If `.claude/settings.json` already exists, new hook entries are merged — existing settings and hooks are preserved. The `_airHookId` marker identifies which entries AIR wrote; entries without the marker (or with an unknown ID) are considered user-authored and are never modified.
+
+On re-runs, AIR uses the `_airHookId` marker plus the per-target manifest to prune its prior entries before re-registering the current selection. This prevents duplicate registrations and removes entries for hooks that were dropped from the selection. See [Cleanup between runs](running-sessions.md#cleanup-between-runs) for details.
 
 **Limitations:**
 - The `env` field from `HOOK.json` is not forwarded to Claude Code hooks. Environment variables must be set in the shell environment before starting the session.

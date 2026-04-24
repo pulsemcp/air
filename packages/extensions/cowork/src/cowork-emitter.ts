@@ -310,6 +310,12 @@ export class CoworkEmitter implements PluginEmitter {
       }
     }
     if (oauth.scopes) result.scopes = oauth.scopes;
+    if (oauth.authServerMetadataUrl) {
+      result.authServerMetadataUrl = oauth.authServerMetadataUrl;
+    }
+    if (oauth.clientSecret) {
+      result.clientSecret = oauth.clientSecret;
+    }
     return result;
   }
 

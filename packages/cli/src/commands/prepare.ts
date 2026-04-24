@@ -8,6 +8,7 @@ import {
 } from "@pulsemcp/air-sdk";
 import { rejectDeprecatedArtifactFlags } from "./deprecated-flags.js";
 import { parseGitProtocolFlag } from "./git-protocol.js";
+import { runAutoDiscovery } from "./auto-discover.js";
 
 /**
  * Extract the flag name from a Commander flag string.
@@ -102,6 +103,10 @@ export function prepareCommand(): Command {
       "--git-protocol <protocol>",
       "Protocol used by git-based catalog providers: \"ssh\" (default) or \"https\". Overrides the gitProtocol field in air.json."
     )
+    .option(
+      "--no-discover",
+      "Skip auto-discovery of repo-level AIR index files. Useful for scripting cases where you don't want the interactive prompt."
+    )
     .allowUnknownOption(true)
     .action(
       async (adapter: string, options: {
@@ -120,9 +125,34 @@ export function prepareCommand(): Command {
         subagentMerge: boolean;
         skipValidation?: boolean;
         gitProtocol?: string;
+        discover: boolean;
       }) => {
         rejectDeprecatedArtifactFlags(process.argv);
         const gitProtocol = parseGitProtocolFlag(options.gitProtocol);
+
+        // Auto-discovery: same gating as `air start` — when the user
+        // explicitly opts into artifact selection via flags, or passes
+        // --skip-confirmation, or runs outside a TTY, we stay silent. The
+        // prompt runs before config load so any accepted entries are picked
+        // up by the subsequent `prepareSession` call.
+        const hasArtifactFlagsPreDetect =
+          options.skill !== undefined ||
+          options.mcpServer !== undefined ||
+          options.hook !== undefined ||
+          options.plugin !== undefined ||
+          options.withoutSkill !== undefined ||
+          options.withoutMcpServer !== undefined ||
+          options.withoutHook !== undefined ||
+          options.withoutPlugin !== undefined ||
+          (options.withoutDefaults ?? false);
+
+        await runAutoDiscovery({
+          cwd: options.target,
+          configPath: options.config,
+          disabled: options.discover === false,
+          nonInteractive: hasArtifactFlagsPreDetect,
+        });
+
         try {
           // Load extensions once — pass to SDK to avoid double loading
           const airJsonPath = options.config || getAirJsonPath();

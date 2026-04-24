@@ -140,6 +140,8 @@ Remote servers can use OAuth for authorization. The `oauth` object configures ho
 | `clientId` | string | No | OAuth client ID. If omitted, the client uses Dynamic Client Registration (DCR) or discovery. |
 | `scopes` | string[] | No | OAuth scopes to request in the authorization request. Passed as the `scope` parameter (RFC 6749 §3.3). |
 | `redirectUri` | string (URI) | No | Redirect URI for the OAuth callback. For CLI/desktop clients this is typically `http://localhost:{port}/callback` (RFC 8252). |
+| `authServerMetadataUrl` | string (URI) | No | Explicit OAuth authorization server metadata URL (RFC 8414 / OpenID Connect discovery). Overrides the default `/.well-known` discovery chain. Use for servers whose MCP endpoint does not advertise OAuth metadata but whose upstream auth server does. Supports `${ENV_VAR}` interpolation. |
+| `clientSecret` | string | No | OAuth client secret for confidential clients. Typically set via `${ENV_VAR}` interpolation so the raw value is not checked into the repo. Supports `${ENV_VAR}` interpolation. |
 
 All `oauth` fields are optional. Servers that support automatic discovery (RFC 8414, RFC 9728) and Dynamic Client Registration may need no configuration at all — just a `url`:
 

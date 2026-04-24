@@ -110,10 +110,12 @@ OAuth fields:
 | `clientId` | OAuth client ID. Omit for Dynamic Client Registration (DCR). |
 | `scopes` | Scopes to request in the authorization flow. |
 | `redirectUri` | Callback URI (typically `http://localhost:{port}/callback` for CLI tools). |
+| `authServerMetadataUrl` | Explicit OAuth authorization server metadata URL (RFC 8414 / OpenID Connect discovery). Use when the MCP endpoint does not advertise OAuth metadata but the upstream auth server does (e.g. `https://accounts.google.com/.well-known/openid-configuration` for servers that delegate to Google). Supports `${ENV_VAR}` interpolation. |
+| `clientSecret` | OAuth client secret for confidential clients. Typically sourced from `${ENV_VAR}` so the raw value is never checked into the repo. Supports `${ENV_VAR}` interpolation. |
 
 ## Environment variable interpolation
 
-MCP server configs support `${ENV_VAR}` and `${ENV_VAR:-default}` interpolation in `command`, `args`, `env` values, `url`, and `headers` values:
+MCP server configs support `${ENV_VAR}` and `${ENV_VAR:-default}` interpolation in all string values — `command`, `args`, `env` values, `url`, `headers` values, and every oauth string field (including `clientId`, `clientSecret`, `redirectUri`, and `authServerMetadataUrl`):
 
 ```json
 {
@@ -183,6 +185,8 @@ For Claude Code, AIR writes a `.mcp.json` file with servers wrapped in a `mcpSer
 ```
 
 The `title` and `description` fields are stripped during translation (they're AIR metadata, not part of the agent's config format). The `streamable-http` type is translated to `http` for Claude Code compatibility.
+
+If `.mcp.json` already exists, AIR merges rather than overwrites. Keys AIR manages (those AIR wrote on a prior run, tracked in the per-target manifest) are replaced with the current selection — keys that are no longer selected are removed. Any other `mcpServers` keys and top-level fields pass through untouched, so user-added entries survive across runs. See [Cleanup between runs](running-sessions.md#cleanup-between-runs) for details.
 
 ### Selecting specific servers
 

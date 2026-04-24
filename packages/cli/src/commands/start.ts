@@ -12,6 +12,7 @@ import {
 import { runInteractiveSelector } from "../tui/interactive-selector.js";
 import { rejectDeprecatedArtifactFlags } from "./deprecated-flags.js";
 import { parseGitProtocolFlag } from "./git-protocol.js";
+import { runAutoDiscovery } from "./auto-discover.js";
 
 export function startCommand(): Command {
   const cmd = new Command("start")
@@ -67,6 +68,10 @@ export function startCommand(): Command {
       "--git-protocol <protocol>",
       "Protocol used by git-based catalog providers: \"ssh\" (default) or \"https\". Overrides the gitProtocol field in air.json."
     )
+    .option(
+      "--no-discover",
+      "Skip auto-discovery of repo-level AIR index files. Useful for scripting cases where you don't want the interactive prompt."
+    )
     .allowUnknownOption(true)
     .action(
       async (
@@ -86,6 +91,7 @@ export function startCommand(): Command {
           withoutDefaults?: boolean;
           subagentMerge: boolean;
           gitProtocol?: string;
+          discover: boolean;
         },
       ) => {
         const dashDashIdx = process.argv.indexOf("--");
@@ -95,6 +101,32 @@ export function startCommand(): Command {
         rejectDeprecatedArtifactFlags(process.argv);
 
         const gitProtocol = parseGitProtocolFlag(options.gitProtocol);
+
+        // Auto-discovery: before we load artifacts, offer to register
+        // repo-level index files the user hasn't added yet. On acceptance,
+        // air.json is mutated before startSession runs so new entries are
+        // picked up in this session.
+        const hasArtifactFlagsPreDetect =
+          options.skill !== undefined ||
+          options.mcpServer !== undefined ||
+          options.hook !== undefined ||
+          options.plugin !== undefined ||
+          options.withoutSkill !== undefined ||
+          options.withoutMcpServer !== undefined ||
+          options.withoutHook !== undefined ||
+          options.withoutPlugin !== undefined ||
+          (options.withoutDefaults ?? false);
+
+        await runAutoDiscovery({
+          disabled: options.discover === false,
+          // `--skip-confirmation` keeps us out of interactive prompts entirely;
+          // artifact flags imply the user is scripting a specific selection
+          // and doesn't want unsolicited questions either.
+          nonInteractive:
+            options.skipConfirmation === true ||
+            options.dryRun === true ||
+            hasArtifactFlagsPreDetect,
+        });
 
         let result;
         try {
