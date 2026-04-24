@@ -120,6 +120,50 @@ air list references
 
 Shows ID, title (if available), and description for each artifact. Shows the merged result from all files listed in `air.json`.
 
+### `air resolve --json`
+
+Resolve the active `air.json` and print the full merged artifact tree as JSON to stdout. The `--json` flag is optional (JSON is the default and currently only supported format) — it is accepted for forward compatibility so downstream callers can pin the output format explicitly.
+
+```bash
+# Resolve the default ~/.air/air.json
+air resolve --json
+
+# Resolve a specific config
+air resolve --json --config /path/to/air.json
+
+# Via env var
+AIR_CONFIG=/path/to/air.json air resolve --json
+```
+
+Loads `air.json`, runs catalog providers (e.g., `github://`) declared under `extensions`, and emits the merged `ResolvedArtifacts` object — the same structure returned by `resolveArtifacts()` in `@pulsemcp/air-core`. Useful for non-Node consumers (Ruby, Python, orchestrators, dashboards) that need to inspect the resolved artifact tree without reimplementing the resolution pipeline.
+
+**Output shape:**
+
+```json
+{
+  "skills":     { "<id>": { "description": "...", "path": "/abs/path" } },
+  "references": { "<id>": { "description": "...", "path": "/abs/path" } },
+  "mcp":        { "<id>": { "type": "stdio", "command": "...", "args": [] } },
+  "plugins":    { "<id>": { "description": "...", "skills": [], "mcp_servers": [] } },
+  "roots":      { "<id>": { "description": "...", "default_skills": [] } },
+  "hooks":      { "<id>": { "description": "...", "path": "/abs/path" } }
+}
+```
+
+All `path` fields are absolute, making the output self-contained regardless of where the `air.json` lives.
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--json` | Emit JSON output (default and currently the only supported format; accepted for forward-compat). |
+| `--config <path>` | Path to `air.json`. Defaults to `AIR_CONFIG` env or `~/.air/air.json`. |
+| `--git-protocol <ssh\|https>` | Protocol used by git-based catalog providers when cloning. Defaults to `ssh`. Overrides the `gitProtocol` field in `air.json` and the `AIR_GIT_PROTOCOL` env var for this invocation. |
+
+**Exit codes:**
+- `0` — resolved successfully; JSON written to stdout
+- `1` — resolution failed (e.g., missing `air.json`, unreachable provider); error on stderr
+
 ## Environment Variables
 
 | Variable | Description |
