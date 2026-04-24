@@ -106,7 +106,7 @@ Every AIR configuration starts with an `air.json` file. Each artifact property i
 }
 ```
 
-**Local catalog + shared remote catalog.** Your private team skills live in a directory you maintain (e.g., a sibling repo checked into `~/.air/` or an absolute path elsewhere on disk), layered with an org-wide catalog for shared defaults. When both sources follow the standard `<type>/<type>.json` layout, `catalogs` lets you reference each one with a single entry:
+**Local catalog + shared remote catalog.** Your private team skills live in a directory you maintain (e.g., a sibling repo checked into `~/.air/` or an absolute path elsewhere on disk), layered with an org-wide catalog for shared defaults. AIR walks each catalog up to 3 levels deep and discovers artifact indexes by filename or `$schema`, so `catalogs` lets you reference each source with a single entry regardless of its internal folder layout:
 
 ```json
 {

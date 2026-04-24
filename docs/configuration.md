@@ -35,7 +35,7 @@ There is no separate CLI config file. `air.json` is the single composition point
 
 ### Whole-catalog composition
 
-When you're layering full catalogs that follow the standard `<type>/<type>.json` layout, the `catalogs` field lets you reference each catalog once instead of listing every artifact type separately:
+The `catalogs` field lets you reference each catalog once instead of listing every artifact type separately:
 
 ```json
 {
@@ -47,7 +47,18 @@ When you're layering full catalogs that follow the standard `<type>/<type>.json`
 }
 ```
 
-Each entry expands into all six artifact arrays at resolution time; files that aren't present in a given catalog are silently skipped. `catalogs` and the per-type arrays compose — catalogs expand first, per-type arrays layer on top — so you can mix them to pull most artifacts from catalogs and add targeted overrides via the per-type arrays.
+Each entry is treated as a directory (local path or provider URI). AIR walks the catalog up to 3 directory levels deep and picks up any file whose filename or `$schema` identifies it as an AIR artifact index (`skills.json`, `roots.json`, `mcp.json`, `references.json`, `plugins.json`, `hooks.json`, or any filename that contains those keywords as delimited tokens). You are free to organize indexes under whatever folder names suit your repo — `agents/agent-roots/roots.json`, `config/mcp-servers/mcp.json`, and the conventional `<type>/<type>.json` layout all work.
+
+Traversal rules:
+
+- **Depth cap**: 3 levels below the catalog root. Indexes deeper than that must be referenced via explicit per-type arrays.
+- **Skipped directories**: `node_modules`, `.git`, `dist`, `build`, `coverage`, `.next`, `.turbo`, `target`, `vendor`, and any directory starting with `.`.
+- **`.gitignore` at the catalog root**: honored — ignored paths are not descended into.
+- **`$schema` check**: a JSON file whose `$schema` points to a non-AIR schema is skipped even if its filename matches. Files without `$schema` are identified by filename alone.
+
+Within a single catalog, if two indexes of the same type are found, they are merged in sorted relative-path order with later-wins by ID. Across multiple entries in `catalogs[]`, catalogs earlier in the array are merged first; later catalogs override. The per-type arrays (`skills`, `mcp`, …) layer on top of catalog-discovered indexes — catalogs expand first, explicit arrays last.
+
+Remote catalog URIs (e.g. `github://owner/repo@ref/path`) are supported when the matching provider can clone or mount the source locally. You can point at the whole repo (`github://owner/repo`), a ref (`github://owner/repo@main`), or a subdirectory (`github://owner/repo@main/agents`).
 
 ## Merging Strategy
 

@@ -98,6 +98,24 @@ describe("detectSchemaFromValue", () => {
   it("returns null for unknown schemas", () => {
     expect(detectSchemaFromValue("https://example.com/unknown.json")).toBeNull();
   });
+
+  it("does not match a schema filename that appears earlier in the path", () => {
+    expect(
+      detectSchemaFromValue("https://example.com/mcp.schema.json/something.json")
+    ).toBeNull();
+    expect(
+      detectSchemaFromValue("https://example.com/skills.schema.json/else")
+    ).toBeNull();
+  });
+
+  it("ignores query strings and fragments", () => {
+    expect(
+      detectSchemaFromValue("https://example.com/mcp.schema.json?v=1")
+    ).toBe("mcp");
+    expect(
+      detectSchemaFromValue("https://example.com/mcp.schema.json#frag")
+    ).toBe("mcp");
+  });
 });
 
 describe("isValidSchemaType", () => {

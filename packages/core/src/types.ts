@@ -7,10 +7,15 @@ export interface AirConfig {
   description?: string;
   extensions?: string[];
   /**
-   * Catalog references — each entry is a directory (local path or provider URI)
-   * that follows the standard AIR layout: `<type>/<type>.json` for each of the
-   * six artifact types. Catalogs expand into all six artifact arrays in order;
-   * missing files within a catalog are silently skipped. The per-type arrays
+   * Catalog references — each entry is a directory (local path or provider URI).
+   * AIR walks the catalog up to 3 directory levels deep and discovers any file
+   * identified as an AIR artifact index by filename (`skills.json`, `roots.json`,
+   * `mcp.json`, `references.json`, `plugins.json`, `hooks.json`, or any filename
+   * containing those keywords as delimited tokens) or by `$schema`. `.gitignore`
+   * at the catalog root is honored; `node_modules`, `.git`, and common build
+   * output directories are skipped. Within a single catalog, duplicate-type
+   * indexes merge in sorted relative-path order; across catalogs, earlier
+   * entries merge first and later catalogs override. The per-type arrays
    * below layer on top of (and can override) catalog-expanded entries.
    */
   catalogs?: string[];
@@ -279,16 +284,16 @@ export interface CatalogProvider {
    */
   refreshCache?(): Promise<CacheRefreshResult[]>;
   /**
-   * Check whether the URI resolves to an existing file.
-   * Used during catalog expansion to skip conventional paths that aren't
-   * present in a given catalog. Implementations should throw for real
-   * failures (network, auth, missing repo) and only return false for
-   * "file does not exist in an otherwise-reachable source".
+   * Resolve a catalog URI to a local directory that AIR can walk to
+   * discover artifact index files. Providers should ensure the source
+   * is available locally (e.g. by cloning a repo) and return an absolute
+   * path to the catalog's root directory on disk.
    *
-   * If omitted, catalog expansion falls back to trying resolve() and
-   * treating any thrown error as "does not exist".
+   * Required for catalog discovery. Providers that cannot expose a local
+   * directory for a catalog URI will cause catalog expansion to fail with
+   * a clear error — `catalogs[]` entries must be traversable.
    */
-  fileExists?(uri: string): Promise<boolean>;
+  resolveCatalogDir?(uri: string): Promise<string>;
 }
 
 /**

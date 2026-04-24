@@ -125,8 +125,8 @@ Skills live as directories containing a \`SKILL.md\`. Point at one from
 
 The simplest way to layer a shared team or org catalog on top of your local
 workspace is the \`catalogs\` field. Each entry is a directory (local path or
-\`github://\` URI) that follows the standard \`<type>/<type>.json\` layout, and
-AIR expands it into all six artifact arrays automatically:
+\`github://\` URI). AIR walks the catalog up to 3 levels deep and discovers
+any file identified as an AIR artifact index by filename or \`$schema\`:
 
 \`\`\`json
 {

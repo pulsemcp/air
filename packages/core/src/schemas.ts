@@ -90,11 +90,17 @@ export function detectSchemaType(filename: string): SchemaType | null {
 
 /**
  * Detect schema type from a $schema value in JSON content.
+ *
+ * Matches the last path segment only (before any ?query or #fragment), so
+ * arbitrary URLs that happen to contain a schema filename earlier in their
+ * path — e.g. a third-party `https://example.com/mcp.schema.json/something` —
+ * are NOT misclassified as AIR indexes.
  */
 export function detectSchemaFromValue(schemaValue: string): SchemaType | null {
-  const lower = schemaValue.toLowerCase();
+  const withoutQuery = schemaValue.split(/[?#]/, 1)[0];
+  const basename = (withoutQuery.split(/[\\/]/).pop() || "").toLowerCase();
   for (const type of getAllSchemaTypes()) {
-    if (lower.includes(SCHEMA_FILES[type])) {
+    if (basename === SCHEMA_FILES[type]) {
       return type;
     }
   }
