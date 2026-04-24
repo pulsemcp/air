@@ -432,7 +432,7 @@ describe("start command — CLI artifact selection flags", () => {
     expect(result.stdout).not.toMatch(/\u2022 skill-a\b/);
   });
 
-  it("emits a deprecation warning when the old plural --skills flag is used", () => {
+  it("rejects the old plural --skills flag with a non-zero exit and migration error", () => {
     const catalog = createTemp({
       "air.json": {
         name: "test",
@@ -456,9 +456,10 @@ describe("start command — CLI artifact selection flags", () => {
       { AIR_CONFIG: resolve(catalog, "air.json") }
     );
 
-    expect(result.exitCode).toBe(0);
+    expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain("--skills was renamed to --skill");
     expect(result.stderr).toContain("v0.0.32");
+    expect(result.stderr).toContain("no longer accepted");
   });
 
   it("does not warn when an agent passthrough arg after -- happens to match an old flag name", () => {

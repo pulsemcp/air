@@ -6,7 +6,7 @@ import {
   getAirJsonPath,
   loadExtensions,
 } from "@pulsemcp/air-sdk";
-import { warnOnDeprecatedArtifactFlags } from "./deprecated-flags.js";
+import { rejectDeprecatedArtifactFlags } from "./deprecated-flags.js";
 import { parseGitProtocolFlag } from "./git-protocol.js";
 
 /**
@@ -121,7 +121,7 @@ export function prepareCommand(): Command {
         skipValidation?: boolean;
         gitProtocol?: string;
       }) => {
-        warnOnDeprecatedArtifactFlags(process.argv);
+        rejectDeprecatedArtifactFlags(process.argv);
         const gitProtocol = parseGitProtocolFlag(options.gitProtocol);
         try {
           // Load extensions once — pass to SDK to avoid double loading

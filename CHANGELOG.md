@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.39] - 2026-04-24
+
+### Changed
+- **Breaking:** `air start` and `air prepare` now exit with code 1 and print a migration error when invoked with the deprecated plural artifact-selection flags (`--plugins`, `--skills`, `--mcp-servers`, `--hooks`, `--without-plugins`, `--without-skills`, `--without-mcp-servers`, `--without-hooks`) that were renamed to their singular variadic forms in v0.0.32. Previously these flags were silently dropped after a stderr warning, which let orchestrators believe the call succeeded while writing a `.mcp.json` missing the requested artifacts. Callers must migrate to the singular flag names — e.g., `--plugin a b` or `--plugin a --plugin b` instead of `--plugins a,b`. See [#95](https://github.com/pulsemcp/air/issues/95).
+
 ## [0.0.38] - 2026-04-24
 
 ### Added

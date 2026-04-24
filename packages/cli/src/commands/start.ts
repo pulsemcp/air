@@ -10,7 +10,7 @@ import {
   type RootEntry,
 } from "@pulsemcp/air-sdk";
 import { runInteractiveSelector } from "../tui/interactive-selector.js";
-import { warnOnDeprecatedArtifactFlags } from "./deprecated-flags.js";
+import { rejectDeprecatedArtifactFlags } from "./deprecated-flags.js";
 import { parseGitProtocolFlag } from "./git-protocol.js";
 
 export function startCommand(): Command {
@@ -92,7 +92,7 @@ export function startCommand(): Command {
         const passthroughArgs =
           dashDashIdx !== -1 ? process.argv.slice(dashDashIdx + 1) : [];
 
-        warnOnDeprecatedArtifactFlags(process.argv);
+        rejectDeprecatedArtifactFlags(process.argv);
 
         const gitProtocol = parseGitProtocolFlag(options.gitProtocol);
 
