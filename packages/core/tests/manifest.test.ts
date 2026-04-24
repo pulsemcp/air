@@ -59,6 +59,20 @@ describe("manifest", () => {
         process.env.HOME = original;
       }
     });
+
+    it("throws when neither AIR_HOME nor HOME nor USERPROFILE is set", () => {
+      delete process.env.AIR_HOME;
+      const originalHome = process.env.HOME;
+      const originalProfile = process.env.USERPROFILE;
+      delete process.env.HOME;
+      delete process.env.USERPROFILE;
+      try {
+        expect(() => getDefaultAirHome()).toThrow(/AIR home/);
+      } finally {
+        if (originalHome !== undefined) process.env.HOME = originalHome;
+        if (originalProfile !== undefined) process.env.USERPROFILE = originalProfile;
+      }
+    });
   });
 
   describe("getManifestPath", () => {
@@ -138,6 +152,31 @@ describe("manifest", () => {
           version: 1,
           target: targetDir,
           skills: [1, 2, 3],
+          hooks: [],
+          mcpServers: [],
+        })
+      );
+      expect(loadManifest(targetDir)).toBeNull();
+    });
+
+    it.each([
+      "../escape",
+      "..",
+      ".",
+      "a/b",
+      "a\\b",
+      "/abs",
+      "with\0null",
+      "",
+    ])("rejects manifests whose IDs would escape the target dir: %s", (badId) => {
+      const path = getManifestPath(targetDir);
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(
+        path,
+        JSON.stringify({
+          version: 1,
+          target: targetDir,
+          skills: [badId],
           hooks: [],
           mcpServers: [],
         })

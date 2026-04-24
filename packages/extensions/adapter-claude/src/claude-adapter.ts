@@ -270,6 +270,7 @@ export class ClaudeAdapter implements AgentAdapter {
       this.validateIds(artifacts.hooks, hookIds, "hook");
     }
     const prevHookIds = new Set(prevManifest?.hooks ?? []);
+    const registeredHookIds: string[] = [];
     for (const hookId of hookIds) {
       const hook = artifacts.hooks[hookId];
 
@@ -286,22 +287,31 @@ export class ClaudeAdapter implements AgentAdapter {
       // want it registered in settings.json on this run.
       if (!alreadyExists) {
         const hookSourceDir = hook.path;
-        if (existsSync(hookSourceDir)) {
-          this.copyDirRecursive(hookSourceDir, hookTargetDir);
+        if (!existsSync(hookSourceDir)) {
+          // Source is gone — don't register the hook or track it in the
+          // manifest. Otherwise the ID gets recorded as "AIR-owned" with
+          // nothing backing it, and a later user-created dir at the same
+          // path would be mis-identified as stale on the next run.
+          continue;
         }
+        this.copyDirRecursive(hookSourceDir, hookTargetDir);
         if (hook.references && hook.references.length > 0) {
           this.copyReferences(hook.references, hookTargetDir, artifacts);
         }
       }
 
       hookPaths.push(hookTargetDir);
+      registeredHookIds.push(hookId);
     }
 
     // 6. Register AIR-owned hooks in .claude/settings.json.
     //    Always prune settings entries that AIR previously wrote (stale +
     //    current) so that re-runs don't accumulate duplicates and stale
     //    entries are cleaned up even when no current hooks are active.
-    const managedHookIds = new Set<string>([...diff.staleHooks, ...hookIds]);
+    const managedHookIds = new Set<string>([
+      ...diff.staleHooks,
+      ...registeredHookIds,
+    ]);
     const settingsPath = this.reconcileSettingsHooks(
       targetDir,
       hookPaths,
@@ -312,10 +322,11 @@ export class ClaudeAdapter implements AgentAdapter {
     }
 
     // 7. Persist the updated manifest so the next run can reconcile against it.
+    //    Only IDs that AIR actually wrote/touched go into the manifest.
     writeManifest(
       buildManifest(targetDir, {
         skills: skillIds,
-        hooks: hookIds,
+        hooks: registeredHookIds,
         mcpServers: finalMcpServerIds,
       })
     );

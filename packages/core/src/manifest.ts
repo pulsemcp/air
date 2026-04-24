@@ -54,16 +54,23 @@ export interface ManifestDiff {
 /**
  * Default root of AIR's per-user state directory (contains air.json,
  * manifests/, etc). Honors `AIR_HOME` for relocation (primarily for tests
- * and sandboxed environments), then HOME/USERPROFILE, falling back to "~".
+ * and sandboxed environments), then HOME/USERPROFILE.
+ *
+ * Throws if no suitable home directory can be determined — falling back
+ * to a relative path would silently write state into the current working
+ * directory, which is almost always wrong and hard to diagnose.
  */
 export function getDefaultAirHome(): string {
   if (process.env.AIR_HOME) {
     return resolve(process.env.AIR_HOME);
   }
-  return resolve(
-    process.env.HOME || process.env.USERPROFILE || "~",
-    ".air"
-  );
+  const home = process.env.HOME || process.env.USERPROFILE;
+  if (!home) {
+    throw new Error(
+      "Cannot determine AIR home directory: neither AIR_HOME, HOME, nor USERPROFILE is set."
+    );
+  }
+  return resolve(home, ".air");
 }
 
 /**
@@ -121,14 +128,30 @@ function isManifestShape(value: unknown): value is Manifest {
   const m = value as Record<string, unknown>;
   if (typeof m.version !== "number") return false;
   if (typeof m.target !== "string") return false;
-  if (!isStringArray(m.skills)) return false;
-  if (!isStringArray(m.hooks)) return false;
-  if (!isStringArray(m.mcpServers)) return false;
+  if (!isSafeIdArray(m.skills)) return false;
+  if (!isSafeIdArray(m.hooks)) return false;
+  if (!isSafeIdArray(m.mcpServers)) return false;
   return true;
 }
 
-function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((v) => typeof v === "string");
+/**
+ * Accept only strings safe to use as path segments for cleanup. A manifest
+ * whose IDs contain path separators, `..`, or absolute-path shapes could
+ * cause `join(targetDir, ".claude/skills", id)` to escape the target tree
+ * during `rmSync`. The file lives in the user's home, so this is defense
+ * in depth; still cheaper to enforce here than to trust every caller.
+ */
+function isSafeIdArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every(isSafeId);
+}
+
+function isSafeId(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  if (value.length === 0) return false;
+  if (value === "." || value === "..") return false;
+  if (value.includes("/") || value.includes("\\")) return false;
+  if (value.includes("\0")) return false;
+  return true;
 }
 
 /**
