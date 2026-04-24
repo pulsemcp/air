@@ -56,6 +56,8 @@ export interface McpOAuthConfig {
   clientId?: string;
   scopes?: string[];
   redirectUri?: string;
+  authServerMetadataUrl?: string;
+  clientSecret?: string;
 }
 
 export interface McpServerEntry {

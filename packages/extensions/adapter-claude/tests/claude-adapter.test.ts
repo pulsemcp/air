@@ -128,6 +128,75 @@ describe("ClaudeAdapter", () => {
         callbackPort: 3456,
       });
     });
+
+    it("passes authServerMetadataUrl through to the generated oauth object", () => {
+      const servers: Record<string, McpServerEntry> = {
+        bigquery: {
+          type: "streamable-http",
+          url: "https://bigquery.googleapis.com/mcp",
+          oauth: {
+            clientId: "my-client",
+            authServerMetadataUrl:
+              "https://accounts.google.com/.well-known/openid-configuration",
+          },
+        },
+      };
+
+      const result = adapter.translateMcpServers(servers) as any;
+      expect(result.mcpServers.bigquery.oauth).toEqual({
+        clientId: "my-client",
+        authServerMetadataUrl:
+          "https://accounts.google.com/.well-known/openid-configuration",
+      });
+    });
+
+    it("passes clientSecret through as-is (interpolation is a transform concern)", () => {
+      const servers: Record<string, McpServerEntry> = {
+        authed: {
+          type: "streamable-http",
+          url: "https://mcp.example.com/mcp",
+          oauth: {
+            clientId: "my-client",
+            clientSecret: "${OAUTH_CLIENT_SECRET}",
+          },
+        },
+      };
+
+      const result = adapter.translateMcpServers(servers) as any;
+      // Adapter writes the raw ${VAR} pattern; secret-transform extensions
+      // (e.g. @pulsemcp/air-secrets-env) resolve it when walking .mcp.json.
+      expect(result.mcpServers.authed.oauth).toEqual({
+        clientId: "my-client",
+        clientSecret: "${OAUTH_CLIENT_SECRET}",
+      });
+    });
+
+    it("plumbs all expanded oauth fields together", () => {
+      const servers: Record<string, McpServerEntry> = {
+        bigquery: {
+          type: "streamable-http",
+          url: "https://bigquery.googleapis.com/mcp",
+          oauth: {
+            clientId: "my-client",
+            clientSecret: "${BQ_CLIENT_SECRET}",
+            scopes: ["https://www.googleapis.com/auth/bigquery.readonly"],
+            redirectUri: "http://localhost:8888/callback",
+            authServerMetadataUrl:
+              "https://accounts.google.com/.well-known/openid-configuration",
+          },
+        },
+      };
+
+      const result = adapter.translateMcpServers(servers) as any;
+      expect(result.mcpServers.bigquery.oauth).toEqual({
+        clientId: "my-client",
+        clientSecret: "${BQ_CLIENT_SECRET}",
+        scopes: ["https://www.googleapis.com/auth/bigquery.readonly"],
+        callbackPort: 8888,
+        authServerMetadataUrl:
+          "https://accounts.google.com/.well-known/openid-configuration",
+      });
+    });
   });
 
   describe("translatePlugin", () => {

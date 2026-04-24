@@ -218,6 +218,31 @@ describe("envTransform", () => {
     expect((result.mcpServers.server.oauth as any).clientId).toBe("resolved-secret-value");
   });
 
+  it("resolves ${VAR} in oauth.clientSecret and oauth.authServerMetadataUrl", async () => {
+    const config: McpConfig = {
+      mcpServers: {
+        bigquery: {
+          type: "streamable-http",
+          url: "https://bigquery.googleapis.com/mcp",
+          oauth: {
+            clientId: "my-client",
+            clientSecret: "${MY_SECRET}",
+            authServerMetadataUrl:
+              "https://${ANOTHER_VAR}.googleapis.com/.well-known/openid-configuration",
+          },
+        },
+      },
+    };
+
+    const result = await envTransform(config, makeContext());
+    const oauth = result.mcpServers.bigquery.oauth as any;
+    expect(oauth.clientId).toBe("my-client");
+    expect(oauth.clientSecret).toBe("resolved-secret-value");
+    expect(oauth.authServerMetadataUrl).toBe(
+      "https://another-value.googleapis.com/.well-known/openid-configuration"
+    );
+  });
+
   it("resolves ${VAR} in hook env values", async () => {
     const config: McpConfig = {
       mcpServers: {},

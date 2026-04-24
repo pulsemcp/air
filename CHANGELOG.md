@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New `~/.air/preferences.json` file (and accompanying `schemas/preferences.schema.json`) that records dismissals from the auto-discovery prompt so AIR doesn't re-offer the same paths in the same repo. Load/save helpers exported from `@pulsemcp/air-sdk` as `loadPreferences`, `savePreferences`, `addDismissed`, `isDismissed`.
 - New SDK exports: `discoverIndexes`, `resolveAnchor`, `addDiscoveredToAirJson`, `buildRegisteredChecker`, `findOfferableIndexes`, `acceptOffers`, `dismissOffers` and the corresponding types for programmatic integrations that want to drive the discovery flow themselves.
 - New docs guide: [Managing Skills in Your Repo](docs/guides/managing-skills-in-your-repo.md) covering the three repo patterns (`.claude/skills/`, in-repo indexes, catalog directories) and the auto-discovery flow end-to-end.
+- New optional `authServerMetadataUrl` field on the `mcp.json` `OAuthConfiguration` schema (RFC 8414 / OpenID Connect discovery). Use for servers whose MCP endpoint does not advertise OAuth metadata but whose upstream auth server does (e.g. servers delegating to Google). `ClaudeAdapter` and `CoworkEmitter` pass the value through unchanged — Claude Code reads it inline from `.mcp.json`.
+- New optional `clientSecret` field on the `mcp.json` `OAuthConfiguration` schema for confidential OAuth clients. Intended to be sourced via `${ENV_VAR}` interpolation (resolved by `@pulsemcp/air-secrets-env` before `.mcp.json` is written) so the raw value is never checked into the repo. `ClaudeAdapter` and `CoworkEmitter` write the resolved value into `.mcp.json` alongside the other oauth fields.
 
 ## [0.0.40] - 2026-04-24
 

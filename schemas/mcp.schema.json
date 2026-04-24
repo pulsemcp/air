@@ -38,6 +38,15 @@
           "type": "string",
           "format": "uri",
           "description": "Redirect URI for the OAuth callback. For CLI/desktop clients this is typically http://localhost:{port}/callback (RFC 8252)."
+        },
+        "authServerMetadataUrl": {
+          "type": "string",
+          "format": "uri",
+          "description": "Explicit OAuth authorization server metadata URL (RFC 8414 / OpenID Connect discovery). Overrides the default /.well-known discovery chain. Use for servers whose MCP endpoint does not advertise OAuth metadata but whose upstream auth server does (e.g. https://accounts.google.com/.well-known/openid-configuration for servers delegating to Google). Supports ${ENV_VAR} interpolation."
+        },
+        "clientSecret": {
+          "type": "string",
+          "description": "OAuth client secret for confidential clients. Typically set via ${ENV_VAR} interpolation so the value is not checked into the repo (e.g. sourced from @pulsemcp/air-secrets-env at prepare time). Supports ${ENV_VAR} interpolation."
         }
       },
       "additionalProperties": true
