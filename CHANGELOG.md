@@ -8,7 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.0.40] - 2026-04-24
 
 ### Fixed
-- `GitHubCatalogProvider.ensureClone()` in `@pulsemcp/air-provider-github` no longer races when multiple processes hit an empty cache at the same time. Concurrent clones into the same `~/.air/cache/github/{owner}/{repo}/{ref}` path are now serialized by an advisory file lock (`proper-lockfile`), and each clone lands atomically via a `renameSync` from a sibling `.tmp-{pid}-{ts}` directory — so readers either see no `.git` (and acquire the lock themselves) or a complete working tree, never a partial one. Previously, two callers could race on a fresh cache, one would see `.git/` exist while the working-tree checkout was still in flight, and fail with `File not found in cloned repository: …`. This surfaced as ~5–15 sessions failing per deploy in environments that restart in-flight sessions against an empty cache. `resolve()` and `fileExists()` signatures are unchanged; the private `ensureClone()` is now `async`. New dependency: `proper-lockfile@^4.1.2`. Fixes [#101](https://github.com/pulsemcp/air/issues/101).
+- `GitHubCatalogProvider.ensureClone()` in `@pulsemcp/air-provider-github` no longer races when multiple processes hit an empty cache at the same time. Previously, two callers could race on a fresh cache, one would see `.git/` exist while the working-tree checkout was still in flight, and fail with `File not found in cloned repository: …`. This surfaced as ~5–15 sessions failing per deploy in environments that restart in-flight sessions against an empty cache. Fixes [#101](https://github.com/pulsemcp/air/issues/101).
+  - Concurrent clones into the same `~/.air/cache/github/{owner}/{repo}/{ref}` path are now serialized by an advisory file lock (`proper-lockfile`).
+  - Each clone lands atomically via a same-directory `renameSync` from a sibling temp directory (created with `mkdtempSync`) — so readers either see no `.git` (and acquire the lock themselves) or a complete working tree, never a partial one.
+  - A partial `cloneDir` left behind by a crashed older-version process is cleaned up inside the lock before re-cloning.
+  - `resolve()` and `fileExists()` signatures are unchanged; the private `ensureClone()` is now `async` (both internal callers already `await` it).
+  - New dependency: `proper-lockfile@^4.1.2`.
 
 ## [0.0.39] - 2026-04-24
 

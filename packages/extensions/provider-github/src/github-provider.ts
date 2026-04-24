@@ -2,6 +2,7 @@ import { execFileSync } from "child_process";
 import {
   existsSync,
   mkdirSync,
+  mkdtempSync,
   readFileSync,
   readdirSync,
   renameSync,
@@ -491,17 +492,20 @@ export class GitHubCatalogProvider implements CatalogProvider {
     // sibling `.lock` directory as the cross-process mutex.
     const release = await lockfile.lock(cloneDir, {
       realpath: false,
-      // Wait up to ~2 minutes for another process to finish cloning.
+      // Wait up to ~2 minutes (480 × 250 ms) for another process to finish
+      // cloning. With factor: 1, each retry sleeps minTimeout — the exponential
+      // backoff is disabled so waits stay predictable and tight.
       retries: {
-        retries: 240,
+        retries: 480,
         minTimeout: 250,
         maxTimeout: 1000,
         factor: 1,
       },
       // Reclaim the lock if the holder crashed and never released it.
-      // Longer than the clone timeout below so we don't steal from a
-      // slow-but-healthy clone.
-      stale: 120_000,
+      // Significantly longer than the clone timeout below so we don't steal
+      // from a slow-but-healthy clone, even on a sluggish filesystem where
+      // proper-lockfile's mtime refresh (every stale/2) might lag.
+      stale: 180_000,
     });
 
     try {
@@ -519,9 +523,15 @@ export class GitHubCatalogProvider implements CatalogProvider {
 
       const repoUrl = this.buildCloneUrl(owner, repo);
       const publicUrl = this.buildPublicUrl(owner, repo);
-      const tmpDir = `${cloneDir}.tmp-${process.pid}-${Date.now()}`;
+      // Sibling of cloneDir so the final renameSync is a same-directory
+      // rename — atomic on local filesystems (ext4, xfs, apfs, ntfs).
+      // mkdtempSync guarantees a unique suffix even if two clones in the
+      // same process hit the same millisecond.
+      const tmpDir = mkdtempSync(`${cloneDir}.tmp-`);
 
       try {
+        // git clone refuses a non-empty target; mkdtempSync gave us an
+        // empty directory which git accepts.
         const args =
           ref === "HEAD"
             ? ["clone", "--depth", "1", repoUrl, tmpDir]
@@ -568,7 +578,10 @@ export class GitHubCatalogProvider implements CatalogProvider {
       try {
         await release();
       } catch {
-        // lock already released (e.g., stolen because stale) — nothing to do
+        // release() can throw if proper-lockfile detected the lock was
+        // compromised (e.g., stale-reclaimed by another process). The clone
+        // itself has already been atomically published via renameSync, so
+        // there is nothing to clean up.
       }
     }
 
