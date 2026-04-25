@@ -48,6 +48,7 @@ The team probably keeps everything local — no remote catalog, no providers. A 
 {
   "name": "garage-startup",
   "description": "Local-only AIR config for the team",
+  "extensions": ["@pulsemcp/air-adapter-claude"],
   "skills": ["./skills/skills.json"],
   "mcp": ["./mcp/mcp.json"],
   "hooks": ["./hooks/hooks.json"]
@@ -117,6 +118,8 @@ The consumer pulls in the customer's catalog, then drops the entries that don't 
 }
 ```
 
+> The `exclude` field and the `@scope/id` qualified-identifier syntax ship with the next major bump (see [Always-scoped artifact identity](#always-scoped-artifact-identity) and [Exclude-only composition](#exclude-only-composition) below). Today, the closest workaround is to fork or shadow upstream entries — exactly the friction this scenario describes.
+
 What AIR's defaults need to do here: make exclusion declarative (so it shows up in PR review) and keep scope visible in the qualified ID so an agent or human can tell at a glance which entries came from the customer's catalog.
 
 ### 4. Open-source / community catalog
@@ -143,6 +146,8 @@ A user composing two community catalogs plus their own local layer:
   ]
 }
 ```
+
+> Same caveat as scenario 3: `exclude` and the `@scope/id` qualified-identifier syntax ship with the next major bump.
 
 What AIR's defaults need to do here: make scope mandatory so two same-shortname artifacts don't get conflated, surface cross-scope shortname collisions as a warning so an agent doesn't silently confuse two different `code-review` skills, and keep the per-artifact opt-out as the only required composition lever.
 
@@ -201,7 +206,7 @@ Each decision below captures:
 
 #### `resolveArtifacts` is async-only
 
-**Decision.** The core resolution function `resolveArtifacts(airJsonPath, options?)` is asynchronous and there is no synchronous variant. Local filesystem reads are still done synchronously inside it; the async signature exists so remote URI schemes (`github://`, future `s3://`, future `https://`) can be delegated to `CatalogProvider` extensions that need to do network I/O.
+**Decision.** The core resolution function `resolveArtifacts(airJsonPath, options?)` is asynchronous and there is no synchronous variant. Local filesystem reads are still done synchronously inside it; the async signature exists so remote URI schemes (`github://` today, future provider-defined schemes such as `s3://`) can be delegated to `CatalogProvider` extensions that need to do network I/O.
 
 **Context.** AIR's composition model permits any `air.json` array entry to be a remote URI. Providers do network calls to resolve them — cloning a GitHub repo, fetching an S3 object, etc. A synchronous core API would force every provider into blocking I/O or a separate async track, splitting the API surface. Async-only keeps one resolution path that handles both local and remote sources. This is what makes the catalog-mixing patterns in [scenario 2](#2-mid-size-org-with-a-developer-experience-team) and [scenario 4](#4-open-source--community-catalog) work uniformly.
 
