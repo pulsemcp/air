@@ -8,6 +8,16 @@ export {
   mergeArtifacts,
   expandPlugins,
   emptyArtifacts,
+  // Scoped identity
+  LOCAL_SCOPE,
+  isQualified,
+  qualifyId,
+  parseQualifiedId,
+  validateScope,
+  deriveScope,
+  buildShortnameIndex,
+  lookupArtifactId,
+  resolveReference,
   // Validation
   validateJson,
   // Schemas
@@ -72,6 +82,9 @@ export type {
   Manifest,
   ManifestSelection,
   ManifestDiff,
+  // Scoped identity types
+  QualifiedId,
+  ReferenceResolution,
 } from "@pulsemcp/air-core";
 
 // Adapter registry

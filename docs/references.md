@@ -87,6 +87,6 @@ When an agent loads a skill, it also loads all referenced documents. This gives 
 
 ## Composition
 
-References compose through AIR's layering system. If your org defines a `git-workflow` reference and your team defines one with the same ID, the team version overrides the org version entirely (no deep merge).
+References compose through AIR's scoped layering system. Each catalog (and your local config) contributes references under its own scope — `@acme/air-org/git-workflow`, `@local/git-workflow`, etc. Duplicate qualified IDs hard-fail; cross-scope shortname collisions warn but keep both.
 
-This lets teams customize shared knowledge while keeping the same reference structure.
+To replace an upstream reference, `exclude` it from the upstream catalog and ship a replacement under your own scope. See [Composition and Overrides](guides/composition-and-overrides.md).

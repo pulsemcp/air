@@ -13,10 +13,17 @@ export interface AirConfig {
    * `mcp.json`, `references.json`, `plugins.json`, `hooks.json`, or any filename
    * containing those keywords as delimited tokens) or by `$schema`. `.gitignore`
    * at the catalog root is honored; `node_modules`, `.git`, and common build
-   * output directories are skipped. Within a single catalog, duplicate-type
-   * indexes merge in sorted relative-path order; across catalogs, earlier
-   * entries merge first and later catalogs override. The per-type arrays
-   * below layer on top of (and can override) catalog-expanded entries.
+   * output directories are skipped.
+   *
+   * Every artifact is canonically addressed as `@scope/id`. Catalog providers
+   * supply the scope (e.g. the GitHub provider returns `owner/repo`); local
+   * catalogs and per-type arrays use the literal scope `local`. Two catalogs
+   * may contribute the same shortname only when their scopes differ — AIR
+   * surfaces a warning, but composition still succeeds. Two catalogs that
+   * produce the same qualified ID (`@scope/id`) hard-fail at resolution time.
+   *
+   * To remove a specific qualified ID from the resolved set, list it in
+   * `exclude`. Override / patching is intentionally not supported.
    */
   catalogs?: string[];
   skills?: string[];
@@ -25,6 +32,13 @@ export interface AirConfig {
   plugins?: string[];
   roots?: string[];
   hooks?: string[];
+  /**
+   * Qualified IDs (`@scope/id`) to drop from the resolved artifact set. This
+   * is the only composition control: there is no override, no field-level
+   * patching. An entry that does not match any resolved artifact is reported
+   * as a warning so typos surface immediately.
+   */
+  exclude?: string[];
   /**
    * Protocol used by git-based catalog providers (e.g., github://) when
    * cloning remote repositories. Defaults to "ssh". Set to "https" for
@@ -294,6 +308,18 @@ export interface CatalogProvider {
    * a clear error — `catalogs[]` entries must be traversable.
    */
   resolveCatalogDir?(uri: string): Promise<string>;
+  /**
+   * Return the scope assigned to artifacts contributed by this URI. AIR
+   * qualifies every artifact as `@scope/id`; providers that supply a
+   * meaningful, stable scope (e.g. GitHub's `owner/repo`) implement this
+   * method. Providers without `getScope` cause their artifacts to fall
+   * back to the literal scope `local` — equivalent to file-system catalogs.
+   *
+   * Implementations must return a non-empty string composed of
+   * alphanumerics, `-`, `_`, `.`, and `/`. Throwing is acceptable for
+   * malformed URIs; core surfaces the error at resolution time.
+   */
+  getScope?(uri: string): string;
 }
 
 /**

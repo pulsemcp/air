@@ -75,7 +75,7 @@ Your own `air.json` at `~/.air/air.json` is where you assemble whichever artifac
 
 ### air.json — The Root Config
 
-Every AIR configuration starts with an `air.json` file. Each artifact property is an array of paths to index files. Paths can be local (relative to `air.json`) or remote URIs like `github://` when a catalog provider is installed. Files are loaded and merged in order — later entries override earlier ones by ID:
+Every AIR configuration starts with an `air.json` file. Each artifact property is an array of paths to index files. Paths can be local (relative to `air.json`) or remote URIs like `github://` when a catalog provider is installed. Every artifact is identified by `@scope/id` — local entries contribute under `@local/` and remote catalogs use a provider-derived scope (`@<owner>/<repo>/`). Composition is additive; duplicate qualified IDs hard-fail, and the only way to drop an artifact is `exclude`:
 
 ```json
 {
@@ -136,20 +136,21 @@ AIR expands each catalog into all six artifact arrays automatically — missing 
 
 `catalogs` and the per-type arrays compose: catalogs expand first, per-type arrays layer on top. Local paths resolve relative to `air.json`, so `./platform-team-catalog` above points at `~/.air/platform-team-catalog`.
 
-**Stacked remotes with local overrides.** Org → team → project, with the local file getting the last word:
+**Stacked remotes plus local additions.** Layer org and team catalogs with project-specific additions:
 
 ```json
 {
   "name": "frontend-team",
-  "mcp": [
-    "github://acme/air-org/mcp/mcp.json",
-    "github://acme/air-frontend/mcp/mcp.json",
-    "./mcp/mcp.json"
-  ]
+  "catalogs": [
+    "github://acme/air-org",
+    "github://acme/air-frontend"
+  ],
+  "mcp": ["./mcp/mcp.json"],
+  "exclude": ["@acme/air-org/legacy-server"]
 }
 ```
 
-IDs that match override; new IDs are additive. The last file wins for any given ID. No separate config file is needed — `air.json` is the single composition point.
+Each catalog contributes artifacts under its own scope (`@acme/air-org/...`, `@acme/air-frontend/...`, `@local/...`). Composition is additive — duplicate qualified IDs hard-fail, and `exclude` is the only way to drop an artifact. No separate config file is needed — `air.json` is the single composition point.
 
 ### Skills & References
 

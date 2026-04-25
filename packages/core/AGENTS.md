@@ -37,5 +37,5 @@ Core must never import or reference any specific agent (Claude, OpenCode, Cursor
 ## What NOT to Do
 
 - Do not add agent-specific translation logic (MCP format conversion, skill injection paths, etc.)
-- Do not add deep merge semantics — override is always full replacement by ID
+- Do not introduce later-wins override or deep merge semantics — composition is scoped (`@scope/id`), additive, and exclude-only; duplicate qualified IDs hard-fail
 - Do not make `resolveArtifacts` synchronous again — it must remain async for provider support

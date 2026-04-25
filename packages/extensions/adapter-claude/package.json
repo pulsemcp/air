@@ -1,6 +1,6 @@
 {
   "name": "@pulsemcp/air-adapter-claude",
-  "version": "0.0.43",
+  "version": "0.1.0",
   "publishConfig": {
     "access": "public"
   },
@@ -29,7 +29,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@pulsemcp/air-core": "0.0.43"
+    "@pulsemcp/air-core": "0.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

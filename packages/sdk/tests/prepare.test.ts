@@ -9,7 +9,7 @@ import {
 } from "fs";
 import { tmpdir } from "os";
 import type { McpConfig } from "@pulsemcp/air-core";
-import { prepareSession } from "../src/prepare.js";
+import { prepareSession, resolveCategoryOverride } from "../src/prepare.js";
 import { findUnresolvedVars } from "../src/validate-config.js";
 
 const tempDirs: string[] = [];
@@ -1406,6 +1406,69 @@ export default async function(config, context) {
       expect(
         findUnresolvedVars({} as McpConfig)
       ).toEqual([]);
+    });
+  });
+
+  describe("resolveCategoryOverride", () => {
+    it("canonicalizes a short add reference using the pool", () => {
+      const pool = { "@local/deploy": {}, "@local/lint": {} };
+      const result = resolveCategoryOverride(
+        undefined,
+        [],
+        ["deploy"],
+        undefined,
+        true,
+        pool,
+      );
+      expect(result).toEqual(["@local/deploy"]);
+    });
+
+    it("throws when an add short reference is ambiguous across scopes", () => {
+      const pool = {
+        "@local/review": {},
+        "@acme/skills/review": {},
+      };
+      expect(() =>
+        resolveCategoryOverride(
+          undefined,
+          [],
+          ["review"],
+          undefined,
+          true,
+          pool,
+        ),
+      ).toThrow(/add reference "review" is ambiguous/);
+    });
+
+    it("throws when a remove short reference is ambiguous across scopes", () => {
+      const pool = {
+        "@local/review": {},
+        "@acme/skills/review": {},
+      };
+      expect(() =>
+        resolveCategoryOverride(
+          undefined,
+          ["@local/review", "@acme/skills/review"],
+          undefined,
+          ["review"],
+          undefined,
+          pool,
+        ),
+      ).toThrow(/remove reference "review" is ambiguous/);
+    });
+
+    it("does not throw when an unknown short reference is supplied", () => {
+      const pool = { "@local/deploy": {} };
+      const result = resolveCategoryOverride(
+        undefined,
+        [],
+        ["nope"],
+        undefined,
+        true,
+        pool,
+      );
+      // Unknown refs pass through unchanged so the caller can flag them.
+      expect(result).toEqual(["nope"]);
     });
   });
 });

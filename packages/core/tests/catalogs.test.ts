@@ -20,7 +20,7 @@ afterEach(() => {
 });
 
 describe("catalogs", () => {
-  it("expands a single local catalog into all artifact types", async () => {
+  it("expands a single local catalog into all artifact types under @local", async () => {
     const { dir, cleanup: c } = createTempAirDir({
       "air.json": {
         name: "test",
@@ -49,12 +49,12 @@ describe("catalogs", () => {
 
     const artifacts = await resolveArtifacts(join(dir, "air.json"));
 
-    expect(artifacts.skills["deploy"]).toBeDefined();
-    expect(artifacts.references["git-workflow"]).toBeDefined();
-    expect(artifacts.mcp["github"].title).toBe("Team GitHub");
-    expect(artifacts.plugins["toolkit"]).toBeDefined();
-    expect(artifacts.roots["web-app"]).toBeDefined();
-    expect(artifacts.hooks["pre-commit"]).toBeDefined();
+    expect(artifacts.skills["@local/deploy"]).toBeDefined();
+    expect(artifacts.references["@local/git-workflow"]).toBeDefined();
+    expect(artifacts.mcp["@local/github"].title).toBe("Team GitHub");
+    expect(artifacts.plugins["@local/toolkit"]).toBeDefined();
+    expect(artifacts.roots["@local/web-app"]).toBeDefined();
+    expect(artifacts.hooks["@local/pre-commit"]).toBeDefined();
   });
 
   it("tolerates a catalog that omits some artifact types", async () => {
@@ -71,12 +71,12 @@ describe("catalogs", () => {
 
     const artifacts = await resolveArtifacts(join(dir, "air.json"));
 
-    expect(artifacts.skills["deploy"]).toBeDefined();
+    expect(artifacts.skills["@local/deploy"]).toBeDefined();
     expect(artifacts.mcp).toEqual({});
     expect(artifacts.hooks).toEqual({});
   });
 
-  it("layers multiple catalogs: later wins by ID, both contribute new IDs", async () => {
+  it("multiple local catalogs hard-fail on the same shortname (both qualify under @local)", async () => {
     const { dir, cleanup: c } = createTempAirDir({
       "air.json": {
         name: "test",
@@ -84,17 +84,35 @@ describe("catalogs", () => {
       },
       "org/skills/skills.json": {
         deploy: exampleSkill("deploy", { description: "Org deploy" }),
-        review: exampleSkill("review"),
       },
       "team/skills/skills.json": {
         deploy: exampleSkill("deploy", { description: "Team deploy" }),
+      },
+    });
+    cleanup = c;
+
+    await expect(resolveArtifacts(join(dir, "air.json"))).rejects.toThrow(
+      /Duplicate skills ID "@local\/deploy"/,
+    );
+  });
+
+  it("multiple local catalogs union when shortnames are disjoint", async () => {
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        catalogs: ["./org", "./team"],
+      },
+      "org/skills/skills.json": {
+        deploy: exampleSkill("deploy"),
+        review: exampleSkill("review"),
+      },
+      "team/skills/skills.json": {
         lint: exampleSkill("lint"),
       },
       "org/mcp/mcp.json": {
         github: exampleMcpStdio({ title: "Org GitHub" }),
       },
       "team/mcp/mcp.json": {
-        github: exampleMcpStdio({ title: "Team GitHub" }),
         jira: exampleMcpStdio({ title: "Team Jira" }),
       },
     });
@@ -102,14 +120,14 @@ describe("catalogs", () => {
 
     const artifacts = await resolveArtifacts(join(dir, "air.json"));
 
-    expect(artifacts.skills["deploy"].description).toBe("Team deploy");
-    expect(artifacts.skills["review"]).toBeDefined();
-    expect(artifacts.skills["lint"]).toBeDefined();
-    expect(artifacts.mcp["github"].title).toBe("Team GitHub");
-    expect(artifacts.mcp["jira"]).toBeDefined();
+    expect(artifacts.skills["@local/deploy"]).toBeDefined();
+    expect(artifacts.skills["@local/review"]).toBeDefined();
+    expect(artifacts.skills["@local/lint"]).toBeDefined();
+    expect(artifacts.mcp["@local/github"].title).toBe("Org GitHub");
+    expect(artifacts.mcp["@local/jira"].title).toBe("Team Jira");
   });
 
-  it("explicit per-type arrays layer on top of catalogs", async () => {
+  it("explicit per-type arrays union with catalogs (hard-fail on shared shortname under same scope)", async () => {
     const { dir, cleanup: c } = createTempAirDir({
       "air.json": {
         name: "test",
@@ -118,20 +136,39 @@ describe("catalogs", () => {
       },
       "team/skills/skills.json": {
         deploy: exampleSkill("deploy", { description: "Team deploy" }),
-        review: exampleSkill("review"),
       },
       "local-skills.json": {
         deploy: exampleSkill("deploy", { description: "Local deploy" }),
+      },
+    });
+    cleanup = c;
+
+    await expect(resolveArtifacts(join(dir, "air.json"))).rejects.toThrow(
+      /Duplicate skills ID "@local\/deploy"/,
+    );
+  });
+
+  it("explicit per-type arrays add disjoint shortnames to the catalog set", async () => {
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        catalogs: ["./team"],
+        skills: ["./local-skills.json"],
+      },
+      "team/skills/skills.json": {
+        deploy: exampleSkill("deploy"),
+        review: exampleSkill("review"),
+      },
+      "local-skills.json": {
         custom: exampleSkill("custom"),
       },
     });
     cleanup = c;
 
     const artifacts = await resolveArtifacts(join(dir, "air.json"));
-
-    expect(artifacts.skills["deploy"].description).toBe("Local deploy");
-    expect(artifacts.skills["review"]).toBeDefined();
-    expect(artifacts.skills["custom"]).toBeDefined();
+    expect(artifacts.skills["@local/deploy"]).toBeDefined();
+    expect(artifacts.skills["@local/review"]).toBeDefined();
+    expect(artifacts.skills["@local/custom"]).toBeDefined();
   });
 
   it("tolerates trailing slashes on catalog paths", async () => {
@@ -147,7 +184,7 @@ describe("catalogs", () => {
     cleanup = c;
 
     const artifacts = await resolveArtifacts(join(dir, "air.json"));
-    expect(artifacts.skills["deploy"]).toBeDefined();
+    expect(artifacts.skills["@local/deploy"]).toBeDefined();
   });
 
   it("catalog skill paths are resolved to absolute paths relative to the catalog", async () => {
@@ -163,8 +200,9 @@ describe("catalogs", () => {
     cleanup = c;
 
     const artifacts = await resolveArtifacts(join(dir, "air.json"));
-    // Path field is resolved relative to the index file's directory (team/skills/)
-    expect(artifacts.skills["deploy"].path).toBe(join(dir, "team/skills/deploy"));
+    expect(artifacts.skills["@local/deploy"].path).toBe(
+      join(dir, "team/skills/deploy"),
+    );
   });
 
   it("throws a clear error for catalog URIs without a registered provider", async () => {
@@ -177,7 +215,7 @@ describe("catalogs", () => {
     cleanup = c;
 
     await expect(resolveArtifacts(join(dir, "air.json"))).rejects.toThrow(
-      /No catalog provider registered for scheme "github:\/\/"/
+      /No catalog provider registered for scheme "github:\/\/"/,
     );
   });
 
@@ -198,17 +236,16 @@ describe("catalogs", () => {
     };
 
     await expect(
-      resolveArtifacts(join(dir, "air.json"), { providers: [provider] })
+      resolveArtifacts(join(dir, "air.json"), { providers: [provider] }),
     ).rejects.toThrow(/does not support catalog discovery/);
   });
 
-  it("delegates to provider.resolveCatalogDir for remote catalog URIs", async () => {
+  it("delegates to provider.resolveCatalogDir for remote catalog URIs and uses provider scope", async () => {
     const { dir, cleanup: c } = createTempAirDir({
       "air.json": {
         name: "test",
         catalogs: ["mock://cat-a"],
       },
-      // Provider clones "mock://cat-a" into this local directory.
       "remote-clone/agent-roots/roots.json": {
         "web-app": exampleRoot("web-app"),
       },
@@ -228,18 +265,49 @@ describe("catalogs", () => {
       async resolve(): Promise<Record<string, unknown>> {
         throw new Error("resolve() should not be called for catalog discovery");
       },
+      getScope: () => "acme/cat-a",
     };
 
     const artifacts = await resolveArtifacts(join(dir, "air.json"), {
       providers: [provider],
     });
 
-    expect(artifacts.roots["web-app"]).toBeDefined();
-    expect(artifacts.mcp["github"].title).toBe("Remote GitHub");
+    expect(artifacts.roots["@acme/cat-a/web-app"]).toBeDefined();
+    expect(artifacts.mcp["@acme/cat-a/github"].title).toBe("Remote GitHub");
     expect(calls).toEqual(["resolveCatalogDir:mock://cat-a"]);
   });
 
-  it("allows per-catalog scoping — explicit arrays are unaffected when no catalogs are listed", async () => {
+  it("provider catalog without getScope falls back to @local", async () => {
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        catalogs: ["mock://cat-a"],
+      },
+      "remote-clone/skills/skills.json": {
+        deploy: exampleSkill("deploy"),
+      },
+    });
+    cleanup = c;
+
+    const provider: CatalogProvider = {
+      scheme: "mock",
+      async resolveCatalogDir(): Promise<string> {
+        return join(dir, "remote-clone");
+      },
+      async resolve(): Promise<Record<string, unknown>> {
+        return {};
+      },
+      // intentionally no getScope
+    };
+
+    const artifacts = await resolveArtifacts(join(dir, "air.json"), {
+      providers: [provider],
+    });
+
+    expect(artifacts.skills["@local/deploy"]).toBeDefined();
+  });
+
+  it("explicit arrays alone (no catalogs key) work under @local", async () => {
     const { dir, cleanup: c } = createTempAirDir({
       "air.json": {
         name: "test",
@@ -250,7 +318,7 @@ describe("catalogs", () => {
     cleanup = c;
 
     const artifacts = await resolveArtifacts(join(dir, "air.json"));
-    expect(artifacts.skills["deploy"]).toBeDefined();
+    expect(artifacts.skills["@local/deploy"]).toBeDefined();
   });
 
   it("treats catalogs: [] as a no-op (equivalent to no catalogs key)", async () => {
@@ -265,7 +333,7 @@ describe("catalogs", () => {
     cleanup = c;
 
     const artifacts = await resolveArtifacts(join(dir, "air.json"));
-    expect(artifacts.skills["deploy"]).toBeDefined();
+    expect(artifacts.skills["@local/deploy"]).toBeDefined();
     expect(artifacts.mcp).toEqual({});
   });
 
@@ -280,14 +348,12 @@ describe("catalogs", () => {
         name: "test",
         catalogs: ["./pulsemcp-agents"],
       },
-      // Mimics pulsemcp/pulsemcp's actual layout from issue #108.
       "pulsemcp-agents/agent-roots/roots.json": {
         "air-root": exampleRoot("air-root"),
       },
       "pulsemcp-agents/mcp-servers/mcp.json": {
         github: exampleMcpStdio({ title: "Agent GitHub" }),
       },
-      // Conventional paths still work alongside.
       "pulsemcp-agents/skills/skills.json": {
         deploy: exampleSkill("deploy"),
       },
@@ -295,9 +361,9 @@ describe("catalogs", () => {
     cleanup = c;
 
     const artifacts = await resolveArtifacts(join(dir, "air.json"));
-    expect(artifacts.roots["air-root"]).toBeDefined();
-    expect(artifacts.mcp["github"].title).toBe("Agent GitHub");
-    expect(artifacts.skills["deploy"]).toBeDefined();
+    expect(artifacts.roots["@local/air-root"]).toBeDefined();
+    expect(artifacts.mcp["@local/github"].title).toBe("Agent GitHub");
+    expect(artifacts.skills["@local/deploy"]).toBeDefined();
   });
 
   it("discovers an index by $schema when filename does not match the type keyword", async () => {
@@ -306,7 +372,6 @@ describe("catalogs", () => {
         name: "test",
         catalogs: ["./cat"],
       },
-      // Filename has no catalog-type keyword — only $schema identifies it.
       "cat/extras/my-config.json": {
         $schema: "https://pulsemcp.com/air/roots.schema.json",
         "web-app": exampleRoot("web-app"),
@@ -315,7 +380,7 @@ describe("catalogs", () => {
     cleanup = c;
 
     const artifacts = await resolveArtifacts(join(dir, "air.json"));
-    expect(artifacts.roots["web-app"]).toBeDefined();
+    expect(artifacts.roots["@local/web-app"]).toBeDefined();
   });
 
   it("skips JSON files whose $schema points to a non-AIR schema", async () => {
@@ -324,7 +389,6 @@ describe("catalogs", () => {
         name: "test",
         catalogs: ["./cat"],
       },
-      // Filename says "roots" but $schema is explicitly non-AIR — must be skipped.
       "cat/agent-roots/roots.json": {
         $schema: "https://example.com/unrelated.schema.json",
         "web-app": exampleRoot("web-app"),
@@ -336,27 +400,29 @@ describe("catalogs", () => {
     expect(artifacts.roots).toEqual({});
   });
 
-  it("resolves collisions within a single catalog via last-wins by sorted relPath", async () => {
+  it("collisions within a single catalog hard-fail (same scope, same shortname)", async () => {
+    // Within a catalog, indexes are loaded as separate contributions but share
+    // the same scope. Two indexes producing the same shortname therefore
+    // produce the same qualified ID and must hard-fail.
     const { dir, cleanup: c } = createTempAirDir({
       "air.json": {
         name: "test",
         catalogs: ["./cat"],
       },
-      // Sorted alphabetically by relPath: "agent-roots/roots.json" < "experiments/roots/roots.json"
-      // so "experiments" wins when both define the same ID.
       "cat/agent-roots/roots.json": {
         "web-app": exampleRoot("web-app", { description: "Agent roots" }),
       },
       "cat/experiments/roots/roots.json": {
-        "web-app": exampleRoot("web-app", { description: "Experiments roots" }),
-        "experimental-app": exampleRoot("experimental-app"),
+        "web-app": exampleRoot("web-app", {
+          description: "Experiments roots",
+        }),
       },
     });
     cleanup = c;
 
-    const artifacts = await resolveArtifacts(join(dir, "air.json"));
-    expect(artifacts.roots["web-app"].description).toBe("Experiments roots");
-    expect(artifacts.roots["experimental-app"]).toBeDefined();
+    await expect(resolveArtifacts(join(dir, "air.json"))).rejects.toThrow(
+      /Duplicate roots ID "@local\/web-app"/,
+    );
   });
 
   it("caps directory walk at depth 3 from the catalog root", async () => {
@@ -365,19 +431,15 @@ describe("catalogs", () => {
         name: "test",
         catalogs: ["./cat"],
       },
-      // Depth 0 — file at the catalog root.
       "cat/roots.json": {
         "root-level-root": exampleRoot("root-level-root"),
       },
-      // Depth 2 from the catalog root — discovered.
       "cat/agents/agent-roots/roots.json": {
         "shallow-root": exampleRoot("shallow-root"),
       },
-      // Depth 3 — at the cap, still discovered.
       "cat/a/b/c/roots.json": {
         "boundary-root": exampleRoot("boundary-root"),
       },
-      // Depth 4 — beyond the cap.
       "cat/a/b/c/d/roots.json": {
         "too-deep-root": exampleRoot("too-deep-root"),
       },
@@ -385,10 +447,10 @@ describe("catalogs", () => {
     cleanup = c;
 
     const artifacts = await resolveArtifacts(join(dir, "air.json"));
-    expect(artifacts.roots["root-level-root"]).toBeDefined();
-    expect(artifacts.roots["shallow-root"]).toBeDefined();
-    expect(artifacts.roots["boundary-root"]).toBeDefined();
-    expect(artifacts.roots["too-deep-root"]).toBeUndefined();
+    expect(artifacts.roots["@local/root-level-root"]).toBeDefined();
+    expect(artifacts.roots["@local/shallow-root"]).toBeDefined();
+    expect(artifacts.roots["@local/boundary-root"]).toBeDefined();
+    expect(artifacts.roots["@local/too-deep-root"]).toBeUndefined();
   });
 
   it("respects .gitignore at the catalog root", async () => {
@@ -401,11 +463,9 @@ describe("catalogs", () => {
       "cat/kept/roots.json": {
         "kept-root": exampleRoot("kept-root"),
       },
-      // Directory ignored by .gitignore — must not be descended into.
       "cat/scratch/roots.json": {
         "ignored-root": exampleRoot("ignored-root"),
       },
-      // File ignored by .gitignore — must be skipped.
       "cat/tmp-roots.json": {
         "tmp-root": exampleRoot("tmp-root"),
       },
@@ -413,9 +473,9 @@ describe("catalogs", () => {
     cleanup = c;
 
     const artifacts = await resolveArtifacts(join(dir, "air.json"));
-    expect(artifacts.roots["kept-root"]).toBeDefined();
-    expect(artifacts.roots["ignored-root"]).toBeUndefined();
-    expect(artifacts.roots["tmp-root"]).toBeUndefined();
+    expect(artifacts.roots["@local/kept-root"]).toBeDefined();
+    expect(artifacts.roots["@local/ignored-root"]).toBeUndefined();
+    expect(artifacts.roots["@local/tmp-root"]).toBeUndefined();
   });
 
   it("never descends into hardcoded skip directories (node_modules, .git, dist, …)", async () => {
@@ -437,9 +497,9 @@ describe("catalogs", () => {
     cleanup = c;
 
     const artifacts = await resolveArtifacts(join(dir, "air.json"));
-    expect(artifacts.skills["deploy"]).toBeDefined();
-    expect(artifacts.roots["noise-root"]).toBeUndefined();
-    expect(artifacts.roots["build-root"]).toBeUndefined();
+    expect(artifacts.skills["@local/deploy"]).toBeDefined();
+    expect(artifacts.roots["@local/noise-root"]).toBeUndefined();
+    expect(artifacts.roots["@local/build-root"]).toBeUndefined();
   });
 
   it("skips hidden directories and files during discovery", async () => {
@@ -461,9 +521,9 @@ describe("catalogs", () => {
     cleanup = c;
 
     const artifacts = await resolveArtifacts(join(dir, "air.json"));
-    expect(artifacts.skills["deploy"]).toBeDefined();
-    expect(artifacts.roots["hidden-root"]).toBeUndefined();
-    expect(artifacts.roots["dotfile-root"]).toBeUndefined();
+    expect(artifacts.skills["@local/deploy"]).toBeDefined();
+    expect(artifacts.roots["@local/hidden-root"]).toBeUndefined();
+    expect(artifacts.roots["@local/dotfile-root"]).toBeUndefined();
   });
 
   it("ignores JSON files whose filename has no AIR type keyword and no $schema", async () => {
@@ -481,7 +541,7 @@ describe("catalogs", () => {
     cleanup = c;
 
     const artifacts = await resolveArtifacts(join(dir, "air.json"));
-    expect(artifacts.skills["deploy"]).toBeDefined();
+    expect(artifacts.skills["@local/deploy"]).toBeDefined();
   });
 
   it("skips unparseable JSON files silently", async () => {
@@ -493,13 +553,12 @@ describe("catalogs", () => {
       "cat/skills/skills.json": {
         deploy: exampleSkill("deploy"),
       },
-      // Matches the filename pattern for "roots" but is not valid JSON.
       "cat/extras/roots.json": "not valid json {{",
     });
     cleanup = c;
 
     const artifacts = await resolveArtifacts(join(dir, "air.json"));
-    expect(artifacts.skills["deploy"]).toBeDefined();
+    expect(artifacts.skills["@local/deploy"]).toBeDefined();
     expect(artifacts.roots).toEqual({});
   });
 
@@ -523,12 +582,17 @@ describe("catalogs", () => {
     cleanup = c;
 
     const artifacts = await resolveArtifacts(join(dir, "air.json"));
-    expect(artifacts.skills["custom-skill"].path).toBe(
-      join(dir, "cat/custom/actual-dir")
+    expect(artifacts.skills["@local/custom-skill"].path).toBe(
+      join(dir, "cat/custom/actual-dir"),
     );
   });
 
-  it("expands plugins declared across separate catalogs", async () => {
+  it("expands plugins declared across separate catalogs (intra-catalog references)", async () => {
+    // Two catalogs, both with @local scope. The "base" plugin lives in the
+    // org catalog and references shared-skill, also in org. The "app" plugin
+    // lives in team and references base.
+    // Intra-catalog rule: base.skills=["shared-skill"] resolves to
+    // @local/shared-skill; app.plugins=["base"] resolves to @local/base.
     const { dir, cleanup: c } = createTempAirDir({
       "air.json": {
         name: "test",
@@ -552,10 +616,10 @@ describe("catalogs", () => {
 
     const artifacts = await resolveArtifacts(join(dir, "air.json"));
 
-    expect(artifacts.plugins["base"]).toBeDefined();
-    expect(artifacts.plugins["app"]).toBeDefined();
-    // app references base from the other catalog; after plugin expansion,
-    // app's primitives should include base's shared-skill.
-    expect(artifacts.plugins["app"].skills).toContain("shared-skill");
+    expect(artifacts.plugins["@local/base"]).toBeDefined();
+    expect(artifacts.plugins["@local/app"]).toBeDefined();
+    expect(artifacts.plugins["@local/app"].skills).toContain(
+      "@local/shared-skill",
+    );
   });
 });

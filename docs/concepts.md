@@ -29,7 +29,7 @@ The index files act as lightweight registries. Agents use the ID and description
 
 ### The Root Config
 
-`air.json` lives at `~/.air/air.json` (user-level). Each artifact property is an array of paths to index files. Files are loaded and merged in order — later entries override earlier ones by ID:
+`air.json` lives at `~/.air/air.json` (user-level). Each artifact property is an array of paths to index files. Every artifact is identified by `@scope/id`, where local entries contribute under `@local/` and remote catalogs use a provider-derived scope (e.g. `@<owner>/<repo>/`). Composition is additive — duplicate qualified IDs hard-fail, and the only way to drop an artifact is `exclude`:
 
 ```json
 {
@@ -50,32 +50,35 @@ All paths are relative to the `air.json` file. You only need to include the arti
 
 ## Composition Model
 
-Composition is expressed directly in `air.json`. Each artifact array lists sources in order — later entries override earlier ones by ID.
+Composition is expressed directly in `air.json`. Every artifact has a qualified identity of the form `@scope/id`. Local indexes contribute under `@local/`; remote catalogs contribute under their provider-derived scope (for `github://owner/repo` that's `@<owner>/<repo>/`).
 
 ### How Layering Works
 
-For each artifact type, the CLI loads every file in the array and merges them sequentially:
+For each artifact type:
 
-1. **New IDs** are added to the merged set
-2. **Matching IDs** override — the later entry wins completely (no deep merge)
-3. **The `$schema` key**, if present, is excluded from merging
+1. **Disjoint qualified IDs** accumulate (additive union)
+2. **Duplicate qualified IDs** hard-fail — you cannot silently override an artifact
+3. **Cross-scope shortname collisions** warn but keep both — disambiguate with the qualified form
+4. **`exclude`** is the only way to drop an artifact (takes a list of qualified IDs)
 
 ### Example
 
 ```json
 {
   "name": "frontend-team",
-  "mcp": [
-    "github://acme/air-org/mcp/mcp.json",
-    "github://acme/air-frontend/mcp/mcp.json",
-    "./mcp/mcp.json"
-  ]
+  "catalogs": [
+    "github://acme/air-org",
+    "github://acme/air-frontend"
+  ],
+  "mcp": ["./mcp/mcp.json"],
+  "exclude": ["@acme/air-org/legacy-server"]
 }
 ```
 
-- **Org configs** (first in array) define the baseline
-- **Team configs** (middle) add team-specific servers and override org defaults
-- **Local configs** (last) make final project-specific adjustments
+- **Org catalog** ships under `@acme/air-org/...`
+- **Frontend team catalog** ships under `@acme/air-frontend/...`
+- **Local `mcp.json`** ships under `@local/...`
+- `exclude` drops `@acme/air-org/legacy-server`. To replace an upstream artifact, exclude it and ship a replacement under your own scope.
 
 ## Design Principles
 

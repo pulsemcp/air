@@ -19,7 +19,7 @@ Issue tracking and historical context live in the linked GitHub issues. This doc
   - [5. Open-source / community catalog](#5-open-source--community-catalog)
 - [Design decisions](#design-decisions)
   - [AIR core](#air-core)
-    - [Full replacement by ID, no deep merge](#full-replacement-by-id-no-deep-merge)
+    - [Atomic artifacts, no deep merge](#atomic-artifacts-no-deep-merge)
     - [Always-scoped artifact identity](#always-scoped-artifact-identity)
     - [Exclude-only composition](#exclude-only-composition)
     - [Schemas live at the repo root, copied into core at build time](#schemas-live-at-the-repo-root-copied-into-core-at-build-time)
@@ -127,8 +127,6 @@ The consumer pulls in the customer's catalog, then drops the entries that don't 
 }
 ```
 
-> The `exclude` field and the `@scope/id` qualified-identifier syntax ship with the next major bump (see [Always-scoped artifact identity](#always-scoped-artifact-identity) and [Exclude-only composition](#exclude-only-composition) below). Today, the closest workaround is to fork or shadow upstream entries — exactly the friction this scenario describes.
-
 What AIR's defaults need to do here: make exclusion declarative (so it shows up in PR review) and keep scope visible in the qualified ID so an agent or human can tell at a glance which entries came from the customer's catalog.
 
 ### 5. Open-source / community catalog
@@ -156,8 +154,6 @@ A user composing two community catalogs plus their own local layer:
 }
 ```
 
-> Same caveat as scenario 4: `exclude` and the `@scope/id` qualified-identifier syntax ship with the next major bump.
-
 What AIR's defaults need to do here: make scope mandatory so two same-shortname artifacts don't get conflated, surface cross-scope shortname collisions as a warning so an agent doesn't silently confuse two different `code-review` skills, and keep the per-artifact opt-out as the only required composition lever.
 
 ## Design decisions
@@ -173,35 +169,35 @@ Each decision below captures:
 
 ### AIR core
 
-#### Full replacement by ID, no deep merge
+#### Atomic artifacts, no deep merge
 
-**Decision.** When two artifact entries share an ID, the winning entry replaces the losing one in full — no field-level merging. This is the only merge semantic AIR offers, and it applies uniformly across `air.json` composition, in-catalog index merging, and provider layering.
+**Decision.** Artifacts compose at the artifact level, not the field level. Composition unions disjoint qualified IDs; two entries that share a fully qualified ID hard-fail at composition time rather than one quietly replacing the other; two entries that share a shortname under different scopes warn and coexist. There is no field-level merge anywhere in the pipeline — across `air.json` composition, in-catalog index merging, and provider layering, the artifact is the atomic unit.
 
-**Context.** Deep merge creates ambiguity: when a field is present in the result, you can't tell which layer contributed it. With full replacement, the answer is always "whichever entry won, exactly as written in its source file." This matters in every scenario, but especially in [scenario 3](#3-multiple-teams--per-team-catalogs-layered-onto-a-global-catalog) and [scenario 4](#4-external-catalog-composition-vendor--customer) where multiple layers actively contribute and provenance has to stay legible.
+**Context.** Deep merge creates ambiguity: when a field is present in the result, you can't tell which layer contributed it. Treating artifacts as atomic means the answer is always "whichever entry the qualified ID resolves to, exactly as written in its source file." This matters in every scenario, but especially in [scenario 3](#3-multiple-teams--per-team-catalogs-layered-onto-a-global-catalog) and [scenario 4](#4-external-catalog-composition-vendor--customer) where multiple layers actively contribute and provenance has to stay legible. Hard-failing on duplicate qualified IDs (rather than picking a winner) keeps composition predictable: you never get a silently shadowed artifact you didn't expect.
 
-**Trade-offs.** We gave up deep-merge ergonomics — a consumer who wants one tweaked field on an upstream artifact has to redeclare the whole entry — for predictability.
+**Trade-offs.** We gave up deep-merge ergonomics — a consumer who wants one tweaked field on an upstream artifact has to redeclare the whole entry under their own scope — for predictability.
 
 **Related decisions.** [Always-scoped artifact identity](#always-scoped-artifact-identity), [Exclude-only composition](#exclude-only-composition).
 
 #### Always-scoped artifact identity
 
-**Decision.** Every artifact is canonically addressed as `@scope/id`, where the scope is derived from the catalog the artifact came from (e.g., `org/repo` for a `github://`-resolved catalog, the literal string `local` for a local catalog). This applies uniformly to all six artifact types — there is no per-type special-casing. Inside catalog content, references can use the short form when unambiguous and the qualified form is always allowed; intra-catalog references (a hook in `@a/repo` referencing a skill in `@a/repo`) implicitly scope to their own catalog. Two artifacts with the same fully qualified ID hard-fail at composition; two artifacts with the same shortname in different scopes warn but resolve. Tracked in [#110](https://github.com/pulsemcp/air/issues/110); ships in the next major.
+**Decision.** Every artifact is canonically addressed as `@scope/id`, where the scope is derived from the catalog the artifact came from (e.g., `org/repo` for a `github://`-resolved catalog, the literal string `local` for a local catalog). This applies uniformly to all six artifact types — there is no per-type special-casing. Inside catalog content, references can use the short form when unambiguous and the qualified form is always allowed; intra-catalog references (a hook in `@a/repo` referencing a skill in `@a/repo`) implicitly scope to their own catalog. Two artifacts with the same fully qualified ID hard-fail at composition; two artifacts with the same shortname in different scopes warn but resolve. Resolved by [#110](https://github.com/pulsemcp/air/issues/110); shipped in v0.1.0.
 
 **Context.** Without scope, OSS composition ([scenario 5](#5-open-source--community-catalog)) is fundamentally fragile — two `code-review` skills from two authors are not the same artifact but get conflated by a flat ID space. Multi-team layered catalogs ([scenario 3](#3-multiple-teams--per-team-catalogs-layered-onto-a-global-catalog)) and vendor composition ([scenario 4](#4-external-catalog-composition-vendor--customer)) need provenance: when an agent reads a description, the qualified ID tells it (and the human reviewing config) where the entry came from. Scoping also turns previously-silent same-ID collisions into a hard-fail with a clear message.
 
 **Trade-offs.** We gave up the npm-style "two `@a/foo` and `@b/foo` happily coexist" property — same qualified ID still hard-fails even within `local` — for a simpler mental model where scope buys provenance and good error messages, not coexistence.
 
-**Related decisions.** [Full replacement by ID, no deep merge](#full-replacement-by-id-no-deep-merge), [Exclude-only composition](#exclude-only-composition).
+**Related decisions.** [Atomic artifacts, no deep merge](#atomic-artifacts-no-deep-merge), [Exclude-only composition](#exclude-only-composition).
 
 #### Exclude-only composition
 
-**Decision.** The only declarative composition control consumers get is `exclude` — a list of fully qualified artifact IDs to drop from the composed result. There is no override, no field-patching, no per-source overrides block. If a consumer wants a different artifact with the same shortname as an upstream one, they declare their own under their own scope; if they want the upstream gone, they exclude it. Exclude is uniform across all artifact types — the qualified ID identifies which type it belongs to, AIR resolves the rest. Tracked in [#110](https://github.com/pulsemcp/air/issues/110), absorbing the broader `exclude`-vs-`overrides` design space explored in [#111](https://github.com/pulsemcp/air/issues/111); ships in the next major.
+**Decision.** The only declarative composition control consumers get is `exclude` — a list of fully qualified artifact IDs to drop from the composed result. There is no override, no field-patching, no per-source overrides block. If a consumer wants a different artifact with the same shortname as an upstream one, they declare their own under their own scope; if they want the upstream gone, they exclude it. Exclude is uniform across all artifact types — the qualified ID identifies which type it belongs to, AIR resolves the rest. Resolved by [#110](https://github.com/pulsemcp/air/issues/110), absorbing the broader `exclude`-vs-`overrides` design space explored in [#111](https://github.com/pulsemcp/air/issues/111); shipped in v0.1.0.
 
-**Context.** Vendor composition ([scenario 4](#4-external-catalog-composition-vendor--customer)) and OSS composition ([scenario 5](#5-open-source--community-catalog)) both need a way to say "I want this catalog *minus* these items" without forking. Forking has its own maintenance cost — you have to track upstream changes manually — and shadowing tricks (declaring a local stub with the same ID) are fragile and intent-hostile. A first-class `exclude` makes the consumer's intent visible in PR review and keeps the composition surface declarative. The earlier `overrides` direction was rejected because it reintroduces the deep-merge ambiguity that [full replacement](#full-replacement-by-id-no-deep-merge) explicitly avoided.
+**Context.** Vendor composition ([scenario 4](#4-external-catalog-composition-vendor--customer)) and OSS composition ([scenario 5](#5-open-source--community-catalog)) both need a way to say "I want this catalog *minus* these items" without forking. Forking has its own maintenance cost — you have to track upstream changes manually — and shadowing tricks (declaring a local stub with the same ID) are fragile and intent-hostile. A first-class `exclude` makes the consumer's intent visible in PR review and keeps the composition surface declarative. The earlier `overrides` direction was rejected because it reintroduces the deep-merge ambiguity that [atomic artifact composition](#atomic-artifacts-no-deep-merge) explicitly avoided.
 
 **Trade-offs.** We gave up field-level patching — a consumer who wants an upstream artifact with one tweaked description has to fork it locally and track upstream manually — for a single, predictable composition control.
 
-**Related decisions.** [Always-scoped artifact identity](#always-scoped-artifact-identity), [Full replacement by ID, no deep merge](#full-replacement-by-id-no-deep-merge).
+**Related decisions.** [Always-scoped artifact identity](#always-scoped-artifact-identity), [Atomic artifacts, no deep merge](#atomic-artifacts-no-deep-merge).
 
 #### Schemas live at the repo root, copied into core at build time
 
@@ -274,10 +270,10 @@ CLI decisions are product opinions and can move faster than core decisions — a
 
 #### Catalog auto-discovery up to 3 levels deep
 
-**Decision.** A `catalogs[]` entry in `air.json` no longer requires the rigid `<type>/<type>.json` layout. AIR walks each catalog root up to 3 directory levels deep and picks up any file that looks like an AIR artifact index — either by filename (`skills.json`, `roots.json`, `mcp.json`, `references.json`, `plugins.json`, `hooks.json`, or any filename containing those tokens as delimited segments) or by its `$schema` URL pointing at an AIR schema. Files whose `$schema` points at a non-AIR schema are skipped even if the filename matches. `node_modules`, `.git`, `dist`, `build`, `coverage`, `.next`, `.turbo`, `target`, `vendor`, and any directory starting with `.` are skipped; `.gitignore` at the catalog root is honored. Within a single catalog, multiple indexes of the same type merge in sorted relative-path order with later-wins by ID. Across catalogs, earlier entries merge first; later catalogs override. Tracked in [#108](https://github.com/pulsemcp/air/issues/108) and [#109](https://github.com/pulsemcp/air/issues/109).
+**Decision.** A `catalogs[]` entry in `air.json` no longer requires the rigid `<type>/<type>.json` layout. AIR walks each catalog root up to 3 directory levels deep and picks up any file that looks like an AIR artifact index — either by filename (`skills.json`, `roots.json`, `mcp.json`, `references.json`, `plugins.json`, `hooks.json`, or any filename containing those tokens as delimited segments) or by its `$schema` URL pointing at an AIR schema. Files whose `$schema` points at a non-AIR schema are skipped even if the filename matches. `node_modules`, `.git`, `dist`, `build`, `coverage`, `.next`, `.turbo`, `target`, `vendor`, and any directory starting with `.` are skipped; `.gitignore` at the catalog root is honored. Within a single catalog, multiple indexes of the same type union by qualified ID and hard-fail on duplicates (the catalog's scope is the same throughout); across catalogs, qualified IDs differ by scope and union. Tracked in [#108](https://github.com/pulsemcp/air/issues/108) and [#109](https://github.com/pulsemcp/air/issues/109).
 
 **Context.** Real catalogs use whatever directory naming makes sense in their repo — `agents/agent-roots/roots.json`, `config/mcp-servers/mcp.json` — and predate AIR's conventions. The rigid layout silently dropped every artifact that didn't sit at the conventional path, which hid ~60 agent roots and ~88 MCP servers in `pulsemcp/pulsemcp` from `air resolve`. Multi-team layered catalogs ([scenario 3](#3-multiple-teams--per-team-catalogs-layered-onto-a-global-catalog)) and OSS composers ([scenario 5](#5-open-source--community-catalog)) need to point at catalogs as-they-are without forking the directory layout to satisfy the tool. A bounded recursive walk keeps discovery cheap (depth cap, ignore-list, `.gitignore` honored) while accepting whatever folder names the catalog author picked.
 
-**Trade-offs.** We gave up the "exactly one path per artifact type" guarantee and accepted the ambiguity of multiple indexes in one catalog (resolved with sorted-order last-wins) for catalog-author flexibility.
+**Trade-offs.** We gave up the "exactly one path per artifact type" guarantee for catalog-author flexibility; in exchange, catalog authors must keep their qualified IDs unique within their own catalog (duplicates hard-fail at composition).
 
-**Related decisions.** [Full replacement by ID, no deep merge](#full-replacement-by-id-no-deep-merge), [Extension interfaces](#extension-interfaces--agentadapter-catalogprovider-preparetransform-pluginemitter).
+**Related decisions.** [Atomic artifacts, no deep merge](#atomic-artifacts-no-deep-merge), [Extension interfaces](#extension-interfaces--agentadapter-catalogprovider-preparetransform-pluginemitter).
