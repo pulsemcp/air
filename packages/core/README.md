@@ -24,8 +24,8 @@ const artifacts = await resolveArtifacts("~/.air/air.json");
 // Validate a JSON file against its AIR schema
 const result = validateJson(data, "skills");
 
-// Merge two artifact sets (later wins for matching IDs)
-const merged = mergeArtifacts(base, override);
+// Merge two artifact sets (additive union — duplicate qualified IDs throw)
+const merged = mergeArtifacts(base, overlay);
 ```
 
 ### With a Catalog Provider (remote URIs)

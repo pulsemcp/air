@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { join } from "path";
 import { resolveArtifacts } from "../src/config.js";
+import type { CatalogProvider } from "../src/types.js";
 import {
   createTempAirDir,
   exampleSkill,
@@ -17,7 +18,7 @@ afterEach(() => {
 });
 
 describe("composition", () => {
-  it("org → team layering: team overrides org", async () => {
+  it("union: per-type arrays contribute disjoint shortnames under @local", async () => {
     const { dir, cleanup: c } = createTempAirDir({
       "air.json": {
         name: "team",
@@ -29,14 +30,14 @@ describe("composition", () => {
         review: exampleSkill("review"),
       },
       "team-skills.json": {
-        deploy: exampleSkill("deploy", { description: "Team deploy" }),
+        // no overlap with org — different shortnames
         lint: exampleSkill("lint"),
       },
       "org-mcp.json": {
         github: exampleMcpStdio({ title: "Org GitHub" }),
       },
       "team-mcp.json": {
-        github: exampleMcpStdio({ title: "Team GitHub" }),
+        // disjoint from org-mcp
         jira: exampleMcpStdio({ title: "Team Jira" }),
       },
     });
@@ -44,39 +45,89 @@ describe("composition", () => {
 
     const artifacts = await resolveArtifacts(join(dir, "air.json"));
 
-    expect(artifacts.skills["deploy"].description).toBe("Team deploy");
-    expect(artifacts.skills["review"]).toBeDefined();
-    expect(artifacts.skills["lint"]).toBeDefined();
-    expect(artifacts.mcp["github"].title).toBe("Team GitHub");
-    expect(artifacts.mcp["jira"]).toBeDefined();
+    expect(artifacts.skills["@local/deploy"]).toBeDefined();
+    expect(artifacts.skills["@local/review"]).toBeDefined();
+    expect(artifacts.skills["@local/lint"]).toBeDefined();
+    expect(artifacts.mcp["@local/github"]).toBeDefined();
+    expect(artifacts.mcp["@local/jira"]).toBeDefined();
   });
 
-  it("override replaces entirely, not deep merge", async () => {
+  it("two contributors with the same qualified ID hard-fail", async () => {
     const { dir, cleanup: c } = createTempAirDir({
       "air.json": {
         name: "test",
         mcp: ["./base.json", "./override.json"],
       },
       "base.json": {
-        server: exampleMcpStdio({
-          title: "Base",
-          env: { A: "1", B: "2" },
-        }),
+        server: exampleMcpStdio({ title: "Base" }),
       },
       "override.json": {
-        server: exampleMcpStdio({
-          title: "Override",
-          env: { C: "3" },
-        }),
+        server: exampleMcpStdio({ title: "Override" }),
+      },
+    });
+    cleanup = c;
+
+    await expect(resolveArtifacts(join(dir, "air.json"))).rejects.toThrow(
+      /Duplicate mcp ID "@local\/server"/,
+    );
+  });
+
+  it("exclude drops a qualified ID from the resolved set", async () => {
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        skills: ["./skills.json"],
+        exclude: ["@local/lint"],
+      },
+      "skills.json": {
+        deploy: exampleSkill("deploy"),
+        lint: exampleSkill("lint"),
       },
     });
     cleanup = c;
 
     const artifacts = await resolveArtifacts(join(dir, "air.json"));
+    expect(artifacts.skills["@local/deploy"]).toBeDefined();
+    expect(artifacts.skills["@local/lint"]).toBeUndefined();
+  });
 
-    // Full replacement — B is gone
-    expect(artifacts.mcp["server"].title).toBe("Override");
-    expect(artifacts.mcp["server"].env).toEqual({ C: "3" });
+  it("exclude entry that does not match anything emits a warning", async () => {
+    const warnings: string[] = [];
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        skills: ["./skills.json"],
+        exclude: ["@local/missing"],
+      },
+      "skills.json": {
+        deploy: exampleSkill("deploy"),
+      },
+    });
+    cleanup = c;
+
+    await resolveArtifacts(join(dir, "air.json"), {
+      onWarning: (m) => warnings.push(m),
+    });
+
+    expect(warnings.some((w) => w.includes("@local/missing"))).toBe(true);
+  });
+
+  it("non-qualified exclude entry hard-fails", async () => {
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        skills: ["./skills.json"],
+        exclude: ["lint"],
+      },
+      "skills.json": {
+        lint: exampleSkill("lint"),
+      },
+    });
+    cleanup = c;
+
+    await expect(resolveArtifacts(join(dir, "air.json"))).rejects.toThrow(
+      /must be qualified IDs/,
+    );
   });
 
   it("different artifact types compose independently", async () => {
@@ -94,11 +145,14 @@ describe("composition", () => {
 
     const artifacts = await resolveArtifacts(join(dir, "air.json"));
 
-    expect(Object.keys(artifacts.skills)).toEqual(["a", "b"]);
-    expect(Object.keys(artifacts.mcp)).toEqual(["x"]);
+    expect(Object.keys(artifacts.skills).sort()).toEqual([
+      "@local/a",
+      "@local/b",
+    ]);
+    expect(Object.keys(artifacts.mcp)).toEqual(["@local/x"]);
   });
 
-  it("root references resolve against merged artifacts", async () => {
+  it("root reference fields are canonicalized to qualified IDs", async () => {
     const { dir, cleanup: c } = createTempAirDir({
       "air.json": {
         name: "test",
@@ -124,12 +178,12 @@ describe("composition", () => {
     cleanup = c;
 
     const artifacts = await resolveArtifacts(join(dir, "air.json"));
-    const root = artifacts.roots["web-app"];
+    const root = artifacts.roots["@local/web-app"];
 
-    expect(root.default_mcp_servers).toEqual(["github"]);
-    expect(root.default_skills).toEqual(["deploy"]);
+    expect(root).toBeDefined();
+    expect(root.default_mcp_servers).toEqual(["@local/github"]);
+    expect(root.default_skills).toEqual(["@local/deploy"]);
 
-    // Verify the referenced IDs exist in the merged artifacts
     for (const id of root.default_mcp_servers!) {
       expect(artifacts.mcp[id]).toBeDefined();
     }
@@ -138,7 +192,7 @@ describe("composition", () => {
     }
   });
 
-  it("skills share references (DRY pattern)", async () => {
+  it("skill reference fields are canonicalized to qualified IDs", async () => {
     const { dir, cleanup: c } = createTempAirDir({
       "air.json": {
         name: "test",
@@ -157,10 +211,135 @@ describe("composition", () => {
 
     const artifacts = await resolveArtifacts(join(dir, "air.json"));
 
-    // Both skills reference the same reference
-    expect(artifacts.skills["deploy"].references).toEqual(["git-workflow"]);
-    expect(artifacts.skills["review"].references).toEqual(["git-workflow"]);
-    // Reference exists once
-    expect(artifacts.references["git-workflow"]).toBeDefined();
+    expect(artifacts.skills["@local/deploy"].references).toEqual([
+      "@local/git-workflow",
+    ]);
+    expect(artifacts.skills["@local/review"].references).toEqual([
+      "@local/git-workflow",
+    ]);
+    expect(artifacts.references["@local/git-workflow"]).toBeDefined();
+  });
+
+  it("reference to missing artifact hard-fails", async () => {
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        skills: ["./skills.json"],
+      },
+      "skills.json": {
+        deploy: exampleSkill("deploy", { references: ["missing-ref"] }),
+      },
+    });
+    cleanup = c;
+
+    await expect(resolveArtifacts(join(dir, "air.json"))).rejects.toThrow(
+      /references unknown reference "missing-ref"/,
+    );
+  });
+
+  it("reference to an excluded artifact emits a tailored error", async () => {
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        skills: ["./skills.json"],
+        references: ["./refs.json"],
+        exclude: ["@local/git-workflow"],
+      },
+      "skills.json": {
+        deploy: exampleSkill("deploy", { references: ["git-workflow"] }),
+      },
+      "refs.json": {
+        "git-workflow": exampleReference("git-workflow"),
+      },
+    });
+    cleanup = c;
+
+    await expect(resolveArtifacts(join(dir, "air.json"))).rejects.toThrow(
+      /removed by air\.json#exclude.*@local\/git-workflow/s,
+    );
+  });
+
+  it("cross-scope shortname collision warns once when both scopes survive exclude", async () => {
+    const warnings: string[] = [];
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        catalogs: ["mock://acme"],
+        skills: ["./local-skills.json"],
+      },
+      "local-skills.json": {
+        review: exampleSkill("review"),
+      },
+      "remote/skills/skills.json": {
+        review: exampleSkill("review", { description: "Org review" }),
+      },
+    });
+    cleanup = c;
+
+    const provider: CatalogProvider = {
+      scheme: "mock",
+      async resolveCatalogDir(): Promise<string> {
+        return join(dir, "remote");
+      },
+      async resolve(): Promise<Record<string, unknown>> {
+        return {};
+      },
+      getScope: () => "acme/skills",
+    };
+
+    const artifacts = await resolveArtifacts(join(dir, "air.json"), {
+      providers: [provider],
+      onWarning: (m) => warnings.push(m),
+    });
+
+    expect(artifacts.skills["@local/review"]).toBeDefined();
+    expect(artifacts.skills["@acme/skills/review"]).toBeDefined();
+    const collisionWarns = warnings.filter((w) =>
+      w.includes("Cross-scope shortname collision"),
+    );
+    expect(collisionWarns).toHaveLength(1);
+    expect(collisionWarns[0]).toMatch(/skills "review"/);
+  });
+
+  it("cross-scope shortname collision warning is silenced when exclude removes one side", async () => {
+    const warnings: string[] = [];
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        catalogs: ["mock://acme"],
+        skills: ["./local-skills.json"],
+        exclude: ["@acme/skills/review"],
+      },
+      "local-skills.json": {
+        review: exampleSkill("review"),
+      },
+      "remote/skills/skills.json": {
+        review: exampleSkill("review", { description: "Org review" }),
+      },
+    });
+    cleanup = c;
+
+    const provider: CatalogProvider = {
+      scheme: "mock",
+      async resolveCatalogDir(): Promise<string> {
+        return join(dir, "remote");
+      },
+      async resolve(): Promise<Record<string, unknown>> {
+        return {};
+      },
+      getScope: () => "acme/skills",
+    };
+
+    const artifacts = await resolveArtifacts(join(dir, "air.json"), {
+      providers: [provider],
+      onWarning: (m) => warnings.push(m),
+    });
+
+    expect(artifacts.skills["@local/review"]).toBeDefined();
+    expect(artifacts.skills["@acme/skills/review"]).toBeUndefined();
+    expect(
+      warnings.filter((w) => w.includes("Cross-scope shortname collision"))
+        .length,
+    ).toBe(0);
   });
 });

@@ -67,7 +67,7 @@ The resulting `~/.air/` directory always looks like this:
 └── hooks/hooks.json             # { "$schema": "…/hooks.schema.json" }
 ```
 
-Each index file ships with a `$schema` reference, so editors like VS Code and JetBrains give you autocomplete and inline validation as you add entries. Open the directory in your editor and start typing — `README.md` has a worked example for every artifact type. When a github:// catalog is discovered, `air.json` lists the remote URI first and your local index file second; since later entries win by ID, anything you add locally overrides the shared catalog.
+Each index file ships with a `$schema` reference, so editors like VS Code and JetBrains give you autocomplete and inline validation as you add entries. Open the directory in your editor and start typing — `README.md` has a worked example for every artifact type. When a github:// catalog is discovered, `air.json` lists the remote URI alongside your local index. The discovered catalog ships under its `@<owner>/<repo>/` scope and your local entries ship under `@local/`, so the two layers compose without colliding.
 
 **Re-running `air init`** is safe. If `~/.air/air.json` already exists, the command runs in **top-up mode**: it leaves your existing `air.json` untouched and only creates the scaffold pieces that are missing. This lets users who initialized on an older version fill in newer scaffold files without losing their configuration. Pass `--force` to regenerate `air.json` from scratch.
 

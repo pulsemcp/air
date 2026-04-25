@@ -22,14 +22,26 @@ import type {
   PrepareSessionOptions,
   PreparedSession,
   LocalArtifacts,
+  QualifiedId,
 } from "@pulsemcp/air-core";
 import {
   buildManifest,
   diffManifest,
   loadManifest,
   writeManifest,
+  parseQualifiedId,
+  resolveReference,
 } from "@pulsemcp/air-core";
 import { scanLocalSkills } from "./scan-local-skills.js";
+
+/**
+ * A single activated artifact: the qualified ID resolved from input, plus the
+ * bare shortname used for filesystem materialization (skill dir, MCP key, etc).
+ */
+interface Activation {
+  qualified: QualifiedId;
+  short: string;
+}
 
 export class ClaudeAdapter implements AgentAdapter {
   name = "claude";
@@ -63,39 +75,46 @@ export class ClaudeAdapter implements AgentAdapter {
     root?: RootEntry,
     _workDir?: string
   ): AgentSessionConfig {
-    const plugins = root?.default_plugins
-      ? this.filterByIds(artifacts.plugins, root.default_plugins, "plugin")
-      : {};
+    const pluginActivations = root?.default_plugins
+      ? this.resolveActivations(artifacts.plugins, root.default_plugins, "plugin")
+      : [];
+    const plugins: Record<string, PluginEntry> = {};
+    for (const a of pluginActivations) plugins[a.qualified] = artifacts.plugins[a.qualified];
 
-    // Merge plugin-declared MCP servers and skills into root defaults (additive)
-    const mcpServerIdSet = new Set(root?.default_mcp_servers ?? []);
-    const skillIdSet = new Set(root?.default_skills ?? []);
+    // Merge plugin-declared MCP servers and skills into root defaults (additive).
+    // All incoming IDs are qualified (post-canonicalization at composition time),
+    // so we deduplicate on qualified IDs.
+    const mcpQualSet = new Set<string>(root?.default_mcp_servers ?? []);
+    const skillQualSet = new Set<string>(root?.default_skills ?? []);
     for (const plugin of Object.values(plugins)) {
       if (plugin.mcp_servers) {
-        for (const id of plugin.mcp_servers) mcpServerIdSet.add(id);
+        for (const id of plugin.mcp_servers) mcpQualSet.add(id);
       }
       if (plugin.skills) {
-        for (const id of plugin.skills) skillIdSet.add(id);
+        for (const id of plugin.skills) skillQualSet.add(id);
       }
     }
 
-    const mcpServerIds = [...mcpServerIdSet];
-    const skillIds = [...skillIdSet];
-
-    const mcpServers = mcpServerIds.length
-      ? this.filterByIds(artifacts.mcp, mcpServerIds, "MCP server")
-      : {};
-
-    const mcpConfig = this.translateMcpServers(mcpServers);
-
-    const pluginConfigs = Object.entries(plugins).map(([id, p]) =>
-      this.translatePlugin(id, p)
+    const mcpActivations = this.resolveActivations(
+      artifacts.mcp,
+      [...mcpQualSet],
+      "MCP server"
+    );
+    const skillActivations = this.resolveActivations(
+      artifacts.skills,
+      [...skillQualSet],
+      "skill"
     );
 
-    if (skillIds.length > 0) {
-      this.validateIds(artifacts.skills, skillIds, "skill");
-    }
-    const skillPaths = skillIds.map((id) => artifacts.skills[id].path);
+    const mcpServers: Record<string, McpServerEntry> = {};
+    for (const a of mcpActivations) mcpServers[a.short] = artifacts.mcp[a.qualified];
+    const mcpConfig = this.translateMcpServersByShort(mcpServers);
+
+    const pluginConfigs = pluginActivations.map((a) =>
+      this.translatePlugin(a.short, artifacts.plugins[a.qualified])
+    );
+
+    const skillPaths = skillActivations.map((a) => artifacts.skills[a.qualified].path);
 
     return {
       agent: "claude",
@@ -122,9 +141,12 @@ export class ClaudeAdapter implements AgentAdapter {
    * Writes .mcp.json, injects skills + references into .claude/skills/,
    * injects path-based hooks into .claude/hooks/, and returns the start command.
    *
-   * When the root declares default_subagent_roots and skipSubagentMerge is not set,
-   * subagent roots' skills and MCP servers are merged into the parent session and
-   * a system prompt section is generated describing the subagent dependencies.
+   * Inputs to activation lists (root defaults, overrides, plugin-declared
+   * primitives) are accepted as either qualified (`@scope/id`) or short form;
+   * ambiguous short forms are rejected. Filesystem materialization uses
+   * shortnames — Claude's `.mcp.json`, `.claude/skills/`, `.claude/hooks/`,
+   * and the manifest are scope-naive. Two activated qualified IDs that share
+   * a shortname hard-fail with a clear "add one to exclude" message.
    */
   async prepareSession(
     artifacts: ResolvedArtifacts,
@@ -136,28 +158,15 @@ export class ClaudeAdapter implements AgentAdapter {
     const skillPaths: string[] = [];
     const hookPaths: string[] = [];
 
-    // Load the manifest that records which artifacts this adapter wrote on
-    // the previous run. IDs present here but not in the new selection are
-    // stale and get cleaned up before we write. Missing or corrupt manifests
-    // yield null — that's treated as "no prior state" so the current run is
-    // purely additive.
     const prevManifest = loadManifest(targetDir);
 
     // 1. Resolve which artifacts to activate (overrides take precedence over root defaults)
-    let mcpServerIds = options?.mcpServerOverrides
-      ?? root?.default_mcp_servers
-      ?? undefined;
-    let skillIds = options?.skillOverrides
-      ?? root?.default_skills
-      ?? [];
-    let hookIds = options?.hookOverrides
-      ?? root?.default_hooks
-      ?? [];
+    let mcpServerIds: string[] | undefined =
+      options?.mcpServerOverrides ?? root?.default_mcp_servers ?? undefined;
+    let skillIds: string[] = options?.skillOverrides ?? root?.default_skills ?? [];
+    let hookIds: string[] = options?.hookOverrides ?? root?.default_hooks ?? [];
 
     // 1b. Merge subagent roots' artifacts if applicable.
-    // Skip merge per-artifact type when explicit overrides are provided —
-    // overrides represent the caller's final selection (e.g. from the TUI)
-    // and should not be augmented by implicit merge.
     const subagentRoots = this.resolveSubagentRoots(root, artifacts, options);
     if (subagentRoots.length > 0) {
       const merged = this.mergeSubagentArtifacts(subagentRoots, mcpServerIds, skillIds);
@@ -170,46 +179,43 @@ export class ClaudeAdapter implements AgentAdapter {
     }
 
     // 1c. Resolve plugins and merge their declared artifacts (additive)
-    const pluginIds = options?.pluginOverrides
-      ?? root?.default_plugins
-      ?? undefined;
-    const plugins = pluginIds?.length
-      ? this.filterByIds(artifacts.plugins, pluginIds, "plugin")
-      : {};
+    const pluginIds = options?.pluginOverrides ?? root?.default_plugins ?? undefined;
+    const pluginActivations = pluginIds?.length
+      ? this.resolveActivations(artifacts.plugins, pluginIds, "plugin")
+      : [];
+    const plugins: Record<string, PluginEntry> = {};
+    for (const a of pluginActivations) plugins[a.qualified] = artifacts.plugins[a.qualified];
 
-    const mcpSet = new Set(mcpServerIds ?? []);
-    const skillSet = new Set(skillIds);
-    const hookSet = new Set(hookIds);
+    const mcpSet = new Set<string>(mcpServerIds ?? []);
+    const skillSet = new Set<string>(skillIds);
+    const hookSet = new Set<string>(hookIds);
     for (const plugin of Object.values(plugins)) {
-      if (plugin.mcp_servers) {
-        for (const id of plugin.mcp_servers) mcpSet.add(id);
-      }
-      if (plugin.skills) {
-        for (const id of plugin.skills) skillSet.add(id);
-      }
-      if (plugin.hooks) {
-        for (const id of plugin.hooks) hookSet.add(id);
-      }
+      if (plugin.mcp_servers) for (const id of plugin.mcp_servers) mcpSet.add(id);
+      if (plugin.skills) for (const id of plugin.skills) skillSet.add(id);
+      if (plugin.hooks) for (const id of plugin.hooks) hookSet.add(id);
     }
     if (mcpSet.size > 0 || mcpServerIds !== undefined) mcpServerIds = [...mcpSet];
     skillIds = [...skillSet];
     hookIds = [...hookSet];
 
-    const mcpServers = mcpServerIds?.length
-      ? this.filterByIds(artifacts.mcp, mcpServerIds, "MCP server")
-      : {};
+    // 2. Resolve activations: qualified ID + shortname per artifact.
+    //    Throws on unknown IDs, ambiguous shortnames, and shortname collisions.
+    const skillActs = this.resolveActivations(artifacts.skills, skillIds, "skill");
+    const mcpActs = mcpServerIds
+      ? this.resolveActivations(artifacts.mcp, mcpServerIds, "MCP server")
+      : [];
+    const hookActs = this.resolveActivations(artifacts.hooks, hookIds, "hook");
 
-    // 2. Validate skill IDs
-    this.validateIds(artifacts.skills, skillIds, "skill");
+    const skillShortIds = skillActs.map((a) => a.short);
+    const hookShortIds = hookActs.map((a) => a.short);
+    const mcpShortIds = mcpActs.map((a) => a.short);
 
-    // 2a. Reconcile against prior manifest — remove stale artifacts before
-    //     writing new ones. Only IDs previously written by AIR are candidates;
-    //     user-authored content is left untouched.
-    const finalMcpServerIds = [...(mcpServerIds ?? [])];
+    // 3. Reconcile against prior manifest using shortnames — those are the keys
+    //    used for filesystem materialization and stored in the manifest.
     const diff = diffManifest(prevManifest, {
-      skills: skillIds,
-      hooks: hookIds,
-      mcpServers: finalMcpServerIds,
+      skills: skillShortIds,
+      hooks: hookShortIds,
+      mcpServers: mcpShortIds,
     });
 
     for (const staleSkillId of diff.staleSkills) {
@@ -226,74 +232,53 @@ export class ClaudeAdapter implements AgentAdapter {
       }
     }
 
-    // 3. Write .mcp.json (${VAR} patterns are left as-is for transforms to resolve).
-    //    Preserve any mcpServers keys not managed by AIR (user-authored),
-    //    remove keys for stale IDs, and replace keys for the current selection.
+    // 4. Write .mcp.json (${VAR} patterns are left as-is for transforms to resolve).
     const mcpConfigPath = join(targetDir, ".mcp.json");
+    const translatedServers: Record<string, McpServerEntry> = {};
+    for (const a of mcpActs) translatedServers[a.short] = artifacts.mcp[a.qualified];
     const mcpConfig = this.mergeMcpConfig(
       mcpConfigPath,
-      this.translateMcpServers(mcpServers),
+      this.translateMcpServersByShort(translatedServers),
       diff.staleMcpServers
     );
     writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig, null, 2) + "\n");
     configFiles.push(mcpConfigPath);
 
-    // 4. Inject skills + references into .claude/skills/
-    for (const skillId of skillIds) {
-      const skill = artifacts.skills[skillId];
+    // 5. Inject skills + references into .claude/skills/<short>/
+    for (const a of skillActs) {
+      const skill = artifacts.skills[a.qualified];
 
-      const skillTargetDir = join(targetDir, ".claude", "skills", skillId);
+      const skillTargetDir = join(targetDir, ".claude", "skills", a.short);
 
-      // Skip if skill already exists locally (local takes priority)
       if (existsSync(skillTargetDir)) continue;
 
-      // Copy skill directory contents (paths are absolute from resolveArtifacts)
       const skillSourceDir = skill.path;
       if (existsSync(skillSourceDir)) {
         this.copyDirRecursive(skillSourceDir, skillTargetDir);
         skillPaths.push(skillTargetDir);
       }
 
-      // Copy referenced documents
       if (skill.references && skill.references.length > 0) {
         this.copyReferences(skill.references, skillTargetDir, artifacts);
       }
     }
 
-    // 5. Validate and inject path-based hooks into .claude/hooks/.
-    //    A hook is "AIR-registered" iff AIR wrote (or previously wrote) its
-    //    directory — i.e. the dir didn't pre-exist as user content before any
-    //    AIR run touched it. `hookPaths` collects dirs to register in
-    //    settings.json (includes both freshly-written dirs and ones carried
-    //    over from the prior manifest run).
-    if (hookIds.length > 0) {
-      this.validateIds(artifacts.hooks, hookIds, "hook");
-    }
+    // 6. Validate and inject path-based hooks into .claude/hooks/<short>/.
     const prevHookIds = new Set(prevManifest?.hooks ?? []);
-    const registeredHookIds: string[] = [];
-    for (const hookId of hookIds) {
-      const hook = artifacts.hooks[hookId];
+    const registeredHookShortIds: string[] = [];
+    for (const a of hookActs) {
+      const hook = artifacts.hooks[a.qualified];
 
-      const hookTargetDir = join(targetDir, ".claude", "hooks", hookId);
+      const hookTargetDir = join(targetDir, ".claude", "hooks", a.short);
       const alreadyExists = existsSync(hookTargetDir);
 
-      // A dir that already exists and was NOT tracked in the prior manifest
-      // is user-authored — preserve it and skip both copy and registration.
-      if (alreadyExists && !prevHookIds.has(hookId)) {
+      if (alreadyExists && !prevHookIds.has(a.short)) {
         continue;
       }
 
-      // AIR-owned dir: copy (fresh) or re-register (carried over). We always
-      // want it registered in settings.json on this run.
       if (!alreadyExists) {
         const hookSourceDir = hook.path;
-        if (!existsSync(hookSourceDir)) {
-          // Source is gone — don't register the hook or track it in the
-          // manifest. Otherwise the ID gets recorded as "AIR-owned" with
-          // nothing backing it, and a later user-created dir at the same
-          // path would be mis-identified as stale on the next run.
-          continue;
-        }
+        if (!existsSync(hookSourceDir)) continue;
         this.copyDirRecursive(hookSourceDir, hookTargetDir);
         if (hook.references && hook.references.length > 0) {
           this.copyReferences(hook.references, hookTargetDir, artifacts);
@@ -301,16 +286,13 @@ export class ClaudeAdapter implements AgentAdapter {
       }
 
       hookPaths.push(hookTargetDir);
-      registeredHookIds.push(hookId);
+      registeredHookShortIds.push(a.short);
     }
 
-    // 6. Register AIR-owned hooks in .claude/settings.json.
-    //    Always prune settings entries that AIR previously wrote (stale +
-    //    current) so that re-runs don't accumulate duplicates and stale
-    //    entries are cleaned up even when no current hooks are active.
+    // 7. Register AIR-owned hooks in .claude/settings.json.
     const managedHookIds = new Set<string>([
       ...diff.staleHooks,
-      ...registeredHookIds,
+      ...registeredHookShortIds,
     ]);
     const settingsPath = this.reconcileSettingsHooks(
       targetDir,
@@ -321,26 +303,22 @@ export class ClaudeAdapter implements AgentAdapter {
       configFiles.push(settingsPath);
     }
 
-    // 7. Persist the updated manifest so the next run can reconcile against it.
-    //    Only IDs that AIR actually wrote/touched go into the manifest.
+    // 8. Persist the updated manifest (shortnames — keyed by filesystem dir).
     writeManifest(
       buildManifest(targetDir, {
-        skills: skillIds,
-        hooks: registeredHookIds,
-        mcpServers: finalMcpServerIds,
+        skills: skillShortIds,
+        hooks: registeredHookShortIds,
+        mcpServers: mcpShortIds,
       })
     );
 
-    // 8. Generate ephemeral subagent context for system prompt
+    // 9. Generate ephemeral subagent context for system prompt
     let subagentContext: string | undefined;
     if (subagentRoots.length > 0) {
       subagentContext = this.buildSubagentContext(subagentRoots);
     }
 
-    // 9. Build start command (include --append-system-prompt if subagent context exists)
-    // Pass undefined as root — prepareSession already handled all filtering/validation above.
-    // Passing root here would cause generateConfig to re-validate with the original (pre-merge)
-    // root defaults, which is both redundant and fragile.
+    // 10. Build start command
     const config = this.generateConfig(artifacts, undefined, targetDir);
     const startCommand = this.buildStartCommand({
       ...config,
@@ -365,7 +343,7 @@ export class ClaudeAdapter implements AgentAdapter {
 
   /**
    * Resolve subagent roots from the root's default_subagent_roots.
-   * Returns empty array if skipSubagentMerge is set or no subagent roots exist.
+   * IDs are already qualified after composition-time canonicalization.
    */
   private resolveSubagentRoots(
     root: RootEntry | undefined,
@@ -377,9 +355,9 @@ export class ClaudeAdapter implements AgentAdapter {
 
     const resolved: RootEntry[] = [];
     for (const id of root.default_subagent_roots) {
-      const subRoot = artifacts.roots[id];
-      if (subRoot) {
-        resolved.push(subRoot);
+      const res = resolveReference(artifacts.roots, id, undefined);
+      if (res.status === "ok") {
+        resolved.push(artifacts.roots[res.qualified]);
       }
     }
     return resolved;
@@ -407,16 +385,14 @@ export class ClaudeAdapter implements AgentAdapter {
     }
 
     return {
-      mcpServerIds: parentMcpServerIds !== undefined || mcpSet.size > 0
-        ? [...mcpSet]
-        : undefined,
+      mcpServerIds:
+        parentMcpServerIds !== undefined || mcpSet.size > 0 ? [...mcpSet] : undefined,
       skillIds: [...skillSet],
     };
   }
 
   /**
    * Build a system prompt section describing the subagent root dependencies.
-   * Gives the agent context about what capabilities were merged and from where.
    */
   private buildSubagentContext(subagentRoots: RootEntry[]): string {
     const lines: string[] = [
@@ -446,8 +422,12 @@ export class ClaudeAdapter implements AgentAdapter {
     return lines.join("\n");
   }
 
-  /** Translate AIR mcp.json format to Claude Code .mcp.json format */
-  translateMcpServers(
+  /**
+   * Translate a shortname-keyed MCP server map into Claude's `.mcp.json` shape.
+   * Callers convert qualified IDs to shortnames before invoking this — Claude's
+   * config is scope-naive.
+   */
+  translateMcpServersByShort(
     servers: Record<string, McpServerEntry>
   ): Record<string, unknown> {
     const mcpServers: Record<string, Record<string, unknown>> = {};
@@ -460,7 +440,6 @@ export class ClaudeAdapter implements AgentAdapter {
           ...(server.env && { env: server.env }),
         };
       } else {
-        // Claude Code uses "http" for the streamable-http transport
         const claudeType = server.type === "streamable-http" ? "http" : server.type;
         mcpServers[name] = {
           type: claudeType,
@@ -502,47 +481,89 @@ export class ClaudeAdapter implements AgentAdapter {
     return result;
   }
 
-  /** Translate an AIR plugin to Claude Code plugin format */
-  translatePlugin(id: string, plugin: PluginEntry): Record<string, unknown> {
+  /**
+   * Translate an AIR plugin to Claude Code plugin format.
+   * `name` is the plugin's bare shortname — Claude's plugin namespace is
+   * scope-naive.
+   */
+  translatePlugin(shortId: string, plugin: PluginEntry): Record<string, unknown> {
     return {
-      name: id,
+      name: shortId,
       description: plugin.description,
       ...(plugin.version && { version: plugin.version }),
     };
   }
 
-  /** Throw if any IDs don't exist in the available map. */
-  private validateIds<T>(
-    all: Record<string, T>,
+  /**
+   * Resolve a list of activation IDs (each qualified or short) into qualified
+   * IDs paired with shortnames suitable for filesystem materialization.
+   *
+   * Throws on:
+   *   - unknown IDs (after attempting both qualified and short-form lookup)
+   *   - ambiguous short references (multiple scopes contribute the shortname)
+   *   - shortname collisions in the activation set itself (two qualified IDs
+   *     with the same shortname can't share a single .claude/skills/<dir>)
+   */
+  private resolveActivations<T>(
+    pool: Record<string, T>,
     ids: string[],
     artifactType: string
-  ): void {
-    const unknown = ids.filter((id) => !all[id]);
-    if (unknown.length > 0) {
-      const available = Object.keys(all);
-      const availableMsg =
-        available.length > 0 ? `Available: ${available.join(", ")}` : "None available";
+  ): Activation[] {
+    const acts: Activation[] = [];
+    const errors: string[] = [];
+    const shortToQualified = new Map<string, string>();
+
+    for (const id of ids) {
+      const res = resolveReference(pool, id, undefined);
+      if (res.status === "missing") {
+        errors.push(
+          `Unknown ${artifactType} ID "${id}". Available: ${this.formatPoolKeys(pool)}.`
+        );
+        continue;
+      }
+      if (res.status === "ambiguous") {
+        errors.push(
+          `${artifactType} reference "${id}" is ambiguous — candidates: ` +
+            `${res.candidates.join(", ")}. Use the qualified form to disambiguate.`
+        );
+        continue;
+      }
+      const qualified = res.qualified;
+      const { id: short } = parseQualifiedId(qualified);
+      const prior = shortToQualified.get(short);
+      if (prior !== undefined && prior !== qualified) {
+        errors.push(
+          `${artifactType} shortname collision: both "${prior}" and "${qualified}" ` +
+            `are activated and would write to the same target name "${short}". ` +
+            `Add one to air.json#exclude or activate only one of them.`
+        );
+        continue;
+      }
+      if (prior === qualified) continue; // dedup
+      shortToQualified.set(short, qualified);
+      acts.push({ qualified, short });
+    }
+
+    if (errors.length > 0) {
       throw new Error(
-        `Unknown ${artifactType} ID(s): ${unknown.join(", ")}. ${availableMsg}`
+        errors.length === 1 ? errors[0] : `Activation errors:\n  - ${errors.join("\n  - ")}`
       );
     }
+    return acts;
   }
 
-  private filterByIds<T>(
-    all: Record<string, T>,
-    ids: string[],
-    artifactType: string
-  ): Record<string, T> {
-    this.validateIds(all, ids, artifactType);
-    const filtered: Record<string, T> = {};
-    for (const id of ids) {
-      filtered[id] = all[id];
+  private formatPoolKeys<T>(pool: Record<string, T>): string {
+    const keys = Object.keys(pool);
+    if (keys.length === 0) return "(none)";
+    if (keys.length > 8) {
+      return `${keys.slice(0, 8).join(", ")}, … (${keys.length} total)`;
     }
-    return filtered;
+    return keys.join(", ");
   }
 
   /**
    * Copy referenced documents into a references/ subdirectory of the target.
+   * `refIds` are qualified IDs (post-canonicalization).
    */
   private copyReferences(
     refIds: string[],
@@ -572,11 +593,7 @@ export class ClaudeAdapter implements AgentAdapter {
    * `_airHookId` marker on each entry) whose ID is in `managedHookIds`,
    * leaving user-authored entries untouched. Then registers the hooks in
    * `newHookPaths` for each mapped event, tagging each new entry with its
-   * hook ID so future runs can identify it.
-   *
-   * Returns the settings path if it was touched (written or an existing file
-   * pruned), otherwise `null` — callers include the path in configFiles only
-   * when relevant.
+   * shortname so future runs can identify it.
    */
   private reconcileSettingsHooks(
     targetDir: string,
@@ -586,7 +603,6 @@ export class ClaudeAdapter implements AgentAdapter {
     const settingsPath = join(targetDir, ".claude", "settings.json");
     const settingsExists = existsSync(settingsPath);
 
-    // No settings file and nothing to write — nothing to do.
     if (!settingsExists && newHookPaths.length === 0) {
       return null;
     }
@@ -596,9 +612,6 @@ export class ClaudeAdapter implements AgentAdapter {
       try {
         settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
       } catch {
-        // Treat an unparseable settings.json as empty — same contract as
-        // the manifest's corrupt-file fallback. The adapter never silently
-        // mangles user state; it just rewrites with the new selection.
         settings = {};
       }
     }
@@ -637,7 +650,7 @@ export class ClaudeAdapter implements AgentAdapter {
       try {
         hookJson = JSON.parse(readFileSync(hookJsonPath, "utf-8"));
       } catch {
-        continue; // Skip hooks with malformed HOOK.json
+        continue;
       }
       const claudeEvent = ClaudeAdapter.AIR_TO_CLAUDE_EVENT[hookJson.event as string];
       if (!claudeEvent || !hookJson.command) continue;
@@ -649,7 +662,6 @@ export class ClaudeAdapter implements AgentAdapter {
         hookJson.args as string[] | undefined
       );
 
-      // hookPath is .claude/hooks/<id>/, so the last path segment is the id.
       const hookId = hookPath.split(/[\\/]/).filter(Boolean).pop() || "";
 
       const hookEntry: Record<string, unknown> = {
@@ -672,10 +684,6 @@ export class ClaudeAdapter implements AgentAdapter {
       (hooks[claudeEvent] as unknown[]).push(matcherGroup);
     }
 
-    // When the adapter was asked to register new hooks, keep `settings.hooks`
-    // present (even if all registrations were skipped — unknown events,
-    // malformed HOOK.json, etc.) so downstream consumers see a stable shape.
-    // When we're only pruning stale entries, drop an empty hooks object.
     if (newHookPaths.length > 0 || Object.keys(hooks).length > 0) {
       settings.hooks = hooks;
     } else {
@@ -687,11 +695,6 @@ export class ClaudeAdapter implements AgentAdapter {
     return settingsPath;
   }
 
-  /**
-   * Check whether a settings hook entry was written by AIR — i.e., carries
-   * an `_airHookId` marker whose value is in the managed set. User-authored
-   * entries (no marker, or a marker AIR doesn't know about) are left alone.
-   */
   private isManagedHookEntry(entry: unknown, managedHookIds: Set<string>): boolean {
     if (!entry || typeof entry !== "object") return false;
     const id = (entry as Record<string, unknown>)._airHookId;
@@ -719,7 +722,6 @@ export class ClaudeAdapter implements AgentAdapter {
       try {
         existing = JSON.parse(readFileSync(mcpConfigPath, "utf-8"));
       } catch {
-        // Unparseable existing file — start fresh rather than mangle it.
         existing = {};
       }
     }

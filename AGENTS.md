@@ -32,7 +32,7 @@ AIR is a TypeScript monorepo (npm workspaces, ESM-only, Node 18+). It has six pa
 - **Adapter extensions** translate AIR artifacts into agent-specific formats. The Claude adapter writes `.mcp.json` and injects skills via `prepareSession()`.
 - **Provider extensions** resolve remote URIs in `air.json` (e.g., `github://org/repo/path`).
 
-Six artifact types: skills, references, MCP servers, plugins, roots, hooks. All defined as JSON indexes with JSON Schema validation. Composition happens via ordered arrays in `air.json` — later entries override earlier ones by ID (full replacement, no deep merge).
+Six artifact types: skills, references, MCP servers, plugins, roots, hooks. All defined as JSON indexes with JSON Schema validation. Every artifact has a qualified identity of the form `@scope/id` — local indexes contribute under `@local/`; remote catalogs use a provider-derived scope (e.g. `@<owner>/<repo>/`). Composition is additive: duplicate qualified IDs hard-fail, cross-scope shortname collisions warn, and `exclude` is the only way to drop an artifact.
 
 ## Development
 
@@ -54,8 +54,8 @@ Schemas and the `ResolvedArtifacts` type are the contract. Changes to these are 
 ### Extensions are the growth path
 New agents, new catalog sources, new secret backends — all handled by installing extension packages. The core and CLI stay thin.
 
-### Override semantics are simple
-Later entry wins by ID, full replacement, no deep merge. This applies everywhere: `air.json` composition, `mergeArtifacts()`, and provider layering.
+### Composition is additive, not later-wins
+Every artifact is identified by `@scope/id`. Disjoint qualified IDs union; duplicate qualified IDs hard-fail; cross-scope shortname collisions warn. There is no override path — `exclude` is the only way to drop an artifact. This applies everywhere: `air.json` composition, `mergeArtifacts()`, and provider layering.
 
 ### prepareSession is the adapter's main job
 The single entry point for setting up a working directory. Callers should not need to know about `.mcp.json` formats or skill injection paths.
@@ -64,7 +64,7 @@ The single entry point for setting up a working directory. Callers should not ne
 
 - Do not add agent-specific logic to core, SDK, or CLI — it belongs in adapter extensions
 - Do not add business logic to the CLI — it belongs in the SDK
-- Do not introduce deep merge semantics anywhere
+- Do not introduce later-wins override or deep merge semantics anywhere — composition is scoped, additive, and exclude-only
 - Do not make `resolveArtifacts` synchronous — it must stay async for provider support
 - Do not add external CLI dependencies to provider packages — use Node built-ins (`fetch`, `fs`)
 - Do not duplicate schema definitions — schemas live at repo root in `schemas/`, core copies them at build time

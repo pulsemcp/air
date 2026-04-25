@@ -106,12 +106,14 @@ describe("resolve command", () => {
     expect(output).toHaveProperty("roots");
     expect(output).toHaveProperty("hooks");
 
-    // Entries keyed by id
-    expect(output.mcp.github).toBeDefined();
-    expect(output.mcp.github.type).toBe("stdio");
-    expect(output.skills["my-skill"]).toBeDefined();
-    expect(output.roots.default).toBeDefined();
-    expect(output.roots.default.default_mcp_servers).toContain("github");
+    // Entries keyed by qualified id (@local/<short>)
+    expect(output.mcp["@local/github"]).toBeDefined();
+    expect(output.mcp["@local/github"].type).toBe("stdio");
+    expect(output.skills["@local/my-skill"]).toBeDefined();
+    expect(output.roots["@local/default"]).toBeDefined();
+    expect(output.roots["@local/default"].default_mcp_servers).toContain(
+      "@local/github"
+    );
   });
 
   it("returns absolute paths on skill entries", () => {
@@ -135,13 +137,13 @@ describe("resolve command", () => {
     expect(result.exitCode).toBe(0);
 
     const output = JSON.parse(result.stdout);
-    const skillPath = output.skills["my-skill"].path;
+    const skillPath = output.skills["@local/my-skill"].path;
     // Core resolves path fields to absolute paths
     expect(skillPath.startsWith("/")).toBe(true);
     expect(skillPath).toContain("skills/my-skill");
   });
 
-  it("applies later-wins override across multiple index files", () => {
+  it("hard-fails on duplicate qualified IDs across index files in the same scope", () => {
     const catalog = createTemp({
       "air.json": {
         name: "test",
@@ -158,11 +160,31 @@ describe("resolve command", () => {
     const result = tryRun(
       `resolve --json --config ${join(catalog, "air.json")}`
     );
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("@local/github");
+  });
+
+  it("supports exclude to drop catalog entries by qualified ID", () => {
+    const catalog = createTemp({
+      "air.json": {
+        name: "test",
+        mcp: ["./mcp.json"],
+        exclude: ["@local/dropped"],
+      },
+      "mcp.json": {
+        kept: { type: "stdio", command: "npx", args: ["kept"] },
+        dropped: { type: "stdio", command: "npx", args: ["dropped"] },
+      },
+    });
+
+    const result = tryRun(
+      `resolve --json --config ${join(catalog, "air.json")}`
+    );
     expect(result.exitCode).toBe(0);
 
     const output = JSON.parse(result.stdout);
-    // Later entry should win by id (full replacement)
-    expect(output.mcp.github.args).toEqual(["override-gh"]);
+    expect(output.mcp["@local/kept"]).toBeDefined();
+    expect(output.mcp["@local/dropped"]).toBeUndefined();
   });
 
   it("respects AIR_CONFIG env var when --config is omitted", () => {
@@ -182,7 +204,7 @@ describe("resolve command", () => {
     expect(result.exitCode).toBe(0);
 
     const output = JSON.parse(result.stdout);
-    expect(output.mcp.slack).toBeDefined();
+    expect(output.mcp["@local/slack"]).toBeDefined();
   });
 
   it("emits empty maps for unused artifact types", () => {
@@ -255,8 +277,8 @@ export default {
     expect(result.exitCode).toBe(0);
 
     const output = JSON.parse(result.stdout);
-    expect(output.mcp["provider-resolved-server"]).toBeDefined();
-    expect(output.mcp["provider-resolved-server"].args).toEqual([
+    expect(output.mcp["@local/provider-resolved-server"]).toBeDefined();
+    expect(output.mcp["@local/provider-resolved-server"].args).toEqual([
       "from-stub-provider",
     ]);
   });
@@ -294,7 +316,7 @@ export default {
     expect(result.exitCode).toBe(0);
 
     const output = JSON.parse(result.stdout);
-    expect(output.plugins["my-plugin"]).toBeDefined();
-    expect(output.plugins["my-plugin"].skills).toContain("deploy");
+    expect(output.plugins["@local/my-plugin"]).toBeDefined();
+    expect(output.plugins["@local/my-plugin"].skills).toContain("@local/deploy");
   });
 });

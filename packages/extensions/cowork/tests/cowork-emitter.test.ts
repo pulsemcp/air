@@ -31,6 +31,10 @@ function emptyArtifacts(): ResolvedArtifacts {
   };
 }
 
+function acts(...ids: string[]): { qualified: string; short: string }[] {
+  return ids.map((id) => ({ qualified: `@local/${id}`, short: id }));
+}
+
 let tempDirs: string[] = [];
 
 function makeTempDir(): string {
@@ -144,7 +148,7 @@ describe("CoworkEmitter", () => {
     it("translates stdio servers", () => {
       const artifacts = emptyArtifacts();
       artifacts.mcp = {
-        github: {
+        "@local/github": {
           type: "stdio",
           command: "npx",
           args: ["-y", "@mcp/github@1.0.0"],
@@ -152,7 +156,7 @@ describe("CoworkEmitter", () => {
         },
       };
 
-      const result = emitter.buildMcpConfig(artifacts, ["github"]);
+      const result = emitter.buildMcpConfig(artifacts, acts("github"));
       expect(result).toEqual({
         mcpServers: {
           github: {
@@ -167,14 +171,14 @@ describe("CoworkEmitter", () => {
     it("translates streamable-http to http", () => {
       const artifacts = emptyArtifacts();
       artifacts.mcp = {
-        remote: {
+        "@local/remote": {
           type: "streamable-http",
           url: "https://mcp.example.com/api",
           headers: { Authorization: "Bearer ${TOKEN}" },
         },
       };
 
-      const result = emitter.buildMcpConfig(artifacts, ["remote"]);
+      const result = emitter.buildMcpConfig(artifacts, acts("remote"));
       expect(result.mcpServers.remote).toEqual({
         type: "http",
         url: "https://mcp.example.com/api",
@@ -185,17 +189,17 @@ describe("CoworkEmitter", () => {
     it("preserves sse type", () => {
       const artifacts = emptyArtifacts();
       artifacts.mcp = {
-        events: { type: "sse", url: "https://mcp.example.com/sse" },
+        "@local/events": { type: "sse", url: "https://mcp.example.com/sse" },
       };
 
-      const result = emitter.buildMcpConfig(artifacts, ["events"]);
+      const result = emitter.buildMcpConfig(artifacts, acts("events"));
       expect(result.mcpServers.events.type).toBe("sse");
     });
 
     it("translates OAuth with callbackPort extraction", () => {
       const artifacts = emptyArtifacts();
       artifacts.mcp = {
-        oauth: {
+        "@local/oauth": {
           type: "streamable-http",
           url: "https://mcp.example.com",
           oauth: {
@@ -206,7 +210,7 @@ describe("CoworkEmitter", () => {
         },
       };
 
-      const result = emitter.buildMcpConfig(artifacts, ["oauth"]);
+      const result = emitter.buildMcpConfig(artifacts, acts("oauth"));
       expect(result.mcpServers.oauth.oauth).toEqual({
         clientId: "abc123",
         callbackPort: 3456,
@@ -217,7 +221,7 @@ describe("CoworkEmitter", () => {
     it("passes authServerMetadataUrl and clientSecret through oauth translation", () => {
       const artifacts = emptyArtifacts();
       artifacts.mcp = {
-        bigquery: {
+        "@local/bigquery": {
           type: "streamable-http",
           url: "https://bigquery.googleapis.com/mcp",
           oauth: {
@@ -229,7 +233,7 @@ describe("CoworkEmitter", () => {
         },
       };
 
-      const result = emitter.buildMcpConfig(artifacts, ["bigquery"]);
+      const result = emitter.buildMcpConfig(artifacts, acts("bigquery"));
       expect(result.mcpServers.bigquery.oauth).toEqual({
         clientId: "my-client",
         clientSecret: "resolved-secret-value",
@@ -241,13 +245,11 @@ describe("CoworkEmitter", () => {
     it("skips unknown server IDs", () => {
       const artifacts = emptyArtifacts();
       artifacts.mcp = {
-        exists: { type: "stdio", command: "test" },
+        "@local/exists": { type: "stdio", command: "test" },
       };
 
-      const result = emitter.buildMcpConfig(artifacts, [
-        "exists",
-        "does-not-exist",
-      ]);
+      const result = emitter.buildMcpConfig(artifacts, acts("exists",
+        "does-not-exist",));
       expect(Object.keys(result.mcpServers)).toEqual(["exists"]);
     });
   });
@@ -286,11 +288,11 @@ describe("CoworkEmitter", () => {
 
       const artifacts = emptyArtifacts();
       artifacts.hooks = {
-        notify: { description: "Notify hook", path: hookDir },
+        "@local/notify": { description: "Notify hook", path: hookDir },
       };
 
       const pluginDir = makeTempDir();
-      const result = emitter.buildHooksConfig(artifacts, ["notify"], pluginDir);
+      const result = emitter.buildHooksConfig(artifacts, acts("notify"));
 
       expect(result.hooks).toHaveProperty("SessionStart");
       expect(result.hooks.SessionStart).toHaveLength(1);
@@ -320,16 +322,12 @@ describe("CoworkEmitter", () => {
 
       const artifacts = emptyArtifacts();
       artifacts.hooks = {
-        start: { description: "Start hook", path: hookDir1 },
-        end: { description: "End hook", path: hookDir2 },
+        "@local/start": { description: "Start hook", path: hookDir1 },
+        "@local/end": { description: "End hook", path: hookDir2 },
       };
 
       const pluginDir = makeTempDir();
-      const result = emitter.buildHooksConfig(
-        artifacts,
-        ["start", "end"],
-        pluginDir
-      );
+      const result = emitter.buildHooksConfig(artifacts, acts("start", "end"));
 
       expect(result.hooks).toHaveProperty("SessionStart");
       expect(result.hooks).toHaveProperty("SessionEnd");
@@ -345,15 +343,11 @@ describe("CoworkEmitter", () => {
 
       const artifacts = emptyArtifacts();
       artifacts.hooks = {
-        "pre-commit": { description: "Pre-commit", path: hookDir },
+        "@local/pre-commit": { description: "Pre-commit", path: hookDir },
       };
 
       const pluginDir = makeTempDir();
-      const result = emitter.buildHooksConfig(
-        artifacts,
-        ["pre-commit"],
-        pluginDir
-      );
+      const result = emitter.buildHooksConfig(artifacts, acts("pre-commit"));
 
       expect(Object.keys(result.hooks)).toHaveLength(0);
     });
@@ -366,15 +360,11 @@ describe("CoworkEmitter", () => {
 
       const artifacts = emptyArtifacts();
       artifacts.hooks = {
-        broken: { description: "Broken hook", path: hookDir },
+        "@local/broken": { description: "Broken hook", path: hookDir },
       };
 
       const pluginDir = makeTempDir();
-      const result = emitter.buildHooksConfig(
-        artifacts,
-        ["broken"],
-        pluginDir
-      );
+      const result = emitter.buildHooksConfig(artifacts, acts("broken"));
 
       expect(Object.keys(result.hooks)).toHaveLength(0);
     });
@@ -387,7 +377,7 @@ describe("CoworkEmitter", () => {
 
       const artifacts = emptyArtifacts();
       artifacts.plugins = {
-        "my-plugin": {
+        "@local/my-plugin": {
           description: "Test plugin",
           version: "1.0.0",
         },
@@ -395,8 +385,9 @@ describe("CoworkEmitter", () => {
 
       emitter.buildPlugin(
         artifacts,
+        "@local/my-plugin",
         "my-plugin",
-        artifacts.plugins["my-plugin"],
+        artifacts.plugins["@local/my-plugin"],
         pluginDir
       );
 
@@ -418,22 +409,23 @@ describe("CoworkEmitter", () => {
 
       const artifacts = emptyArtifacts();
       artifacts.skills = {
-        "lint-fix": {
+        "@local/lint-fix": {
           description: "Lint fixer",
           path: skillPath,
         },
       };
       artifacts.plugins = {
-        "code-quality": {
+        "@local/code-quality": {
           description: "Code quality",
-          skills: ["lint-fix"],
+          skills: ["@local/lint-fix"],
         },
       };
 
       emitter.buildPlugin(
         artifacts,
+        "@local/code-quality",
         "code-quality",
-        artifacts.plugins["code-quality"],
+        artifacts.plugins["@local/code-quality"],
         pluginDir
       );
 
@@ -455,29 +447,30 @@ describe("CoworkEmitter", () => {
 
       const artifacts = emptyArtifacts();
       artifacts.skills = {
-        deploy: {
+        "@local/deploy": {
           description: "Deploy skill",
           path: skillPath,
-          references: ["deploy-guide"],
+          references: ["@local/deploy-guide"],
         },
       };
       artifacts.references = {
-        "deploy-guide": {
+        "@local/deploy-guide": {
           description: "Deploy guide",
           path: refPath,
         },
       };
       artifacts.plugins = {
-        "deploy-plugin": {
+        "@local/deploy-plugin": {
           description: "Deploy plugin",
-          skills: ["deploy"],
+          skills: ["@local/deploy"],
         },
       };
 
       emitter.buildPlugin(
         artifacts,
+        "@local/deploy-plugin",
         "deploy-plugin",
-        artifacts.plugins["deploy-plugin"],
+        artifacts.plugins["@local/deploy-plugin"],
         pluginDir
       );
 
@@ -504,19 +497,20 @@ describe("CoworkEmitter", () => {
 
       const artifacts = emptyArtifacts();
       artifacts.hooks = {
-        notify: { description: "Notify", path: hookDir },
+        "@local/notify": { description: "Notify", path: hookDir },
       };
       artifacts.plugins = {
-        notifier: {
+        "@local/notifier": {
           description: "Notification plugin",
-          hooks: ["notify"],
+          hooks: ["@local/notify"],
         },
       };
 
       emitter.buildPlugin(
         artifacts,
+        "@local/notifier",
         "notifier",
-        artifacts.plugins["notifier"],
+        artifacts.plugins["@local/notifier"],
         pluginDir
       );
 
@@ -542,19 +536,20 @@ describe("CoworkEmitter", () => {
 
       const artifacts = emptyArtifacts();
       artifacts.hooks = {
-        notify: { description: "Notify", path: hookDir },
+        "@local/notify": { description: "Notify", path: hookDir },
       };
       artifacts.plugins = {
-        notifier: {
+        "@local/notifier": {
           description: "Notification plugin",
-          hooks: ["notify"],
+          hooks: ["@local/notify"],
         },
       };
 
       emitter.buildPlugin(
         artifacts,
+        "@local/notifier",
         "notifier",
-        artifacts.plugins["notifier"],
+        artifacts.plugins["@local/notifier"],
         pluginDir
       );
 
@@ -578,16 +573,17 @@ describe("CoworkEmitter", () => {
 
       const artifacts = emptyArtifacts();
       artifacts.hooks = {
-        "my-hook": { description: "Test hook", path: hookDir },
+        "@local/my-hook": { description: "Test hook", path: hookDir },
       };
       artifacts.plugins = {
-        test: { description: "Test", hooks: ["my-hook"] },
+        "@local/test": { description: "Test", hooks: ["@local/my-hook"] },
       };
 
       emitter.buildPlugin(
         artifacts,
+        "@local/test",
         "test",
-        artifacts.plugins["test"],
+        artifacts.plugins["@local/test"],
         pluginDir
       );
 
@@ -602,7 +598,7 @@ describe("CoworkEmitter", () => {
 
       const artifacts = emptyArtifacts();
       artifacts.mcp = {
-        db: {
+        "@local/db": {
           type: "stdio",
           command: "npx",
           args: ["@mcp/db"],
@@ -610,16 +606,17 @@ describe("CoworkEmitter", () => {
         },
       };
       artifacts.plugins = {
-        "mcp-plugin": {
+        "@local/mcp-plugin": {
           description: "MCP plugin",
-          mcp_servers: ["db"],
+          mcp_servers: ["@local/db"],
         },
       };
 
       emitter.buildPlugin(
         artifacts,
+        "@local/mcp-plugin",
         "mcp-plugin",
-        artifacts.plugins["mcp-plugin"],
+        artifacts.plugins["@local/mcp-plugin"],
         pluginDir
       );
 
@@ -644,28 +641,29 @@ describe("CoworkEmitter", () => {
 
       const artifacts = emptyArtifacts();
       artifacts.skills = {
-        "skill-1": { description: "Skill 1", path: skillPath },
+        "@local/skill-1": { description: "Skill 1", path: skillPath },
       };
       artifacts.hooks = {
-        "hook-1": { description: "Hook 1", path: hookDir },
+        "@local/hook-1": { description: "Hook 1", path: hookDir },
       };
       artifacts.mcp = {
-        server1: { type: "stdio", command: "test" },
-        server2: { type: "stdio", command: "test2" },
+        "@local/server1": { type: "stdio", command: "test" },
+        "@local/server2": { type: "stdio", command: "test2" },
       };
       artifacts.plugins = {
-        counted: {
+        "@local/counted": {
           description: "Counted",
-          skills: ["skill-1"],
-          hooks: ["hook-1"],
-          mcp_servers: ["server1", "server2"],
+          skills: ["@local/skill-1"],
+          hooks: ["@local/hook-1"],
+          mcp_servers: ["@local/server1", "@local/server2"],
         },
       };
 
       const result = emitter.buildPlugin(
         artifacts,
+        "@local/counted",
         "counted",
-        artifacts.plugins["counted"],
+        artifacts.plugins["@local/counted"],
         pluginDir
       );
 
@@ -681,13 +679,14 @@ describe("CoworkEmitter", () => {
 
       const artifacts = emptyArtifacts();
       artifacts.plugins = {
-        empty: { description: "Empty plugin" },
+        "@local/empty": { description: "Empty plugin" },
       };
 
       const result = emitter.buildPlugin(
         artifacts,
+        "@local/empty",
         "empty",
-        artifacts.plugins["empty"],
+        artifacts.plugins["@local/empty"],
         pluginDir
       );
 
@@ -712,21 +711,21 @@ describe("CoworkEmitter", () => {
 
       const artifacts = emptyArtifacts();
       artifacts.skills = {
-        lint: { description: "Lint", path: skill1 },
-        deploy: { description: "Deploy", path: skill2 },
+        "@local/lint": { description: "Lint", path: skill1 },
+        "@local/deploy": { description: "Deploy", path: skill2 },
       };
       artifacts.plugins = {
-        "code-quality": {
+        "@local/code-quality": {
           title: "Code Quality",
           description: "Code quality suite",
           version: "1.0.0",
-          skills: ["lint"],
+          skills: ["@local/lint"],
         },
-        "deploy-toolkit": {
+        "@local/deploy-toolkit": {
           title: "Deploy Toolkit",
           description: "Deployment tools",
           version: "2.0.0",
-          skills: ["deploy"],
+          skills: ["@local/deploy"],
           keywords: ["deploy", "ci"],
         },
       };
@@ -778,7 +777,7 @@ describe("CoworkEmitter", () => {
 
       const artifacts = emptyArtifacts();
       artifacts.plugins = {
-        minimal: { description: "Minimal" },
+        "@local/minimal": { description: "Minimal" },
       };
 
       await emitter.buildMarketplace(artifacts, ["minimal"], outputDir, {
@@ -805,7 +804,7 @@ describe("CoworkEmitter", () => {
       const outputDir = join(makeTempDir(), "marketplace");
       const artifacts = emptyArtifacts();
       artifacts.plugins = {
-        exists: { description: "Exists" },
+        "@local/exists": { description: "Exists" },
       };
 
       await expect(
@@ -814,7 +813,7 @@ describe("CoworkEmitter", () => {
           ["exists", "does-not-exist"],
           outputDir
         )
-      ).rejects.toThrow("Unknown plugin ID(s): does-not-exist");
+      ).rejects.toThrow('Unknown plugin ID "does-not-exist"');
     });
 
     it("produces a complete plugin with skills, hooks, and MCP servers", async () => {
@@ -837,25 +836,25 @@ describe("CoworkEmitter", () => {
 
       const artifacts = emptyArtifacts();
       artifacts.skills = {
-        review: { description: "Code review", path: skillPath },
+        "@local/review": { description: "Code review", path: skillPath },
       };
       artifacts.hooks = {
-        "pre-review": { description: "Pre-review check", path: hookDir },
+        "@local/pre-review": { description: "Pre-review check", path: hookDir },
       };
       artifacts.mcp = {
-        "lint-server": {
+        "@local/lint-server": {
           type: "stdio",
           command: "npx",
           args: ["@mcp/lint"],
         },
       };
       artifacts.plugins = {
-        "full-suite": {
+        "@local/full-suite": {
           description: "Full review suite",
           version: "3.0.0",
-          skills: ["review"],
-          hooks: ["pre-review"],
-          mcp_servers: ["lint-server"],
+          skills: ["@local/review"],
+          hooks: ["@local/pre-review"],
+          mcp_servers: ["@local/lint-server"],
         },
       };
 

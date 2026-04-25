@@ -48,6 +48,20 @@ export {
 } from "./config.js";
 export type { ResolveOptions } from "./config.js";
 
+// Scoped identity helpers
+export {
+  LOCAL_SCOPE,
+  isQualified,
+  qualifyId,
+  parseQualifiedId,
+  validateScope,
+  deriveScope,
+  buildShortnameIndex,
+  lookupArtifactId,
+  resolveReference,
+} from "./scope.js";
+export type { QualifiedId, ReferenceResolution } from "./scope.js";
+
 // Validation
 export { validateJson } from "./validator.js";
 export type { ValidationResult, ValidationError } from "./validator.js";

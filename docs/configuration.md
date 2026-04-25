@@ -10,7 +10,7 @@ Override the path with the `AIR_CONFIG` environment variable.
 
 ## How Composition Works
 
-All composition is expressed in `air.json`. Each artifact property is an array of paths to index files. The CLI loads every file in the array and merges them sequentially — later entries override earlier ones by ID.
+All composition is expressed in `air.json`. Each artifact property is an array of paths to index files. Every artifact is identified by `@scope/id`, where local entries contribute under `@local/` and remote catalogs use a provider-derived scope (e.g. `@<owner>/<repo>/`). Composition is additive — duplicate qualified IDs hard-fail, and the only way to drop an artifact is `exclude`.
 
 ```json
 {
@@ -56,17 +56,22 @@ Traversal rules:
 - **`.gitignore` at the catalog root**: honored — ignored paths are not descended into.
 - **`$schema` check**: a JSON file whose `$schema` points to a non-AIR schema is skipped even if its filename matches. Files without `$schema` are identified by filename alone.
 
-Within a single catalog, if two indexes of the same type are found, they are merged in sorted relative-path order with later-wins by ID. Across multiple entries in `catalogs[]`, catalogs earlier in the array are merged first; later catalogs override. The per-type arrays (`skills`, `mcp`, …) layer on top of catalog-discovered indexes — catalogs expand first, explicit arrays last.
+Within a single catalog, multiple indexes of the same type contribute to the same scope, so they must have disjoint shortnames — duplicates hard-fail. Different catalogs ship under different scopes (`@<owner>/<repo>/...` for `github://`, `@local/...` for local paths), so they never collide. The per-type arrays (`skills`, `mcp`, …) contribute under `@local/...` alongside any local catalogs.
 
 Remote catalog URIs (e.g. `github://owner/repo@ref/path`) are supported when the matching provider can clone or mount the source locally. You can point at the whole repo (`github://owner/repo`), a ref (`github://owner/repo@main`), or a subdirectory (`github://owner/repo@main/agents`).
 
-## Merging Strategy
+## Composition Strategy
 
-For each artifact type, files in the array merge by ID:
+Every artifact has a qualified identity of the form `@scope/id`. Local indexes contribute under `@local/`; remote catalogs contribute under their provider-derived scope (e.g. `@<owner>/<repo>/`).
 
-1. **New IDs** are added to the merged set
-2. **Matching IDs** from a later file **replace** the earlier entry entirely (no deep merge)
-3. **The `$schema` property**, if present, is excluded from merging
+For each artifact type:
+
+1. **Different qualified IDs** accumulate (additive union)
+2. **Duplicate qualified IDs** hard-fail — you cannot silently override an artifact
+3. **Cross-scope shortname collisions** warn but keep both — disambiguate with the qualified form
+4. **`exclude`** is the only way to drop an artifact (takes a list of qualified IDs)
+
+See [Composition and Overrides](guides/composition-and-overrides.md) for the full rules and examples.
 
 ### Example
 
@@ -75,62 +80,40 @@ Given this `air.json`:
 ```json
 {
   "name": "my-project",
-  "mcp": [
-    "./org-mcp/mcp.json",
-    "./mcp/mcp.json"
-  ]
+  "extensions": ["@pulsemcp/air-provider-github"],
+  "catalogs": ["github://acme/air-org"],
+  "mcp": ["./mcp/mcp.json"]
 }
 ```
 
-**org-mcp/mcp.json:**
+The org catalog ships `github` and `slack` MCP servers; your local `mcp.json` ships `postgres`. Resolved:
+
+```
+@acme/air-org/github
+@acme/air-org/slack
+@local/postgres
+```
+
+If you want to drop the org's `slack` server:
+
 ```json
 {
-  "github": {
-    "title": "GitHub",
-    "type": "stdio",
-    "command": "npx",
-    "args": ["-y", "@modelcontextprotocol/server-github@0.5.0"]
-  }
+  "catalogs": ["github://acme/air-org"],
+  "exclude": ["@acme/air-org/slack"]
 }
 ```
 
-**mcp/mcp.json:**
+If you want a different `github` configuration, ship it under `@local/`:
+
 ```json
 {
-  "github": {
-    "title": "GitHub (Pinned)",
-    "type": "stdio",
-    "command": "npx",
-    "args": ["-y", "@modelcontextprotocol/server-github@0.6.2"]
-  },
-  "postgres": {
-    "title": "PostgreSQL",
-    "type": "stdio",
-    "command": "uvx",
-    "args": ["postgres-mcp==0.3.0"]
-  }
+  "catalogs": ["github://acme/air-org"],
+  "mcp": ["./mcp/mcp.json"],
+  "exclude": ["@acme/air-org/github"]
 }
 ```
 
-**Merged result:**
-```json
-{
-  "github": {
-    "title": "GitHub (Pinned)",
-    "type": "stdio",
-    "command": "npx",
-    "args": ["-y", "@modelcontextprotocol/server-github@0.6.2"]
-  },
-  "postgres": {
-    "title": "PostgreSQL",
-    "type": "stdio",
-    "command": "uvx",
-    "args": ["postgres-mcp==0.3.0"]
-  }
-}
-```
-
-The local `github` entry completely replaces the org's. The local `postgres` entry is new and added.
+— with `./mcp/mcp.json` defining `github` (which becomes `@local/github`).
 
 ## Git Protocol
 

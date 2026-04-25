@@ -55,7 +55,7 @@ describe("loadAirConfig", () => {
 });
 
 describe("resolveArtifacts", () => {
-  it("resolves all artifact types from a single set of files", async () => {
+  it("resolves all artifact types from a single set of files (qualified @local/<id>)", async () => {
     const { dir, cleanup: c } = createTempAirDir({
       "air.json": {
         name: "test",
@@ -77,15 +77,25 @@ describe("resolveArtifacts", () => {
 
     const artifacts = await resolveArtifacts(join(dir, "air.json"));
 
-    expect(artifacts.skills["my-skill"].description).toBe("Description for my-skill");
-    expect(artifacts.mcp["my-server"].type).toBe("stdio");
-    expect(artifacts.roots["my-root"].description).toBe("Description for my-root");
-    expect(artifacts.references["my-ref"].description).toBe("Description for my-ref");
-    expect(artifacts.plugins["my-plugin"].description).toBe("Description for my-plugin");
-    expect(artifacts.hooks["my-hook"].description).toBe("Description for my-hook");
+    expect(artifacts.skills["@local/my-skill"].description).toBe(
+      "Description for my-skill",
+    );
+    expect(artifacts.mcp["@local/my-server"].type).toBe("stdio");
+    expect(artifacts.roots["@local/my-root"].description).toBe(
+      "Description for my-root",
+    );
+    expect(artifacts.references["@local/my-ref"].description).toBe(
+      "Description for my-ref",
+    );
+    expect(artifacts.plugins["@local/my-plugin"].description).toBe(
+      "Description for my-plugin",
+    );
+    expect(artifacts.hooks["@local/my-hook"].description).toBe(
+      "Description for my-hook",
+    );
   });
 
-  it("merges multiple files for the same artifact type", async () => {
+  it("unions multiple files for the same artifact type (disjoint shortnames)", async () => {
     const { dir, cleanup: c } = createTempAirDir({
       "air.json": {
         name: "test",
@@ -96,7 +106,6 @@ describe("resolveArtifacts", () => {
         "review": exampleSkill("review", { description: "Org review" }),
       },
       "team-skills.json": {
-        "deploy": exampleSkill("deploy", { description: "Team deploy" }),
         "lint": exampleSkill("lint", { description: "Team lint" }),
       },
     });
@@ -104,42 +113,29 @@ describe("resolveArtifacts", () => {
 
     const artifacts = await resolveArtifacts(join(dir, "air.json"));
 
-    // Team overrides org for matching ID
-    expect(artifacts.skills["deploy"].description).toBe("Team deploy");
-    // Org skill preserved
-    expect(artifacts.skills["review"].description).toBe("Org review");
-    // Team-only skill added
-    expect(artifacts.skills["lint"].description).toBe("Team lint");
+    expect(artifacts.skills["@local/deploy"].description).toBe("Org deploy");
+    expect(artifacts.skills["@local/review"].description).toBe("Org review");
+    expect(artifacts.skills["@local/lint"].description).toBe("Team lint");
   });
 
-  it("handles three-layer composition (org > team > project)", async () => {
+  it("hard-fails when two contributors produce the same qualified ID", async () => {
     const { dir, cleanup: c } = createTempAirDir({
       "air.json": {
         name: "test",
-        mcp: ["./org.json", "./team.json", "./project.json"],
+        mcp: ["./org.json", "./team.json"],
       },
       "org.json": {
         github: exampleMcpStdio({ title: "Org GitHub" }),
-        slack: exampleMcpStdio({ title: "Org Slack" }),
       },
       "team.json": {
         github: exampleMcpStdio({ title: "Team GitHub" }),
-        jira: exampleMcpStdio({ title: "Team Jira" }),
-      },
-      "project.json": {
-        github: exampleMcpStdio({ title: "Project GitHub" }),
       },
     });
     cleanup = c;
 
-    const artifacts = await resolveArtifacts(join(dir, "air.json"));
-
-    // Last writer wins
-    expect(artifacts.mcp["github"].title).toBe("Project GitHub");
-    // Org preserved
-    expect(artifacts.mcp["slack"].title).toBe("Org Slack");
-    // Team preserved
-    expect(artifacts.mcp["jira"].title).toBe("Team Jira");
+    await expect(resolveArtifacts(join(dir, "air.json"))).rejects.toThrow(
+      /Duplicate mcp ID "@local\/github"/,
+    );
   });
 
   it("strips $schema from merged entries", async () => {
@@ -153,8 +149,8 @@ describe("resolveArtifacts", () => {
     cleanup = c;
 
     const artifacts = await resolveArtifacts(join(dir, "air.json"));
-    expect(artifacts.skills["$schema"]).toBeUndefined();
-    expect(artifacts.skills["my-skill"]).toBeDefined();
+    expect(artifacts.skills["@local/$schema"]).toBeUndefined();
+    expect(artifacts.skills["@local/my-skill"]).toBeDefined();
   });
 
   it("handles missing files gracefully", async () => {
@@ -182,7 +178,7 @@ describe("resolveArtifacts", () => {
 });
 
 describe("resolveArtifacts with CatalogProvider", () => {
-  it("delegates URI paths to the matching provider", async () => {
+  it("delegates URI paths to the matching provider and uses provider scope", async () => {
     const { dir, cleanup: c } = createTempAirDir({
       "air.json": {
         name: "test",
@@ -194,23 +190,24 @@ describe("resolveArtifacts with CatalogProvider", () => {
     });
     cleanup = c;
 
-    const mockProvider = {
+    const mockProvider: CatalogProvider = {
       scheme: "mock",
       resolve: async (_uri: string, _baseDir: string) => ({
         "remote-skill": exampleSkill("remote-skill", {
           description: "From mock provider",
         }),
       }),
+      getScope: (_uri: string) => "mock-org",
     };
 
     const artifacts = await resolveArtifacts(join(dir, "air.json"), {
       providers: [mockProvider],
     });
 
-    expect(artifacts.skills["remote-skill"].description).toBe(
-      "From mock provider"
+    expect(artifacts.skills["@mock-org/remote-skill"].description).toBe(
+      "From mock provider",
     );
-    expect(artifacts.skills["local-skill"]).toBeDefined();
+    expect(artifacts.skills["@local/local-skill"]).toBeDefined();
   });
 
   it("throws when URI scheme has no matching provider", async () => {
@@ -223,11 +220,11 @@ describe("resolveArtifacts with CatalogProvider", () => {
     cleanup = c;
 
     await expect(
-      resolveArtifacts(join(dir, "air.json"))
+      resolveArtifacts(join(dir, "air.json")),
     ).rejects.toThrow('No catalog provider registered for scheme "s3://"');
   });
 
-  it("allows provider to override local entries", async () => {
+  it("provider entries do NOT override local entries — both coexist under their own scopes", async () => {
     const { dir, cleanup: c } = createTempAirDir({
       "air.json": {
         name: "test",
@@ -241,23 +238,30 @@ describe("resolveArtifacts with CatalogProvider", () => {
     });
     cleanup = c;
 
-    const mockProvider = {
+    const warnings: string[] = [];
+    const mockProvider: CatalogProvider = {
       scheme: "mock",
       resolve: async () => ({
         "shared-skill": exampleSkill("shared-skill", {
-          description: "Remote override",
+          description: "Mock version",
         }),
       }),
+      getScope: () => "mock-org",
     };
 
     const artifacts = await resolveArtifacts(join(dir, "air.json"), {
       providers: [mockProvider],
+      onWarning: (m) => warnings.push(m),
     });
 
-    // Remote comes after local in array, so it overrides
-    expect(artifacts.skills["shared-skill"].description).toBe(
-      "Remote override"
+    expect(artifacts.skills["@local/shared-skill"].description).toBe(
+      "Local version",
     );
+    expect(artifacts.skills["@mock-org/shared-skill"].description).toBe(
+      "Mock version",
+    );
+    // Cross-scope shortname collision warns
+    expect(warnings.some((w) => w.includes("shared-skill"))).toBe(true);
   });
 });
 
@@ -267,28 +271,32 @@ describe("mergeArtifacts", () => {
     expect(result).toEqual(emptyArtifacts());
   });
 
-  it("adds new IDs from override", () => {
+  it("unions disjoint qualified IDs from both sides", () => {
     const base = emptyArtifacts();
-    base.skills["a"] = exampleSkill("a") as any;
+    base.skills["@local/a"] = exampleSkill("a") as any;
 
-    const override = emptyArtifacts();
-    override.skills["b"] = exampleSkill("b") as any;
+    const overlay = emptyArtifacts();
+    overlay.skills["@local/b"] = exampleSkill("b") as any;
 
-    const result = mergeArtifacts(base, override);
-    expect(Object.keys(result.skills)).toEqual(["a", "b"]);
+    const result = mergeArtifacts(base, overlay);
+    expect(Object.keys(result.skills).sort()).toEqual([
+      "@local/a",
+      "@local/b",
+    ]);
   });
 
-  it("overrides matching IDs", () => {
+  it("hard-fails when both sides contain the same qualified ID", () => {
     const base = emptyArtifacts();
-    base.skills["a"] = exampleSkill("a", { description: "Base" }) as any;
+    base.skills["@local/a"] = exampleSkill("a", { description: "Base" }) as any;
 
-    const override = emptyArtifacts();
-    override.skills["a"] = exampleSkill("a", {
-      description: "Override",
+    const overlay = emptyArtifacts();
+    overlay.skills["@local/a"] = exampleSkill("a", {
+      description: "Overlay",
     }) as any;
 
-    const result = mergeArtifacts(base, override);
-    expect(result.skills["a"].description).toBe("Override");
+    expect(() => mergeArtifacts(base, overlay)).toThrow(
+      /duplicate skill ID "@local\/a"/,
+    );
   });
 });
 
@@ -307,9 +315,10 @@ describe("absolute path resolution", () => {
 
     const artifacts = await resolveArtifacts(join(dir, "air.json"));
 
-    // skill.path should be resolved to an absolute path
-    expect(artifacts.skills["my-skill"].path).toBe(join(dir, "skills/my-skill"));
-    expect(artifacts.skills["my-skill"].path.startsWith("/")).toBe(true);
+    expect(artifacts.skills["@local/my-skill"].path).toBe(
+      join(dir, "skills/my-skill"),
+    );
+    expect(artifacts.skills["@local/my-skill"].path.startsWith("/")).toBe(true);
   });
 
   it("resolves hook path fields to absolute paths", async () => {
@@ -326,9 +335,10 @@ describe("absolute path resolution", () => {
 
     const artifacts = await resolveArtifacts(join(dir, "air.json"));
 
-    // hook.path should be resolved to an absolute path
-    expect(artifacts.hooks["my-hook"].path).toBe(join(dir, "hooks/my-hook"));
-    expect(artifacts.hooks["my-hook"].path.startsWith("/")).toBe(true);
+    expect(artifacts.hooks["@local/my-hook"].path).toBe(
+      join(dir, "hooks/my-hook"),
+    );
+    expect(artifacts.hooks["@local/my-hook"].path.startsWith("/")).toBe(true);
   });
 
   it("resolves reference file fields to absolute paths", async () => {
@@ -345,11 +355,12 @@ describe("absolute path resolution", () => {
 
     const artifacts = await resolveArtifacts(join(dir, "air.json"));
 
-    // ref.path should be resolved to an absolute path
-    expect(artifacts.references["my-ref"].path).toBe(
-      join(dir, "references/my-ref.md")
+    expect(artifacts.references["@local/my-ref"].path).toBe(
+      join(dir, "references/my-ref.md"),
     );
-    expect(artifacts.references["my-ref"].path.startsWith("/")).toBe(true);
+    expect(artifacts.references["@local/my-ref"].path.startsWith("/")).toBe(
+      true,
+    );
   });
 
   it("preserves already-absolute paths", async () => {
@@ -368,7 +379,9 @@ describe("absolute path resolution", () => {
 
     const artifacts = await resolveArtifacts(join(dir, "air.json"));
 
-    expect(artifacts.skills["abs-skill"].path).toBe("/absolute/path/to/skill");
+    expect(artifacts.skills["@local/abs-skill"].path).toBe(
+      "/absolute/path/to/skill",
+    );
   });
 
   it("resolves paths relative to the index file directory, not air.json", async () => {
@@ -387,9 +400,8 @@ describe("absolute path resolution", () => {
 
     const artifacts = await resolveArtifacts(join(dir, "air.json"));
 
-    // Path is relative to subdir/ (where the index file is), not to dir/
-    expect(artifacts.skills["nested-skill"].path).toBe(
-      join(dir, "skills/nested")
+    expect(artifacts.skills["@local/nested-skill"].path).toBe(
+      join(dir, "skills/nested"),
     );
   });
 
@@ -402,7 +414,7 @@ describe("absolute path resolution", () => {
     });
     cleanup = c;
 
-    const mockProvider = {
+    const mockProvider: CatalogProvider = {
       scheme: "mock",
       resolve: async () => ({
         "remote-skill": {
@@ -412,15 +424,15 @@ describe("absolute path resolution", () => {
         },
       }),
       resolveSourceDir: () => "/mock/clone/dir",
+      getScope: () => "mock-org",
     };
 
     const artifacts = await resolveArtifacts(join(dir, "air.json"), {
       providers: [mockProvider],
     });
 
-    // Path resolved relative to the provider's sourceDir
-    expect(artifacts.skills["remote-skill"].path).toBe(
-      "/mock/clone/dir/skills/remote"
+    expect(artifacts.skills["@mock-org/remote-skill"].path).toBe(
+      "/mock/clone/dir/skills/remote",
     );
   });
 
@@ -433,7 +445,7 @@ describe("absolute path resolution", () => {
     });
     cleanup = c;
 
-    const mockProvider = {
+    const mockProvider: CatalogProvider = {
       scheme: "mock",
       resolve: async () => ({
         "remote-skill": {
@@ -442,16 +454,15 @@ describe("absolute path resolution", () => {
           path: "skills/remote",
         },
       }),
-      // No resolveSourceDir
+      getScope: () => "mock-org",
     };
 
     const artifacts = await resolveArtifacts(join(dir, "air.json"), {
       providers: [mockProvider],
     });
 
-    // Path resolved relative to air.json's directory (the baseDir fallback)
-    expect(artifacts.skills["remote-skill"].path).toBe(
-      join(dir, "skills/remote")
+    expect(artifacts.skills["@mock-org/remote-skill"].path).toBe(
+      join(dir, "skills/remote"),
     );
   });
 });
@@ -469,8 +480,6 @@ describe("emptyArtifacts", () => {
 });
 
 describe("configureProviders precedence", () => {
-  // A minimal fake provider that records the last configure() payload so we
-  // can verify what core dispatched after merging the precedence tiers.
   function makeFakeProvider(): CatalogProvider & {
     lastConfig: Record<string, unknown> | null;
     configureCallCount: number;
@@ -517,7 +526,7 @@ describe("configureProviders precedence", () => {
     configureProviders(
       [provider],
       { name: "t", gitProtocol: "https" },
-      { gitProtocol: "ssh" }
+      { gitProtocol: "ssh" },
     );
     expect(provider.lastConfig).toEqual({ gitProtocol: "ssh" });
   });
@@ -542,7 +551,6 @@ describe("configureProviders precedence", () => {
       scheme: "fake",
       resolve: async () => ({}),
     };
-    // Should not throw
     configureProviders([unconfigurable], { name: "t" });
     expect(true).toBe(true);
   });

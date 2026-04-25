@@ -1,68 +1,131 @@
 # Composition and Overrides
 
-AIR's composition model lets you layer configuration from whatever sources make sense for you — purely local directories, catalogs your team ships, remote org-wide defaults, or any mix. This guide covers the mechanics and advanced patterns.
+AIR's composition model lets you assemble configuration from multiple sources — local directories, catalogs your team ships, remote org-wide catalogs, or any mix — without any of those sources needing to know about each other.
 
 `~/.air/air.json` is the single composition surface: every active artifact in a session comes from the arrays you list there. Nothing else contributes to a session's config, and you are not required to use remote catalogs — a fully local setup is a supported first-class shape.
 
-## The override model
+## The scoped identity model
 
-Every artifact field in `air.json` is an **ordered array** of index file paths:
+Every artifact in AIR has a **qualified identity** of the form `@scope/id`:
+
+- **`@local/<id>`** for artifacts contributed by local index files (anything that does not come from a catalog provider).
+- **`@<org>/<repo>/<id>`** for artifacts contributed by a `github://` catalog. The scope is derived from the `org/repo` part of the URI.
+- Other catalog providers may define their own scope shape — e.g. `@<bucket>/<id>` for an S3 provider — see [Extensions System](extensions.md).
+
+The `<id>` portion is the **shortname**: the bare key inside an index file (e.g. `deploy`, `github`, `lint-fix`). Inside a single scope, shortnames must be unique. Across scopes, shortnames may collide — the qualified form is what disambiguates.
+
+You will see qualified IDs everywhere AIR talks about artifacts:
+
+```bash
+$ air list skills
+@local/deploy        — Deploy to staging
+@local/lint-fix      — Run linters and apply fixes
+@acme/air-org/review — Code-review skill from the org catalog
+```
+
+### Why scopes?
+
+Scopes solve a real problem: two catalogs may legitimately ship a skill called `review`, and a team consuming both should not be forced to rename one. With scopes, both `@acme/air-org/review` and `@local/review` coexist — you reference whichever you want.
+
+Scopes also make it impossible for a catalog you depend on to silently change a different catalog's artifact. Catalog A cannot publish anything that lives under catalog B's scope, so there is no "later-wins" replacement to reason about.
+
+## Composition rules
+
+### 1. Disjoint qualified IDs union
+
+Different catalogs ship different scopes, so their artifacts simply accumulate:
 
 ```json
 {
-  "mcp": [
-    "./mcp/org-defaults.json",
-    "./mcp/team-overrides.json",
-    "./mcp/local.json"
+  "name": "platform-team",
+  "extensions": ["@pulsemcp/air-provider-github"],
+  "catalogs": [
+    "github://acme/air-org",
+    "./platform-team-catalog"
   ]
 }
 ```
 
-Files are loaded left to right. When two files define an entry with the same ID, the **later entry wins** via **full replacement** — no fields are merged between them.
+Result: `@acme/air-org/<…>` artifacts and `@local/<…>` artifacts all coexist.
 
-### Full replacement, not deep merge
+### 2. Duplicate qualified IDs hard-fail
 
-This is the most important rule in AIR composition. Given:
+If two indexes contribute the **same** qualified ID, AIR refuses to resolve:
 
-**org-defaults.json:**
+```
+Error: Duplicate skill ID "@local/deploy" produced by both
+"./skills/team.json" and "./skills/local.json". Two catalogs with
+the same scope contributed the same shortname; rename one or
+remove the duplicate from your air.json.
+```
+
+This applies whenever two indexes resolve to the same scope — most commonly two local index files defining the same shortname. It also catches a catalog provider that erroneously emits the same qualified ID twice.
+
+There is no "later-wins" override. The only way to drop an artifact is `exclude`.
+
+### 3. Cross-scope shortname collisions warn
+
+When two **different** scopes happen to ship the same shortname, AIR warns once at resolution time and keeps both:
+
+```
+Warning: Cross-scope shortname collision: skills "review" is provided
+by 2 scopes — @local (from ./local-skills.json),
+@acme/air-org (from github://acme/air-org). Short references to
+"review" without a scope are ambiguous; use the qualified form
+"@scope/review" to disambiguate.
+```
+
+The artifacts both stay in the resolved set — the warning just tells you that any short reference to `review` will need the qualified form. Excluding either side via [`exclude`](#4-exclude-drops-artifacts-by-qualified-id) silences the warning, since the collision check runs after `exclude` has applied.
+
+### 4. `exclude` drops artifacts by qualified ID
+
+`exclude` is the only composition control. It takes a list of **qualified** IDs to remove from the resolved set:
+
 ```json
 {
-  "github": {
-    "title": "GitHub (Org)",
-    "description": "Organization-wide GitHub access",
-    "type": "stdio",
-    "command": "npx",
-    "args": ["-y", "@modelcontextprotocol/server-github@0.6.2"],
-    "env": {
-      "GITHUB_PERSONAL_ACCESS_TOKEN": "${ORG_GITHUB_TOKEN}"
-    }
-  }
+  "name": "platform-team",
+  "extensions": ["@pulsemcp/air-provider-github"],
+  "catalogs": [
+    "github://acme/air-org",
+    "./platform-team-catalog"
+  ],
+  "exclude": [
+    "@acme/air-org/legacy-deploy",
+    "@acme/air-org/dont-use-this-mcp-server"
+  ]
 }
 ```
 
-**team-overrides.json:**
-```json
-{
-  "github": {
-    "type": "stdio",
-    "command": "npx",
-    "args": ["-y", "@modelcontextprotocol/server-github@0.7.0"],
-    "env": {
-      "GITHUB_PERSONAL_ACCESS_TOKEN": "${TEAM_GITHUB_TOKEN}"
-    }
-  }
-}
+Notes:
+
+- Entries **must** be qualified — bare shortnames are rejected with a hard error.
+- An `exclude` entry that does not match any resolved artifact emits a warning (typo guard, not an error).
+- `exclude` runs after composition, so a catalog you depend on cannot bypass it.
+
+There is no field-level patch, no "override this one field" knob. If you want a different behavior for a skill, ship a new skill under your own scope.
+
+## Reference syntax
+
+Roots, plugins, and skills frequently reference other artifacts (e.g. a root's `default_skills`, a plugin's `mcp_servers`, a skill's `references`). References accept three forms:
+
+| Form | Example | When to use |
+|------|---------|-------------|
+| Short, unambiguous | `"deploy"` | The shortname appears in only one scope across the resolved set. AIR canonicalizes it to `@local/deploy` (or whichever scope owns it). |
+| Qualified | `"@acme/air-org/deploy"` | Always works; required when shortnames collide across scopes. |
+| Short, intra-catalog | `"deploy"` (inside `github://acme/air-org/...`) | A reference inside a catalog index resolves to the same catalog's scope first, even if the same shortname exists elsewhere. This lets a catalog reference its own artifacts without using its own scope name in every file. |
+
+If a short reference is ambiguous (multiple scopes ship it and the intra-catalog rule does not apply), AIR fails with the candidate list:
+
+```
+Error: Reference "review" is ambiguous — candidates: @acme/air-org/review,
+@local/review. Use the qualified form to disambiguate.
 ```
 
-The result is the team version **only**. The org's `title` and `description` are gone — they were part of the replaced entry. If you want to keep them, include them in the override.
-
-### Why full replacement?
-
-Full replacement is predictable. You never have to wonder which fields came from which layer. The winning entry is exactly what you see in its file. Deep merge creates ambiguity: if a field is present in the result, did it come from the org layer or the team layer? With full replacement, the answer is always "whichever file defined this ID last."
+After resolution, root and plugin reference fields are stored in **canonical (qualified) form** so adapters and consumers do not need to re-resolve them.
 
 ## Whole-catalog composition
 
-When you want to layer two or more full catalogs — say, a shared team catalog and your own local catalog — you don't need to list every artifact type separately. The `catalogs` field in `air.json` accepts an ordered array of catalog roots, and AIR expands each one into all six artifact arrays automatically.
+When you want to layer two or more full catalogs you don't need to list every artifact type separately. The `catalogs` field in `air.json` accepts an ordered array of catalog roots, and AIR expands each one into all six artifact arrays automatically.
 
 A **catalog** is a directory (local or remote) containing AIR artifact index files. AIR walks the catalog root up to 3 directory levels deep and discovers any file that looks like an AIR artifact index — either by filename (`skills.json`, `roots.json`, `mcp.json`, `references.json`, `plugins.json`, `hooks.json`, or any filename with those keywords as delimited tokens) or by `$schema`. Your folder layout is up to you:
 
@@ -84,7 +147,7 @@ This is the same layout `air init` creates by default, and it's what each offici
 - **`.gitignore`** at the catalog root is honored — ignored paths are not descended into.
 - **`$schema` check**: a JSON file whose `$schema` points to a non-AIR schema is skipped even if its filename matches. Files without `$schema` are identified by filename alone.
 
-Within a single catalog, if two indexes of the same type are discovered, they merge in sorted relative-path order with later-wins by ID. Across multiple catalogs, earlier entries are merged first; later catalogs override.
+Within a single catalog, multiple indexes of the same type contribute to the **same scope**. They must therefore have disjoint shortnames — duplicates hard-fail with the same error as in rule 2 above.
 
 ### Two-catalog composition (the common case)
 
@@ -99,11 +162,11 @@ Within a single catalog, if two indexes of the same type are discovered, they me
 }
 ```
 
-That's it. Both catalogs contribute skills, MCP servers, plugins, roots, hooks, and references. The later catalog (local) overrides the earlier one (org) by ID, following the same full-replacement rule as the per-type arrays.
+That's it. Both catalogs contribute skills, MCP servers, plugins, roots, hooks, and references. Their qualified IDs live in different scopes (`@acme/air-org/...` vs `@local/...`), so they never collide.
 
 ### Mixing catalogs and explicit arrays
 
-You can use `catalogs` and the per-type arrays together. Catalogs expand first; the per-type arrays layer on top of them and can override anything a catalog contributed:
+You can use `catalogs` and the per-type arrays together. Catalogs expand first; the per-type arrays add to the same scope (`@local/...` for local arrays):
 
 ```json
 {
@@ -112,12 +175,12 @@ You can use `catalogs` and the per-type arrays together. Catalogs expand first; 
     "./team-catalog"
   ],
   "mcp": [
-    "./local-mcp-overrides.json"
+    "./local-mcp.json"
   ]
 }
 ```
 
-Effective load order for MCP servers: `github://acme/air-org/mcp/mcp.json` → `./team-catalog/mcp/mcp.json` → `./local-mcp-overrides.json`. Later wins by ID.
+Both `./team-catalog/mcp/...` and `./local-mcp.json` contribute under `@local/...`, so an MCP server defined in both still hard-fails — there is no override path to choose. Use a different shortname or `exclude` the one you don't want.
 
 ### When to prefer `catalogs` over per-type arrays
 
@@ -130,7 +193,7 @@ Use the per-type arrays when you want to pull just one artifact type from a sour
 
 ### Local-only
 
-You don't need a remote source to use layering. A team that maintains its skills in a private directory can point `air.json` straight at local index files:
+You don't need a remote source to use AIR. A team that maintains its skills in a private directory can point `air.json` straight at local index files:
 
 ```json
 {
@@ -140,11 +203,11 @@ You don't need a remote source to use layering. A team that maintains its skills
 }
 ```
 
-This is the simplest setup and a fully supported shape — no providers required, no network calls at resolution time.
+Everything resolves under `@local/...`. No providers required, no network calls at resolution time.
 
 ### Local team catalog + shared remote catalog
 
-A common team shape is a private catalog kept as a sibling directory under `~/.air/` (often a git submodule or a checked-out team repo), composed alongside a shared org-wide catalog. Using the `catalogs` field keeps this compact — one entry per catalog rather than six paths per catalog:
+A common shape is a private catalog kept as a sibling directory under `~/.air/` (often a git submodule or a checked-out team repo), composed alongside a shared org-wide catalog. Using the `catalogs` field keeps this compact — one entry per catalog rather than six paths per catalog:
 
 ```json
 {
@@ -157,7 +220,7 @@ A common team shape is a private catalog kept as a sibling directory under `~/.a
 }
 ```
 
-The org catalog provides the baseline and the team's local catalog adds team-specific artifacts (and overrides any org defaults it wants to replace).
+The org catalog ships under `@acme/air-org/...`. Your team catalog ships under `@local/...`. No collisions, no merge logic.
 
 If you only need some artifact types from a source, or the indexes live deeper than the 3-level discovery cap, use the per-type arrays instead:
 
@@ -176,43 +239,39 @@ If you only need some artifact types from a source, or the indexes live deeper t
 }
 ```
 
-Local paths are resolved relative to the directory containing `air.json` (so `./platform-team-catalog/...` above points at `~/.air/platform-team-catalog/...`). If your catalog lives elsewhere on disk, use an absolute path like `/opt/team-catalog/skills/skills.json`. **Tildes (`~/`) are not expanded** — either use a relative path or spell out the absolute path.
+The `github://` URIs contribute under `@acme/air-org/...`; the local paths contribute under `@local/...`.
 
-### Org → Team → Project
+Local paths are resolved relative to the directory containing `air.json`. If your catalog lives elsewhere on disk, use an absolute path like `/opt/team-catalog/skills/skills.json`. **Tildes (`~/`) are not expanded** — either use a relative path or spell out the absolute path.
 
-A common pattern is three layers:
+### Pulling from multiple GitHub catalogs
 
 ```json
 {
-  "skills": [
-    "github://acme/air-config/skills/org-skills.json",
-    "github://acme/air-config/skills/platform-team-skills.json",
-    "./skills/project-skills.json"
-  ],
-  "mcp": [
-    "github://acme/air-config/mcp/org-mcp.json",
-    "./mcp/local-mcp.json"
+  "extensions": ["@pulsemcp/air-provider-github"],
+  "catalogs": [
+    "github://acme/air-org",
+    "github://acme/air-platform-team",
+    "./local-overrides"
   ]
 }
 ```
 
-This gives the org baseline defaults, the team adds or overrides specifics, and the local project can further customize.
+Three scopes coexist: `@acme/air-org/...`, `@acme/air-platform-team/...`, and `@local/...`.
 
-### Additive layering
+### Excluding org defaults you don't want
 
-When layers define **different IDs**, they simply accumulate:
+```json
+{
+  "extensions": ["@pulsemcp/air-provider-github"],
+  "catalogs": ["github://acme/air-org"],
+  "exclude": [
+    "@acme/air-org/legacy-deploy",
+    "@acme/air-org/old-mcp-server"
+  ]
+}
+```
 
-**org-skills.json:** defines `code-review`, `security-scan`
-**team-skills.json:** defines `deploy-staging`, `run-migrations`
-**Result:** all four skills available
-
-### Override layering
-
-When layers define the **same ID**, the later one wins:
-
-**org-mcp.json:** defines `github` with version 0.6.2
-**local-mcp.json:** defines `github` with version 0.7.0
-**Result:** `github` at version 0.7.0
+The two excluded artifacts disappear from the resolved set; everything else from `@acme/air-org` is kept.
 
 ## Remote configuration with providers
 
@@ -239,6 +298,8 @@ github://owner/repo/path/to/file.json
 github://owner/repo@ref/path/to/file.json
 ```
 
+The scope derived from a `github://` URI is `<owner>/<repo>` — so artifacts contributed by `github://acme/shared-air-config/...` show up as `@acme/shared-air-config/...`.
+
 The `@ref` is appended to the repo name (preferred) to specify a branch, tag, or commit SHA. Without `@ref`, the default branch is used. The legacy syntax `github://owner/repo/path/to/file.json@ref` is also supported.
 
 ### Authentication for private repos
@@ -259,12 +320,11 @@ rm -rf ~/.air/cache/github/acme/shared-air-config
 
 ## Plugin composition
 
-Plugins can compose other plugins, creating hierarchical capability bundles:
+Plugins can compose other plugins, creating hierarchical capability bundles. References inside a plugin entry use the same short / qualified rules described above:
 
 ```json
 {
   "full-stack-dev": {
-    "id": "full-stack-dev",
     "description": "Full-stack developer toolkit",
     "plugins": ["code-quality", "deploy-toolkit"],
     "skills": ["monitor-logs"]
@@ -272,7 +332,7 @@ Plugins can compose other plugins, creating hierarchical capability bundles:
 }
 ```
 
-When `full-stack-dev` is activated, its referenced plugins' skills, MCP servers, and hooks are recursively expanded and merged. The parent plugin's direct declarations override child plugin declarations with the same ID.
+When `full-stack-dev` is activated, its referenced plugins' skills, MCP servers, and hooks are recursively expanded. Each reference resolves through the same canonicalization process (short → qualified), and the result is stored canonically.
 
 Circular plugin references are detected and rejected at resolution time.
 
@@ -283,7 +343,6 @@ Roots can declare dependencies on other roots via `default_subagent_roots`:
 ```json
 {
   "orchestrator": {
-    "name": "orchestrator",
     "description": "Main orchestrator agent",
     "default_subagent_roots": ["web-app", "api-service"],
     "default_skills": ["orchestrate"]
@@ -291,55 +350,40 @@ Roots can declare dependencies on other roots via `default_subagent_roots`:
 }
 ```
 
-By default, both `air start` and `air prepare` merge the subagent roots' skills and MCP servers into the parent session. The parent's declarations take priority over subagent declarations. Opt out with `--no-subagent-merge`.
+By default, both `air start` and `air prepare` merge the subagent roots' skills and MCP servers into the parent session. Opt out with `--no-subagent-merge`.
 
-## Advanced patterns
+Subagent root references follow the same short / qualified rules.
 
-### Environment-specific overrides
+## Removing an artifact you don't want
 
-Use separate index files for different environments:
-
-```json
-{
-  "mcp": [
-    "./mcp/base.json",
-    "./mcp/production.json"
-  ]
-}
-```
-
-Switch environments by changing which files are listed.
-
-### Selective remote overrides
-
-Pull only specific artifact types from a remote config:
+`exclude` is the only way to drop an artifact:
 
 ```json
 {
-  "skills": ["github://acme/air-config/skills/skills.json"],
-  "mcp": ["./mcp/local-only.json"]
+  "catalogs": ["github://acme/air-org"],
+  "exclude": ["@acme/air-org/skill-i-dont-want"]
 }
 ```
 
-This uses shared skills but keeps MCP servers local-only.
+There is no "disabled" flag, no override-with-empty-entry trick. If you want a tweaked version of an artifact, ship the tweak under your own scope (e.g. `@local/skill-i-dont-want-but-fixed`).
 
-### Overriding to remove
-
-To effectively "remove" an artifact from an earlier layer, you'd need to override it with a valid but inactive entry. Since there's no "disabled" field, the practical approach is to not reference the layer that defines it, or override with a minimal valid entry that replaces the unwanted one.
-
-## Merging behavior reference
+## Composition behavior reference
 
 | Scenario | Behavior |
 |----------|----------|
-| Same ID in two files | Later file wins, full replacement |
-| Different IDs across files | Both included (additive) |
-| Plugin references other plugin | Recursive expansion, parent overrides child |
-| Subagent root artifacts | Merged into parent session, parent takes priority |
-| Remote + local files | Both loaded, same override rules apply |
-| `catalogs` + per-type arrays | Catalogs expand first, per-type arrays layer on top |
-| Catalog missing an artifact file | Silently skipped — the catalog contributes nothing for that type |
-| Two indexes of the same type in one catalog | Merged in sorted relative-path order, later-wins by ID |
-| Index deeper than 3 levels in a catalog | Not discovered — reference it via the explicit per-type array instead |
+| Different scopes contribute different shortnames | All artifacts kept (additive) |
+| Different scopes contribute the same shortname | All kept; warning logged; short refs must qualify |
+| Same scope, two indexes, same shortname | Hard-fail (duplicate qualified ID) |
+| `exclude` matches a qualified ID | Artifact removed from the resolved set |
+| `exclude` entry matches nothing | Warning logged; resolution continues |
+| `exclude` entry is not qualified | Hard-fail (must be `@scope/id`) |
+| Short reference, unambiguous | Resolved to its qualified ID |
+| Short reference, ambiguous | Hard-fail with candidate list |
+| Short reference inside a catalog index | Resolved to the catalog's own scope first |
+| Plugin references another plugin | Recursive expansion; references canonicalized |
+| Subagent root artifacts | Merged into parent session |
+| Catalog missing an artifact file | Silently skipped — that catalog contributes nothing for that type |
+| Index deeper than 3 levels in a catalog | Not discovered — reference it via the explicit per-type array |
 
 ## Next steps
 
