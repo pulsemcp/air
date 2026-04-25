@@ -220,7 +220,7 @@ This is valid but won't do anything useful. Add artifact arrays as you need them
 
 ### Expecting later-wins overrides
 
-AIR no longer silently overrides artifacts by ID. Composition is additive: every artifact is identified by its `@scope/id`. If two catalogs ship the same qualified ID, AIR hard-fails. To replace an upstream artifact, `exclude` it and ship a replacement under your own scope (e.g. `@local/`).
+Composition is additive. Every artifact is identified by its `@scope/id`, and two catalogs shipping the same qualified ID hard-fail. To replace an upstream artifact, `exclude` it and ship a replacement under your own scope (e.g. `@local/`).
 
 ### Forgetting that paths are relative to air.json
 
