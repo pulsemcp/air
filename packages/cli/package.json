@@ -1,6 +1,6 @@
 {
   "name": "@pulsemcp/air-cli",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "publishConfig": {
     "access": "public"
   },
@@ -26,7 +26,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@pulsemcp/air-sdk": "1.0.0",
+    "@pulsemcp/air-sdk": "0.1.0",
     "commander": "^12.1.0",
     "chalk": "^5.3.0"
   },

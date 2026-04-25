@@ -1,6 +1,6 @@
 {
   "name": "@pulsemcp/air-secrets-file",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "publishConfig": {
     "access": "public"
   },
@@ -29,7 +29,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@pulsemcp/air-core": "1.0.0"
+    "@pulsemcp/air-core": "0.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

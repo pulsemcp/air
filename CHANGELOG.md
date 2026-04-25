@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.0] - 2026-04-25
+## [0.1.0] - 2026-04-25
 
 ### Breaking
 - **Always-scoped artifact identity and exclude-only composition.** Every artifact (skills, references, MCP servers, plugins, roots, hooks) now has a qualified identity of the form `@scope/id`. Local indexes contribute under `@local/`; remote catalogs contribute under their provider-derived scope (for `github://owner/repo`, that is `@<owner>/<repo>/`). Composition is additive — disjoint qualified IDs union, **duplicate qualified IDs hard-fail**, and cross-scope shortname collisions warn but keep both. There is no more "later-wins" override. The new `air.json#exclude` field is the only way to drop an artifact contributed by an upstream catalog; it takes a list of qualified IDs (bare shortnames are rejected). References inside skill, hook, plugin, and root entries accept short, qualified, or intra-catalog forms and are canonicalized to qualified IDs at composition time so adapters and consumers do not need to re-resolve them. `CatalogProvider` gains an optional `getScope(uri) => string` hook that providers implement to declare the scope under which their indexes are emitted; the GitHub provider returns `<owner>/<repo>` derived from the URI. The `ResolvedArtifacts` shape changes — keys are now qualified IDs (`@scope/id`) rather than bare shortnames — which is a breaking change for any consumer reading the structure directly. Resolves [#110](https://github.com/pulsemcp/air/issues/110).
