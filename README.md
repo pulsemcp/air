@@ -324,6 +324,7 @@ See [docs/cli.md](docs/cli.md) for the full CLI reference. Key commands:
 | Document | Description |
 |----------|-------------|
 | [Core Concepts](docs/concepts.md) | Architecture, design principles, and composition model |
+| [Design Document](docs/design.md) | Canonical user scenarios and design decisions (core + CLI) |
 | [Skills](docs/skills.md) | How to write and manage skills |
 | [References](docs/references.md) | Shared knowledge documents |
 | [MCP Servers](docs/mcp-servers.md) | MCP server configuration |

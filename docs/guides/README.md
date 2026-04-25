@@ -20,6 +20,7 @@ For detailed reference documentation, see the [docs/](../) directory.
 
 ## Advanced Usage
 
+- **[Design Document](../design.md)** — Canonical user scenarios and design decisions behind AIR's composition rules, override semantics, scope identity, and extension architecture.
 - **[Extensions System](extensions.md)** — How adapter, provider, and transform extensions work. Install, configure, and build on the extension pipeline.
 - **[Roots and Multi-Root Setups](roots.md)** — Organize agent configurations across repositories and teams with roots.
 - **[Hooks](hooks.md)** — Automate actions around agent lifecycle events with shell-command hooks.

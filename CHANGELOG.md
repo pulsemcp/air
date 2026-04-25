@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.43] - 2026-04-25
+
+### Added
+- **Canonical AIR design document** at [`docs/design.md`](docs/design.md). Single consolidated file covering the four user scenarios AIR's defaults are designed for (small startup, mid-size org with a DevEx team, vendor / customer composition, OSS catalogs) — each with a concrete `air.json` snippet — and the design decisions behind composition rules, override semantics, scope identity, and extension architecture. Decisions are split into AIR core (full replacement by ID, always-scoped artifact identity, exclude-only composition, schemas at the repo root, async-only `resolveArtifacts`, the four extension interfaces) and AIR CLI (`air init` top-up mode, deprecated plural flags hard-error, manifest tracking, catalog auto-discovery up to 3 levels deep). Linked from `README.md` and `docs/guides/README.md`. Closes [#113](https://github.com/pulsemcp/air/issues/113).
+
 ## [0.0.42] - 2026-04-24
 
 ### Changed
