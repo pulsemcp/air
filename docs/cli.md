@@ -30,7 +30,7 @@ Always scaffolds a ready-to-edit workspace at `~/.air/`:
 - One `$schema`-referenced index file per type (`skills/skills.json`, `mcp/mcp.json`, etc.) so editors like VS Code give autocomplete and inline validation.
 - `README.md` orienting the user to the layout with worked examples.
 
-When run inside a git repo with AIR artifact index files, also discovers them automatically and adds `github://` resolver URIs for each discovered artifact type to the generated `air.json` — wired in *before* the local index path so local entries override the discovered catalog by ID. The local scaffold is created regardless, since `air.json` is where remote catalogs and local artifacts compose.
+When run inside a git repo with AIR artifact index files, also discovers them automatically and adds `github://` resolver URIs for each discovered artifact type to the generated `air.json`. The discovered catalog ships under its `@<owner>/<repo>/` scope and the local scaffold ships under `@local/`, so the two layers compose without colliding on qualified IDs. The local scaffold is created regardless, since `air.json` is where remote catalogs and local artifacts compose.
 
 Open the directory in your editor and start adding entries.
 

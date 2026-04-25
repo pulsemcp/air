@@ -56,7 +56,7 @@ describe("startSession", () => {
     expect(result.sessionConfig.agent).toBe("claude");
     expect(result.adapterDisplayName).toBe("Claude Code");
     expect(result.startCommand.command).toBe("claude");
-    expect(result.artifacts.mcp.github).toBeDefined();
+    expect(result.artifacts.mcp["@local/github"]).toBeDefined();
   });
 
   it("resolves root when specified", async () => {
@@ -152,8 +152,8 @@ export default {
       config: join(catalog, "air.json"),
     });
 
-    expect(result.artifacts.mcp["remote-server"]).toBeDefined();
-    expect(result.artifacts.mcp["remote-server"].command).toBe("npx");
+    expect(result.artifacts.mcp["@local/remote-server"]).toBeDefined();
+    expect(result.artifacts.mcp["@local/remote-server"].command).toBe("npx");
   });
 
   it("throws for unknown adapter", async () => {

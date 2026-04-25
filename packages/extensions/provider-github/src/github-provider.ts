@@ -262,6 +262,19 @@ export class GitHubCatalogProvider implements CatalogProvider {
   }
 
   /**
+   * Return the scope used to qualify artifacts contributed by this URI.
+   * AIR canonicalizes every artifact as `@scope/id`; for GitHub the scope
+   * is the repository identifier (`owner/repo`), independent of ref or
+   * subdirectory — two catalogs at different paths in the same repo
+   * contribute to the same scope, and a duplicate qualified ID across
+   * those catalogs hard-fails at resolution time.
+   */
+  getScope(uri: string): string {
+    const parsed = parseGitHubUri(uri);
+    return `${parsed.owner}/${parsed.repo}`;
+  }
+
+  /**
    * Resolve a catalog URI to the local clone directory rooted at the URI's
    * path within the clone. Ensures the repository is cloned (performing a
    * shallow clone on first access) before returning. Core then walks the

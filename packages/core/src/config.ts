@@ -17,6 +17,15 @@ import {
   detectSchemaFromValue,
   type SchemaType,
 } from "./schemas.js";
+import {
+  LOCAL_SCOPE,
+  deriveScope,
+  qualifyId,
+  parseQualifiedId,
+  isQualified,
+  resolveReference,
+  type QualifiedId,
+} from "./scope.js";
 
 function loadJsonFile(filePath: string): Record<string, unknown> {
   if (!existsSync(filePath)) {
@@ -67,21 +76,31 @@ function resolveEntryPaths<T>(
 }
 
 /**
- * Load and merge entries from an array of index file paths.
- * Local paths are resolved relative to baseDir.
- * URI paths (with schemes) are delegated to the matching CatalogProvider.
- *
- * After loading, relative `path` fields in entries are resolved
- * to absolute paths, so downstream consumers don't need source directory context.
+ * One contribution of artifacts coming from a single catalog source. Each
+ * source carries the scope its entries should be qualified under.
  */
-async function loadAndMerge<T>(
-  paths: string[],
+interface ArtifactContribution<T> {
+  /** Scope assigned to every shortname in this contribution. */
+  scope: string;
+  /** Human-readable label for diagnostics (path or URI). */
+  source: string;
+  /** Shortname → entry, as authored in the index file. */
+  entries: Record<string, T>;
+}
+
+/**
+ * Load every contribution for a single artifact type and return them as a
+ * flat list. Each contribution preserves the scope of the catalog it came
+ * from so qualification can happen during merging.
+ */
+async function loadContributions<T>(
+  paths: { path: string; scope: string }[],
   baseDir: string,
   providers: CatalogProvider[]
-): Promise<Record<string, T>> {
-  let merged: Record<string, T> = {};
+): Promise<ArtifactContribution<T>[]> {
+  const contributions: ArtifactContribution<T>[] = [];
 
-  for (const p of paths) {
+  for (const { path: p, scope } of paths) {
     const scheme = getScheme(p);
     let data: Record<string, unknown>;
     let sourceDir: string;
@@ -105,7 +124,75 @@ async function loadAndMerge<T>(
 
     const entries = stripSchema(data) as Record<string, T>;
     const resolved = resolveEntryPaths(entries, sourceDir);
-    merged = { ...merged, ...resolved };
+    contributions.push({ scope, source: p, entries: resolved });
+  }
+
+  return contributions;
+}
+
+/**
+ * Merge per-source contributions into a single `@scope/id`-keyed map.
+ *
+ * Composition rules:
+ *   - Every entry is qualified `@scope/id` using the contribution's scope.
+ *   - Two contributions producing the same qualified ID hard-fail with a
+ *     diagnostic that names both sources.
+ *   - Two contributions producing the same shortname under different scopes
+ *     succeed (both qualified IDs land in the map) but emit a warning so
+ *     authors notice and can disambiguate references.
+ */
+function mergeContributions<T>(
+  contributions: ArtifactContribution<T>[],
+  artifactType: string,
+  warnings: string[]
+): Record<QualifiedId, T> {
+  const merged: Record<QualifiedId, T> = {};
+  const sourceByQualified = new Map<QualifiedId, string>();
+  const scopesByShortname = new Map<string, Map<string, string>>();
+
+  for (const contribution of contributions) {
+    for (const [shortname, entry] of Object.entries(contribution.entries)) {
+      if (isQualified(shortname)) {
+        throw new Error(
+          `Artifact index entry must use a bare shortname; got qualified ID ` +
+            `"${shortname}" in ${contribution.source}. Scopes are assigned by ` +
+            `the catalog source, not by authors.`
+        );
+      }
+      const qualified = qualifyId(contribution.scope, shortname);
+
+      const existingSource = sourceByQualified.get(qualified);
+      if (existingSource !== undefined) {
+        throw new Error(
+          `Duplicate ${artifactType} ID "${qualified}" produced by both ` +
+            `"${existingSource}" and "${contribution.source}". Two catalogs ` +
+            `with the same scope contributed the same shortname; rename one ` +
+            `or remove the duplicate from your air.json.`
+        );
+      }
+      sourceByQualified.set(qualified, contribution.source);
+      merged[qualified] = entry;
+
+      let scopeMap = scopesByShortname.get(shortname);
+      if (!scopeMap) {
+        scopeMap = new Map<string, string>();
+        scopesByShortname.set(shortname, scopeMap);
+      }
+      scopeMap.set(contribution.scope, contribution.source);
+    }
+  }
+
+  for (const [shortname, scopeMap] of scopesByShortname) {
+    if (scopeMap.size <= 1) continue;
+    const scopeList = [...scopeMap.entries()]
+      .map(([scope, source]) => `@${scope} (from ${source})`)
+      .join(", ");
+    warnings.push(
+      `Cross-scope shortname collision: ${artifactType} "${shortname}" is ` +
+        `provided by ${scopeMap.size} scopes — ${scopeList}. Short references ` +
+        `to "${shortname}" without a scope are ambiguous; use the qualified ` +
+        `form "@scope/${shortname}" to disambiguate.`
+    );
   }
 
   return merged;
@@ -145,6 +232,11 @@ export interface ResolveOptions {
    * (e.g., `gitProtocol`). Providers ignore unknown keys.
    */
   providerOptions?: Record<string, unknown>;
+  /**
+   * Sink for non-fatal warnings (e.g. cross-scope shortname collisions, stale
+   * `exclude` entries). When omitted, core writes warnings to `console.warn`.
+   */
+  onWarning?: (message: string) => void;
 }
 
 /**
@@ -287,9 +379,7 @@ function detectIndexType(
  * within `CATALOG_MAX_DEPTH` levels, skipping `CATALOG_SKIP_DIRS`, hidden
  * entries, and anything matched by a root-level `.gitignore` if present.
  *
- * Files are returned sorted by relative path (alphabetic, depth-naive) so
- * that "later wins" collision semantics within a single catalog are stable
- * across machines and filesystems.
+ * Files are returned sorted by relative path.
  */
 function discoverCatalogIndexes(catalogDir: string): DiscoveredIndex[] {
   if (!existsSync(catalogDir)) return [];
@@ -379,60 +469,311 @@ async function resolveCatalogRoot(
 }
 
 /**
- * Expand every entry in `catalogs[]` into a per-type map of absolute index
- * file paths. Each catalog is resolved to a local directory and walked for
- * artifact index files (depth-capped, gitignore-aware, skip-listed).
- *
- * Within a single catalog, files of the same type discovered at multiple
- * locations are merged in sorted relPath order with later-wins semantics —
- * the downstream `loadAndMerge` consumes the returned arrays in order and
- * applies the same "later wins by ID" rule as everywhere else in AIR.
- *
- * Across catalogs, catalogs earlier in `catalogs[]` are processed first so
- * that later catalogs override earlier ones, matching the existing contract.
+ * One catalog source's contribution to per-type index lists, with the scope
+ * that should be applied to every artifact discovered in that catalog.
+ */
+interface CatalogExpansion {
+  scope: string;
+  paths: Record<ArtifactType, string[]>;
+}
+
+/**
+ * Expand every entry in `catalogs[]` into per-type index file paths grouped
+ * by scope. Each catalog is resolved to a local directory and walked for
+ * artifact index files (depth-capped, gitignore-aware, skip-listed); the
+ * scope assigned to those files comes from the provider's `getScope(uri)`,
+ * or `local` for filesystem catalogs and providers without `getScope`.
  */
 async function expandAllCatalogs(
   catalogs: string[],
   baseDir: string,
   providers: CatalogProvider[]
-): Promise<Record<ArtifactType, string[]>> {
-  const result: Record<ArtifactType, string[]> = {
-    skills: [],
-    references: [],
-    mcp: [],
-    plugins: [],
-    roots: [],
-    hooks: [],
-  };
+): Promise<CatalogExpansion[]> {
+  const expansions: CatalogExpansion[] = [];
 
   for (const catalog of catalogs) {
     const catalogDir = await resolveCatalogRoot(catalog, baseDir, providers);
     const discovered = discoverCatalogIndexes(catalogDir);
+    const scope = deriveScope(catalog, providers);
+
+    const paths: Record<ArtifactType, string[]> = {
+      skills: [],
+      references: [],
+      mcp: [],
+      plugins: [],
+      roots: [],
+      hooks: [],
+    };
     for (const entry of discovered) {
-      result[entry.type].push(entry.absPath);
+      paths[entry.type].push(entry.absPath);
+    }
+    expansions.push({ scope, paths });
+  }
+
+  return expansions;
+}
+
+/**
+ * Canonicalize every reference field in an artifact body to its qualified
+ * form. References that fail to resolve (missing or ambiguous) populate
+ * `errors` so callers can fail composition with all problems at once.
+ *
+ * `fromScope` is the scope of the artifact that owns the reference — used
+ * to apply the intra-catalog rule (a short reference inside a catalog binds
+ * to that catalog's scope first).
+ */
+function canonicalizeReferences(
+  artifacts: ResolvedArtifacts,
+  errors: string[]
+): ResolvedArtifacts {
+  type RefField =
+    | { kind: "skill"; entry: SkillEntry }
+    | { kind: "hook"; entry: HookEntry }
+    | { kind: "plugin"; entry: PluginEntry }
+    | { kind: "root"; entry: RootEntry };
+
+  const result: ResolvedArtifacts = {
+    skills: { ...artifacts.skills },
+    references: { ...artifacts.references },
+    mcp: { ...artifacts.mcp },
+    plugins: { ...artifacts.plugins },
+    roots: { ...artifacts.roots },
+    hooks: { ...artifacts.hooks },
+  };
+
+  function resolveList(
+    list: string[] | undefined,
+    pool: Record<string, unknown>,
+    fromScope: string,
+    poolType: string,
+    ownerLabel: string,
+    field: string
+  ): string[] | undefined {
+    if (!list) return undefined;
+    const out: string[] = [];
+    for (const ref of list) {
+      const res = resolveReference(pool, ref, fromScope);
+      if (res.status === "ok") {
+        out.push(res.qualified);
+      } else if (res.status === "missing") {
+        errors.push(
+          `${ownerLabel}.${field} references unknown ${poolType} "${ref}". ` +
+            `Available qualified IDs: ${listIds(pool)}.`
+        );
+      } else {
+        errors.push(
+          `${ownerLabel}.${field} reference "${ref}" is ambiguous across ` +
+            `scopes — candidates: ${res.candidates.join(", ")}. ` +
+            `Use the qualified form to disambiguate.`
+        );
+      }
+    }
+    return out;
+  }
+
+  function processOwner(
+    qualified: QualifiedId,
+    owner: RefField
+  ): void {
+    const { scope } = parseQualifiedId(qualified);
+    const ownerLabel = qualified;
+
+    if (owner.kind === "skill" || owner.kind === "hook") {
+      const next = { ...owner.entry };
+      next.references = resolveList(
+        next.references,
+        result.references,
+        scope,
+        "reference",
+        ownerLabel,
+        "references"
+      );
+      if (owner.kind === "skill") result.skills[qualified] = next as SkillEntry;
+      else result.hooks[qualified] = next as HookEntry;
+    } else if (owner.kind === "plugin") {
+      const next: PluginEntry = { ...owner.entry };
+      next.skills = resolveList(
+        next.skills,
+        result.skills,
+        scope,
+        "skill",
+        ownerLabel,
+        "skills"
+      );
+      next.mcp_servers = resolveList(
+        next.mcp_servers,
+        result.mcp,
+        scope,
+        "mcp",
+        ownerLabel,
+        "mcp_servers"
+      );
+      next.hooks = resolveList(
+        next.hooks,
+        result.hooks,
+        scope,
+        "hook",
+        ownerLabel,
+        "hooks"
+      );
+      next.plugins = resolveList(
+        next.plugins,
+        result.plugins,
+        scope,
+        "plugin",
+        ownerLabel,
+        "plugins"
+      );
+      result.plugins[qualified] = next;
+    } else {
+      const next: RootEntry = { ...owner.entry };
+      next.default_skills = resolveList(
+        next.default_skills,
+        result.skills,
+        scope,
+        "skill",
+        ownerLabel,
+        "default_skills"
+      );
+      next.default_mcp_servers = resolveList(
+        next.default_mcp_servers,
+        result.mcp,
+        scope,
+        "mcp",
+        ownerLabel,
+        "default_mcp_servers"
+      );
+      next.default_plugins = resolveList(
+        next.default_plugins,
+        result.plugins,
+        scope,
+        "plugin",
+        ownerLabel,
+        "default_plugins"
+      );
+      next.default_hooks = resolveList(
+        next.default_hooks,
+        result.hooks,
+        scope,
+        "hook",
+        ownerLabel,
+        "default_hooks"
+      );
+      next.default_subagent_roots = resolveList(
+        next.default_subagent_roots,
+        result.roots,
+        scope,
+        "root",
+        ownerLabel,
+        "default_subagent_roots"
+      );
+      result.roots[qualified] = next;
+    }
+  }
+
+  for (const [qualified, entry] of Object.entries(artifacts.skills)) {
+    processOwner(qualified, { kind: "skill", entry });
+  }
+  for (const [qualified, entry] of Object.entries(artifacts.hooks)) {
+    processOwner(qualified, { kind: "hook", entry });
+  }
+  for (const [qualified, entry] of Object.entries(artifacts.plugins)) {
+    processOwner(qualified, { kind: "plugin", entry });
+  }
+  for (const [qualified, entry] of Object.entries(artifacts.roots)) {
+    processOwner(qualified, { kind: "root", entry });
+  }
+
+  return result;
+}
+
+function listIds(pool: Record<string, unknown>): string {
+  const keys = Object.keys(pool);
+  if (keys.length === 0) return "(none)";
+  if (keys.length > 8) {
+    return `${keys.slice(0, 8).join(", ")}, … (${keys.length} total)`;
+  }
+  return keys.join(", ");
+}
+
+/**
+ * Apply `air.json#exclude` to a resolved artifact set. Excluded qualified IDs
+ * disappear from every artifact map; entries that don't match anything are
+ * surfaced as warnings so typos in `exclude` are visible to authors.
+ */
+function applyExclude(
+  artifacts: ResolvedArtifacts,
+  exclude: string[],
+  warnings: string[]
+): ResolvedArtifacts {
+  if (exclude.length === 0) return artifacts;
+
+  const excludeSet = new Set<string>();
+  for (const id of exclude) {
+    if (!isQualified(id)) {
+      throw new Error(
+        `air.json "exclude" entries must be qualified IDs (@scope/id); got "${id}".`
+      );
+    }
+    excludeSet.add(id);
+  }
+
+  const result: ResolvedArtifacts = {
+    skills: {},
+    references: {},
+    mcp: {},
+    plugins: {},
+    roots: {},
+    hooks: {},
+  };
+  const seen = new Set<string>();
+
+  for (const type of ARTIFACT_TYPES) {
+    const src = artifacts[type] as Record<string, unknown>;
+    const dst = result[type] as Record<string, unknown>;
+    for (const [id, entry] of Object.entries(src)) {
+      if (excludeSet.has(id)) {
+        seen.add(id);
+        continue;
+      }
+      dst[id] = entry;
+    }
+  }
+
+  for (const id of excludeSet) {
+    if (!seen.has(id)) {
+      warnings.push(
+        `air.json "exclude" entry "${id}" did not match any resolved ` +
+          `artifact. Remove it or check for typos.`
+      );
     }
   }
 
   return result;
 }
 
-
 /**
  * Resolve all artifacts from an air.json file.
- * Each artifact property is an array of paths; files merge in order.
- * Remote URIs are delegated to the matching CatalogProvider.
  *
- * `catalogs` entries are expanded first via directory-walking discovery —
- * each catalog is resolved to a local directory (cloned by the relevant
- * provider for remote URIs) and walked up to `CATALOG_MAX_DEPTH` levels
- * for artifact index files. Files are identified by `$schema` (preferred)
- * or filename, and grouped by artifact type. Skip-listed directories
- * (node_modules, .git, dist, build, etc.) and entries matched by a
- * root-level `.gitignore` are not descended into. Explicit per-type
- * arrays layer on top of catalog-discovered indexes.
+ * Every artifact is canonically `@scope/id`:
+ *   - Catalog providers supply scope via `getScope(uri)` (e.g. the GitHub
+ *     provider returns `owner/repo`).
+ *   - Local catalogs and per-type arrays default to scope `local`.
  *
- * All `path` fields in resolved entries are absolute paths,
- * making artifacts self-contained regardless of source location.
+ * Composition is union-only: catalogs and per-type arrays *contribute*
+ * artifacts. The only way to remove an artifact is via `air.json#exclude`,
+ * which lists qualified IDs to drop from the resolved set. Two contributors
+ * producing the same qualified ID hard-fail; same shortname under different
+ * scopes warns and both qualified IDs appear in the result.
+ *
+ * Reference fields inside artifact bodies (skill.references, plugin.skills,
+ * root.default_skills, …) are canonicalized to qualified IDs at resolution
+ * time. References inside a catalog's own indexes resolve to that catalog's
+ * scope first; cross-catalog references must use the qualified form when
+ * the shortname is ambiguous.
+ *
+ * All `path` fields are absolute, making artifacts self-contained regardless
+ * of source location.
  */
 export async function resolveArtifacts(
   airJsonPath: string,
@@ -442,69 +783,104 @@ export async function resolveArtifacts(
   const baseDir = dirname(resolve(airJsonPath));
   const providers = options?.providers || [];
   const catalogs = airConfig.catalogs || [];
+  const onWarning =
+    options?.onWarning ?? ((msg: string) => console.warn(`warning: ${msg}`));
+  const warnings: string[] = [];
 
   // Configure providers with merged options: air.json fields are the base,
   // explicit providerOptions override them. Providers ignore unknown keys.
   configureProviders(providers, airConfig, options?.providerOptions);
 
-  const fromCatalogs = await expandAllCatalogs(catalogs, baseDir, providers);
+  const expansions = await expandAllCatalogs(catalogs, baseDir, providers);
 
-  function paths(type: ArtifactType, explicit: string[]): string[] {
-    return [...fromCatalogs[type], ...explicit];
+  function pathsFor(type: ArtifactType): { path: string; scope: string }[] {
+    const list: { path: string; scope: string }[] = [];
+    for (const expansion of expansions) {
+      for (const p of expansion.paths[type]) {
+        list.push({ path: p, scope: expansion.scope });
+      }
+    }
+    for (const p of (airConfig[type] as string[] | undefined) || []) {
+      // Per-type arrays default to LOCAL_SCOPE, but a provider URI in a
+      // per-type array still gets its provider scope so artifacts from
+      // different orgs/repos cannot collide under @local/<id>.
+      list.push({ path: p, scope: deriveScope(p, providers) });
+    }
+    return list;
+  }
+
+  async function load<T>(type: ArtifactType): Promise<Record<string, T>> {
+    const paths = pathsFor(type);
+    const contributions = await loadContributions<T>(paths, baseDir, providers);
+    return mergeContributions<T>(contributions, type, warnings);
   }
 
   const resolved: ResolvedArtifacts = {
-    skills: await loadAndMerge<SkillEntry>(
-      paths("skills", airConfig.skills || []),
-      baseDir,
-      providers
-    ),
-    references: await loadAndMerge<ReferenceEntry>(
-      paths("references", airConfig.references || []),
-      baseDir,
-      providers
-    ),
-    mcp: await loadAndMerge<McpServerEntry>(
-      paths("mcp", airConfig.mcp || []),
-      baseDir,
-      providers
-    ),
-    plugins: await loadAndMerge<PluginEntry>(
-      paths("plugins", airConfig.plugins || []),
-      baseDir,
-      providers
-    ),
-    roots: await loadAndMerge<RootEntry>(
-      paths("roots", airConfig.roots || []),
-      baseDir,
-      providers
-    ),
-    hooks: await loadAndMerge<HookEntry>(
-      paths("hooks", airConfig.hooks || []),
-      baseDir,
-      providers
-    ),
+    skills: await load<SkillEntry>("skills"),
+    references: await load<ReferenceEntry>("references"),
+    mcp: await load<McpServerEntry>("mcp"),
+    plugins: await load<PluginEntry>("plugins"),
+    roots: await load<RootEntry>("roots"),
+    hooks: await load<HookEntry>("hooks"),
   };
 
-  return expandPlugins(resolved);
+  // Apply exclude before reference canonicalization so dropped IDs cannot
+  // satisfy references and a clear "missing reference" error surfaces.
+  const filtered = applyExclude(resolved, airConfig.exclude || [], warnings);
+
+  const refErrors: string[] = [];
+  const canonical = canonicalizeReferences(filtered, refErrors);
+  if (refErrors.length > 0) {
+    throw new Error(
+      `Reference resolution failed:\n  - ${refErrors.join("\n  - ")}`
+    );
+  }
+
+  for (const w of warnings) onWarning(w);
+
+  return expandPlugins(canonical);
 }
 
 /**
- * Merge two resolved artifact sets. Override wins for matching IDs.
- * Composite plugins are re-expanded after merging so that newly
- * added plugins that reference existing ones are fully resolved.
+ * Combine two resolved artifact sets by union. Inputs must already be
+ * qualified (`@scope/id`); a duplicate qualified ID across the two inputs
+ * is rejected with a clear diagnostic. Composite plugins are re-expanded
+ * after merging.
+ *
+ * `mergeArtifacts` is a low-level helper used to layer two pre-resolved
+ * sets — for example, an external orchestrator merging a parent session's
+ * artifacts with a subagent's. Most callers should compose at the air.json
+ * level (catalogs + exclude) instead.
  */
 export function mergeArtifacts(
   base: ResolvedArtifacts,
-  override: ResolvedArtifacts
+  overlay: ResolvedArtifacts
 ): ResolvedArtifacts {
+  function unionOrThrow<T>(
+    a: Record<string, T>,
+    b: Record<string, T>,
+    label: string
+  ): Record<string, T> {
+    const out: Record<string, T> = { ...a };
+    for (const [k, v] of Object.entries(b)) {
+      if (k in out) {
+        throw new Error(
+          `mergeArtifacts: duplicate ${label} ID "${k}" in both base and overlay. ` +
+            `Override is not supported — drop one source via air.json#exclude.`
+        );
+      }
+      out[k] = v;
+    }
+    return out;
+  }
+
   return expandPlugins({
-    skills: { ...base.skills, ...override.skills },
-    references: { ...base.references, ...override.references },
-    mcp: { ...base.mcp, ...override.mcp },
-    plugins: { ...base.plugins, ...override.plugins },
-    roots: { ...base.roots, ...override.roots },
-    hooks: { ...base.hooks, ...override.hooks },
+    skills: unionOrThrow(base.skills, overlay.skills, "skill"),
+    references: unionOrThrow(base.references, overlay.references, "reference"),
+    mcp: unionOrThrow(base.mcp, overlay.mcp, "mcp"),
+    plugins: unionOrThrow(base.plugins, overlay.plugins, "plugin"),
+    roots: unionOrThrow(base.roots, overlay.roots, "root"),
+    hooks: unionOrThrow(base.hooks, overlay.hooks, "hook"),
   });
 }
 
@@ -535,12 +911,12 @@ function deduplicateIds(arr: string[]): string[] {
  * not a runtime concept.
  *
  * Semantics:
- * - Child plugins are expanded depth-first in declaration order
- * - Parent's direct declarations override children (later wins via dedup)
- * - Circular references are rejected with a clear error message
- * - Plugins without a `plugins` field are returned unchanged
- * - The `plugins` array on each entry is preserved as metadata (e.g., for
- *   UI display of the dependency graph) even though primitives are inlined
+ * - All IDs are already qualified (`@scope/id`) at this stage.
+ * - Child plugins are expanded depth-first in declaration order.
+ * - Parent's direct declarations come last (later wins via dedup).
+ * - Circular references are rejected with a clear error message.
+ * - Plugins without a `plugins` field are returned unchanged.
+ * - The `plugins` array on each entry is preserved as metadata.
  *
  * Returns a new ResolvedArtifacts object; the input is not mutated.
  */

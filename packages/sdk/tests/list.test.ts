@@ -53,8 +53,8 @@ describe("listArtifacts", () => {
     });
 
     expect(result.type).toBe("skills");
-    expect(Object.keys(result.entries)).toContain("deploy");
-    expect(Object.keys(result.artifacts.skills)).toContain("deploy");
+    expect(Object.keys(result.entries)).toContain("@local/deploy");
+    expect(Object.keys(result.artifacts.skills)).toContain("@local/deploy");
   });
 
   it("resolves mcp servers from air.json", async () => {
@@ -73,7 +73,7 @@ describe("listArtifacts", () => {
     });
 
     expect(result.type).toBe("mcp");
-    expect(result.entries.github).toBeDefined();
+    expect(result.entries["@local/github"]).toBeDefined();
   });
 
   it("resolves roots from air.json", async () => {
@@ -95,7 +95,7 @@ describe("listArtifacts", () => {
     });
 
     expect(result.type).toBe("roots");
-    expect(result.entries["web-app"]).toBeDefined();
+    expect(result.entries["@local/web-app"]).toBeDefined();
   });
 
   it("resolves plugins from air.json", async () => {
@@ -117,7 +117,7 @@ describe("listArtifacts", () => {
     });
 
     expect(result.type).toBe("plugins");
-    expect(result.entries["code-quality"]).toBeDefined();
+    expect(result.entries["@local/code-quality"]).toBeDefined();
   });
 
   it("resolves hooks from air.json", async () => {
@@ -140,7 +140,7 @@ describe("listArtifacts", () => {
     });
 
     expect(result.type).toBe("hooks");
-    expect(result.entries["pre-commit"]).toBeDefined();
+    expect(result.entries["@local/pre-commit"]).toBeDefined();
   });
 
   it("resolves references from air.json", async () => {
@@ -162,7 +162,7 @@ describe("listArtifacts", () => {
     });
 
     expect(result.type).toBe("references");
-    expect(result.entries["git-workflow"]).toBeDefined();
+    expect(result.entries["@local/git-workflow"]).toBeDefined();
   });
 
   it("throws for invalid artifact type", async () => {

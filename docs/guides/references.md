@@ -124,18 +124,19 @@ References (2):
 
 ## Composition
 
-References follow the same override semantics as all AIR artifacts. If you have multiple reference index files:
+References follow the same scoped composition semantics as all AIR artifacts. If you have multiple reference index files or catalogs:
 
 ```json
 {
-  "references": [
-    "./references/org-references.json",
-    "./references/team-references.json"
-  ]
+  "catalogs": [
+    "github://acme/air-org",
+    "github://acme/air-frontend"
+  ],
+  "references": ["./references/local-references.json"]
 }
 ```
 
-Later entries override earlier ones by ID (full replacement). A team can override an org-level reference by redefining it with the same ID.
+Each entry contributes references under its own scope (`@acme/air-org/...`, `@acme/air-frontend/...`, `@local/...`). Duplicate qualified IDs hard-fail. To replace an upstream reference, `exclude` it and ship a replacement under your own scope.
 
 ## Best practices
 
@@ -148,5 +149,5 @@ Later entries override earlier ones by ID (full replacement). A team can overrid
 ## Next steps
 
 - **[Managing Skills](managing-skills.md)** — Link references to skills.
-- **[Composition and Overrides](composition-and-overrides.md)** — Override org-level references at the team level.
+- **[Composition and Overrides](composition-and-overrides.md)** — Layer org-level references with team-level additions and exclusions.
 - **[Validating Configuration](validating-configuration.md)** — Validate your references index.

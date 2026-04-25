@@ -3,6 +3,7 @@ import {
   loadAirConfig,
   getAirJsonPath,
   resolveArtifacts,
+  resolveReference,
   type ResolvedArtifacts,
   type RootEntry,
   type PreparedSession,
@@ -173,12 +174,19 @@ export async function prepareSession(
   let rootAutoDetected = false;
 
   if (options.root) {
-    root = artifacts.roots[options.root];
-    if (!root) {
+    const res = resolveReference(artifacts.roots, options.root, undefined);
+    if (res.status === "missing") {
       throw new Error(
         `Root "${options.root}" not found. Available roots: ${Object.keys(artifacts.roots).join(", ") || "(none)"}`
       );
     }
+    if (res.status === "ambiguous") {
+      throw new Error(
+        `Root "${options.root}" is ambiguous across scopes — candidates: ` +
+          `${res.candidates.join(", ")}. Use the qualified form to disambiguate.`
+      );
+    }
+    root = artifacts.roots[res.qualified];
   } else {
     const targetDir = resolve(options.target ?? process.cwd());
     root = detectRoot(artifacts.roots, targetDir);
@@ -197,28 +205,32 @@ export async function prepareSession(
     merged.skillIds,
     options.addSkills,
     options.removeSkills,
-    options.withoutDefaults
+    options.withoutDefaults,
+    artifacts.skills
   );
   const mcpServerOverrides = resolveCategoryOverride(
     options.mcpServers,
     merged.mcpServerIds,
     options.addMcpServers,
     options.removeMcpServers,
-    options.withoutDefaults
+    options.withoutDefaults,
+    artifacts.mcp
   );
   const hookOverrides = resolveCategoryOverride(
     options.hooks,
     merged.hookIds,
     options.addHooks,
     options.removeHooks,
-    options.withoutDefaults
+    options.withoutDefaults,
+    artifacts.hooks
   );
   const pluginOverrides = resolveCategoryOverride(
     options.plugins,
     merged.pluginIds,
     options.addPlugins,
     options.removePlugins,
-    options.withoutDefaults
+    options.withoutDefaults,
+    artifacts.plugins
   );
 
   // Adapter writes .mcp.json and injects skills (no secret resolution)
@@ -331,21 +343,33 @@ export function computeMergedDefaults(
  *   subtracted, and `withoutDefaults` starts from an empty base.
  * - If no intent is expressed, returns `undefined` — the adapter uses its
  *   own default resolution.
+ *
+ * When a `pool` is supplied, short-form `add` and `remove` IDs are
+ * canonicalized to their qualified form (e.g. `skill-a` → `@local/skill-a`)
+ * via `resolveReference` so set operations match the canonical merged
+ * defaults. Unknown or ambiguous short IDs pass through unchanged so the
+ * caller can surface them as "(not found)".
  */
 export function resolveCategoryOverride(
   explicitOverride: string[] | undefined,
   mergedDefaults: string[],
   add: string[] | undefined,
   remove: string[] | undefined,
-  withoutDefaults: boolean | undefined
+  withoutDefaults: boolean | undefined,
+  pool?: Record<string, unknown>
 ): string[] | undefined {
   if (explicitOverride !== undefined) return explicitOverride;
   const hasIntent =
     add !== undefined || remove !== undefined || (withoutDefaults ?? false);
   if (!hasIntent) return undefined;
+  const canonicalize = (id: string): string => {
+    if (!pool) return id;
+    const res = resolveReference(pool, id, undefined);
+    return res.status === "ok" ? res.qualified : id;
+  };
   const base = withoutDefaults ? [] : mergedDefaults;
   const set = new Set(base);
-  for (const id of add ?? []) set.add(id);
-  for (const id of remove ?? []) set.delete(id);
+  for (const id of add ?? []) set.add(canonicalize(id));
+  for (const id of remove ?? []) set.delete(canonicalize(id));
   return [...set];
 }

@@ -24,4 +24,4 @@ For detailed reference documentation, see the [docs/](../) directory.
 - **[Roots and Multi-Root Setups](roots.md)** — Organize agent configurations across repositories and teams with roots.
 - **[Hooks](hooks.md)** — Automate actions around agent lifecycle events with shell-command hooks.
 - **[References](references.md)** — Share reference documents across skills to keep documentation DRY.
-- **[Composition and Overrides](composition-and-overrides.md)** — Layer multiple config files, use override semantics, and pull remote configs with providers.
+- **[Composition and Overrides](composition-and-overrides.md)** — Layer multiple catalogs and per-type indexes with scoped identity, additive composition, and `exclude`-based removal.

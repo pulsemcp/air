@@ -197,28 +197,32 @@ export function startCommand(): Command {
           merged.skillIds,
           addSkills,
           removeSkills,
-          withoutDefaults
+          withoutDefaults,
+          result.artifacts.skills
         );
         const selectedMcpServers = resolveCategoryOverride(
           undefined,
           merged.mcpServerIds,
           addMcpServers,
           removeMcpServers,
-          withoutDefaults
+          withoutDefaults,
+          result.artifacts.mcp
         );
         const selectedHooks = resolveCategoryOverride(
           undefined,
           merged.hookIds,
           addHooks,
           removeHooks,
-          withoutDefaults
+          withoutDefaults,
+          result.artifacts.hooks
         );
         const selectedPlugins = resolveCategoryOverride(
           undefined,
           merged.pluginIds,
           addPlugins,
           removePlugins,
-          withoutDefaults
+          withoutDefaults,
+          result.artifacts.plugins
         );
 
         // Dry run

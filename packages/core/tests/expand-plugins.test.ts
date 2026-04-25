@@ -15,12 +15,16 @@ afterEach(() => {
   cleanup = undefined;
 });
 
+// expandPlugins is purely a graph operation over whatever keys appear in
+// `artifacts.plugins` — it does not require qualified IDs. The unit tests
+// below use bare keys for clarity. Integration tests that go through
+// resolveArtifacts always see qualified keys.
+
 describe("expandPlugins", () => {
   it("returns plugins unchanged when no plugins field is present", () => {
     const artifacts = emptyArtifacts();
     artifacts.plugins = {
       "simple": {
-
         description: "A simple plugin",
         skills: ["lint"],
         mcp_servers: ["eslint-server"],
@@ -39,7 +43,6 @@ describe("expandPlugins", () => {
     const artifacts = emptyArtifacts();
     artifacts.plugins = {
       "simple": {
-
         description: "A simple plugin",
         plugins: [],
         skills: ["lint"],
@@ -55,14 +58,12 @@ describe("expandPlugins", () => {
     const artifacts = emptyArtifacts();
     artifacts.plugins = {
       "base": {
-
         description: "Base plugin",
         skills: ["lint", "format"],
         mcp_servers: ["eslint-server"],
         hooks: ["pre-commit"],
       },
       "extended": {
-
         description: "Extended plugin",
         plugins: ["base"],
         skills: ["deploy"],
@@ -82,7 +83,6 @@ describe("expandPlugins", () => {
       "deploy-server",
     ]);
     expect(result.plugins["extended"].hooks).toEqual(["pre-commit"]);
-    // Base plugin remains unchanged
     expect(result.plugins["base"].skills).toEqual(["lint", "format"]);
   });
 
@@ -90,20 +90,17 @@ describe("expandPlugins", () => {
     const artifacts = emptyArtifacts();
     artifacts.plugins = {
       "c": {
-
         description: "Plugin C",
         skills: ["skill-c"],
         hooks: ["hook-c"],
       },
       "b": {
-
         description: "Plugin B",
         plugins: ["c"],
         skills: ["skill-b"],
         mcp_servers: ["server-b"],
       },
       "a": {
-
         description: "Plugin A",
         plugins: ["b"],
         skills: ["skill-a"],
@@ -112,7 +109,6 @@ describe("expandPlugins", () => {
 
     const result = expandPlugins(artifacts);
 
-    // A should have all primitives from B and C, plus its own
     expect(result.plugins["a"].skills).toEqual([
       "skill-c",
       "skill-b",
@@ -121,12 +117,10 @@ describe("expandPlugins", () => {
     expect(result.plugins["a"].mcp_servers).toEqual(["server-b"]);
     expect(result.plugins["a"].hooks).toEqual(["hook-c"]);
 
-    // B should have primitives from C plus its own
     expect(result.plugins["b"].skills).toEqual(["skill-c", "skill-b"]);
     expect(result.plugins["b"].mcp_servers).toEqual(["server-b"]);
     expect(result.plugins["b"].hooks).toEqual(["hook-c"]);
 
-    // C is unchanged
     expect(result.plugins["c"].skills).toEqual(["skill-c"]);
   });
 
@@ -134,44 +128,35 @@ describe("expandPlugins", () => {
     const artifacts = emptyArtifacts();
     artifacts.plugins = {
       "shared": {
-
         description: "Shared plugin",
         skills: ["common-skill"],
         mcp_servers: ["common-server"],
       },
       "child-a": {
-
         description: "Child A",
         plugins: ["shared"],
         skills: ["skill-a"],
       },
       "child-b": {
-
         description: "Child B",
         plugins: ["shared"],
         skills: ["skill-b"],
       },
       "parent": {
-
         description: "Parent plugin",
         plugins: ["child-a", "child-b"],
-        skills: ["common-skill"], // Also directly declares common-skill
+        skills: ["common-skill"],
       },
     };
 
     const result = expandPlugins(artifacts);
 
-    // Diamond: shared→child-a→parent and shared→child-b→parent
-    // child-a expands to [common-skill, skill-a], child-b to [common-skill, skill-b]
-    // parent collects [...child-a, ...child-b, common-skill (direct)]
-    // Dedup keeps last occurrence: [skill-a, skill-b, common-skill]
     expect(result.plugins["parent"].skills).toEqual([
       "skill-a",
       "skill-b",
       "common-skill",
     ]);
 
-    // common-server from shared via both children, deduped to one
     expect(result.plugins["parent"].mcp_servers).toEqual(["common-server"]);
   });
 
@@ -179,12 +164,10 @@ describe("expandPlugins", () => {
     const artifacts = emptyArtifacts();
     artifacts.plugins = {
       "child": {
-
         description: "Child plugin",
         skills: ["shared-skill", "child-only"],
       },
       "parent": {
-
         description: "Parent plugin",
         plugins: ["child"],
         skills: ["shared-skill", "parent-only"],
@@ -193,8 +176,6 @@ describe("expandPlugins", () => {
 
     const result = expandPlugins(artifacts);
 
-    // shared-skill should appear once, and since parent also declares it,
-    // it should be deduplicated with parent's version winning (last occurrence kept)
     const skills = result.plugins["parent"].skills!;
     expect(skills).toEqual(["child-only", "shared-skill", "parent-only"]);
   });
@@ -203,19 +184,17 @@ describe("expandPlugins", () => {
     const artifacts = emptyArtifacts();
     artifacts.plugins = {
       "a": {
-
         description: "Plugin A",
         plugins: ["b"],
       },
       "b": {
-
         description: "Plugin B",
         plugins: ["a"],
       },
     };
 
     expect(() => expandPlugins(artifacts)).toThrow(
-      /Circular plugin dependency detected: a → b → a/
+      /Circular plugin dependency detected: a → b → a/,
     );
   });
 
@@ -223,14 +202,13 @@ describe("expandPlugins", () => {
     const artifacts = emptyArtifacts();
     artifacts.plugins = {
       "self": {
-
         description: "Self-referencing plugin",
         plugins: ["self"],
       },
     };
 
     expect(() => expandPlugins(artifacts)).toThrow(
-      /Circular plugin dependency detected: self → self/
+      /Circular plugin dependency detected: self → self/,
     );
   });
 
@@ -238,19 +216,16 @@ describe("expandPlugins", () => {
     const artifacts = emptyArtifacts();
     artifacts.plugins = {
       "a": {
-
         description: "Plugin A",
         plugins: ["b"],
         skills: ["skill-a"],
       },
       "b": {
-
         description: "Plugin B",
         plugins: ["c"],
         skills: ["skill-b"],
       },
       "c": {
-
         description: "Plugin C",
         plugins: ["a"],
         skills: ["skill-c"],
@@ -258,7 +233,7 @@ describe("expandPlugins", () => {
     };
 
     expect(() => expandPlugins(artifacts)).toThrow(
-      /Circular plugin dependency detected: a → b → c → a/
+      /Circular plugin dependency detected: a → b → c → a/,
     );
   });
 
@@ -266,14 +241,13 @@ describe("expandPlugins", () => {
     const artifacts = emptyArtifacts();
     artifacts.plugins = {
       "parent": {
-
         description: "Parent plugin",
         plugins: ["nonexistent"],
       },
     };
 
     expect(() => expandPlugins(artifacts)).toThrow(
-      /Plugin "nonexistent" referenced by "parent" not found/
+      /Plugin "nonexistent" referenced by "parent" not found/,
     );
   });
 
@@ -282,7 +256,6 @@ describe("expandPlugins", () => {
     artifacts.skills = { "my-skill": { description: "test", path: "/test" } };
     artifacts.plugins = {
       "simple": {
-
         description: "A plugin",
         skills: ["my-skill"],
       },
@@ -301,17 +274,14 @@ describe("expandPlugins", () => {
     const artifacts = emptyArtifacts();
     artifacts.plugins = {
       "first": {
-
         description: "First plugin",
         skills: ["skill-1"],
       },
       "second": {
-
         description: "Second plugin",
         skills: ["skill-2"],
       },
       "combined": {
-
         description: "Combined plugin",
         plugins: ["first", "second"],
         skills: ["skill-3"],
@@ -320,7 +290,6 @@ describe("expandPlugins", () => {
 
     const result = expandPlugins(artifacts);
 
-    // Skills from first, then second, then combined's own
     expect(result.plugins["combined"].skills).toEqual([
       "skill-1",
       "skill-2",
@@ -332,11 +301,9 @@ describe("expandPlugins", () => {
     const artifacts = emptyArtifacts();
     artifacts.plugins = {
       "empty-child": {
-
         description: "Child with no primitives",
       },
       "parent": {
-
         description: "Parent that includes empty child",
         plugins: ["empty-child"],
       },
@@ -353,12 +320,10 @@ describe("expandPlugins", () => {
     const artifacts = emptyArtifacts();
     artifacts.plugins = {
       "child": {
-
         description: "Child plugin",
         skills: ["child-skill"],
       },
       "parent": {
-
         description: "Parent plugin",
         version: "2.0.0",
         plugins: ["child"],
@@ -383,48 +348,60 @@ describe("expandPlugins", () => {
 });
 
 describe("resolveArtifacts with plugin composition", () => {
-  it("expands plugin references during resolution", async () => {
+  it("expands plugin references during resolution (qualified IDs)", async () => {
     const { dir, cleanup: c } = createTempAirDir({
       "air.json": {
         name: "test",
         plugins: ["./plugins.json"],
+        skills: ["./skills.json"],
+        mcp: ["./mcp.json"],
       },
       "plugins.json": {
         "base": {
-  
           description: "Base plugin",
           skills: ["lint", "format"],
           mcp_servers: ["eslint-server"],
         },
         "full-stack": {
-
           description: "Full stack plugin",
           plugins: ["base"],
           skills: ["deploy"],
           mcp_servers: ["deploy-server"],
         },
       },
+      "skills.json": {
+        lint: { description: "Lint" },
+        format: { description: "Format" },
+        deploy: { description: "Deploy" },
+      },
+      "mcp.json": {
+        "eslint-server": { type: "stdio", command: "eslint" },
+        "deploy-server": { type: "stdio", command: "deploy" },
+      },
     });
     cleanup = c;
 
     const artifacts = await resolveArtifacts(join(dir, "air.json"));
 
-    expect(artifacts.plugins["full-stack"].skills).toEqual([
-      "lint",
-      "format",
-      "deploy",
+    expect(artifacts.plugins["@local/full-stack"].skills).toEqual([
+      "@local/lint",
+      "@local/format",
+      "@local/deploy",
     ]);
-    expect(artifacts.plugins["full-stack"].mcp_servers).toEqual([
-      "eslint-server",
-      "deploy-server",
+    expect(artifacts.plugins["@local/full-stack"].mcp_servers).toEqual([
+      "@local/eslint-server",
+      "@local/deploy-server",
     ]);
   });
 
-  it("backwards compatible: plugins without plugins field work identically", async () => {
+  it("simple plugins without nested plugins field still get canonicalized references", async () => {
     const { dir, cleanup: c } = createTempAirDir({
       "air.json": {
         name: "test",
         plugins: ["./plugins.json"],
+        skills: ["./skills.json"],
+        mcp: ["./mcp.json"],
+        hooks: ["./hooks.json"],
       },
       "plugins.json": {
         "simple": examplePlugin("simple", {
@@ -433,15 +410,24 @@ describe("resolveArtifacts with plugin composition", () => {
           hooks: ["hook-a"],
         }),
       },
+      "skills.json": { "skill-a": { description: "A" } },
+      "mcp.json": { "server-a": { type: "stdio", command: "x" } },
+      "hooks.json": { "hook-a": { description: "Hook A" } },
     });
     cleanup = c;
 
     const artifacts = await resolveArtifacts(join(dir, "air.json"));
 
-    expect(artifacts.plugins["simple"].skills).toEqual(["skill-a"]);
-    expect(artifacts.plugins["simple"].mcp_servers).toEqual(["server-a"]);
-    expect(artifacts.plugins["simple"].hooks).toEqual(["hook-a"]);
-    expect(artifacts.plugins["simple"].plugins).toBeUndefined();
+    expect(artifacts.plugins["@local/simple"].skills).toEqual([
+      "@local/skill-a",
+    ]);
+    expect(artifacts.plugins["@local/simple"].mcp_servers).toEqual([
+      "@local/server-a",
+    ]);
+    expect(artifacts.plugins["@local/simple"].hooks).toEqual([
+      "@local/hook-a",
+    ]);
+    expect(artifacts.plugins["@local/simple"].plugins).toBeUndefined();
   });
 
   it("rejects circular plugin references during resolution", async () => {
@@ -452,12 +438,10 @@ describe("resolveArtifacts with plugin composition", () => {
       },
       "plugins.json": {
         "a": {
-  
           description: "Plugin A",
           plugins: ["b"],
         },
         "b": {
-  
           description: "Plugin B",
           plugins: ["a"],
         },
@@ -466,7 +450,7 @@ describe("resolveArtifacts with plugin composition", () => {
     cleanup = c;
 
     await expect(resolveArtifacts(join(dir, "air.json"))).rejects.toThrow(
-      /Circular plugin dependency detected/
+      /Circular plugin dependency detected/,
     );
   });
 
@@ -475,10 +459,11 @@ describe("resolveArtifacts with plugin composition", () => {
       "air.json": {
         name: "test",
         plugins: ["./base-plugins.json", "./composite-plugins.json"],
+        skills: ["./skills.json"],
+        mcp: ["./mcp.json"],
       },
       "base-plugins.json": {
         "code-quality": {
-
           description: "Code quality tools",
           skills: ["lint", "format"],
           mcp_servers: ["eslint-server"],
@@ -486,25 +471,31 @@ describe("resolveArtifacts with plugin composition", () => {
       },
       "composite-plugins.json": {
         "full-stack": {
-
           description: "Full stack plugin",
           plugins: ["code-quality"],
           skills: ["deploy"],
         },
+      },
+      "skills.json": {
+        lint: { description: "Lint" },
+        format: { description: "Format" },
+        deploy: { description: "Deploy" },
+      },
+      "mcp.json": {
+        "eslint-server": { type: "stdio", command: "eslint" },
       },
     });
     cleanup = c;
 
     const artifacts = await resolveArtifacts(join(dir, "air.json"));
 
-    // full-stack from composite-plugins.json references code-quality from base-plugins.json
-    expect(artifacts.plugins["full-stack"].skills).toEqual([
-      "lint",
-      "format",
-      "deploy",
+    expect(artifacts.plugins["@local/full-stack"].skills).toEqual([
+      "@local/lint",
+      "@local/format",
+      "@local/deploy",
     ]);
-    expect(artifacts.plugins["full-stack"].mcp_servers).toEqual([
-      "eslint-server",
+    expect(artifacts.plugins["@local/full-stack"].mcp_servers).toEqual([
+      "@local/eslint-server",
     ]);
   });
 });
@@ -513,25 +504,29 @@ describe("mergeArtifacts with plugin composition", () => {
   it("re-expands composite plugins after merging", () => {
     const base = emptyArtifacts();
     base.plugins = {
-      "code-quality": {
+      "@local/code-quality": {
         description: "Code quality tools",
-        skills: ["lint"],
+        skills: ["@local/lint"],
       },
     };
 
-    const override = emptyArtifacts();
-    override.plugins = {
-      "full-stack": {
+    const overlay = emptyArtifacts();
+    overlay.plugins = {
+      "@local/full-stack": {
         description: "Full stack plugin",
-        plugins: ["code-quality"],
-        skills: ["deploy"],
+        plugins: ["@local/code-quality"],
+        skills: ["@local/deploy"],
       },
     };
 
-    const result = mergeArtifacts(base, override);
+    const result = mergeArtifacts(base, overlay);
 
-    // full-stack should be expanded even though code-quality came from base
-    expect(result.plugins["full-stack"].skills).toEqual(["lint", "deploy"]);
-    expect(result.plugins["code-quality"].skills).toEqual(["lint"]);
+    expect(result.plugins["@local/full-stack"].skills).toEqual([
+      "@local/lint",
+      "@local/deploy",
+    ]);
+    expect(result.plugins["@local/code-quality"].skills).toEqual([
+      "@local/lint",
+    ]);
   });
 });

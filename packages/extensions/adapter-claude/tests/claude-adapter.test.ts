@@ -33,7 +33,7 @@ describe("ClaudeAdapter", () => {
     });
   });
 
-  describe("translateMcpServers", () => {
+  describe("translateMcpServersByShort", () => {
     it("translates stdio servers", () => {
       const servers: Record<string, McpServerEntry> = {
         github: {
@@ -46,7 +46,7 @@ describe("ClaudeAdapter", () => {
         },
       };
 
-      const result = adapter.translateMcpServers(servers) as any;
+      const result = adapter.translateMcpServersByShort(servers) as any;
       expect(result).toEqual({
         mcpServers: {
           github: {
@@ -70,7 +70,7 @@ describe("ClaudeAdapter", () => {
         },
       };
 
-      const result = adapter.translateMcpServers(servers) as any;
+      const result = adapter.translateMcpServersByShort(servers) as any;
       expect(result.mcpServers.test.title).toBeUndefined();
       expect(result.mcpServers.test.description).toBeUndefined();
     });
@@ -84,7 +84,7 @@ describe("ClaudeAdapter", () => {
         },
       };
 
-      const result = adapter.translateMcpServers(servers) as any;
+      const result = adapter.translateMcpServersByShort(servers) as any;
       expect(result.mcpServers.remote).toEqual({
         type: "http",
         url: "https://mcp.example.com/api",
@@ -100,7 +100,7 @@ describe("ClaudeAdapter", () => {
         },
       };
 
-      const result = adapter.translateMcpServers(servers) as any;
+      const result = adapter.translateMcpServersByShort(servers) as any;
       expect(result.mcpServers.events).toEqual({
         type: "sse",
         url: "https://mcp.example.com/sse",
@@ -120,7 +120,7 @@ describe("ClaudeAdapter", () => {
         },
       };
 
-      const result = adapter.translateMcpServers(servers) as any;
+      const result = adapter.translateMcpServersByShort(servers) as any;
       expect(result.mcpServers.authed.type).toBe("sse");
       expect(result.mcpServers.authed.oauth).toEqual({
         clientId: "my-client",
@@ -142,7 +142,7 @@ describe("ClaudeAdapter", () => {
         },
       };
 
-      const result = adapter.translateMcpServers(servers) as any;
+      const result = adapter.translateMcpServersByShort(servers) as any;
       expect(result.mcpServers.bigquery.oauth).toEqual({
         clientId: "my-client",
         authServerMetadataUrl:
@@ -162,7 +162,7 @@ describe("ClaudeAdapter", () => {
         },
       };
 
-      const result = adapter.translateMcpServers(servers) as any;
+      const result = adapter.translateMcpServersByShort(servers) as any;
       // Adapter writes the raw ${VAR} pattern; secret-transform extensions
       // (e.g. @pulsemcp/air-secrets-env) resolve it when walking .mcp.json.
       expect(result.mcpServers.authed.oauth).toEqual({
@@ -187,7 +187,7 @@ describe("ClaudeAdapter", () => {
         },
       };
 
-      const result = adapter.translateMcpServers(servers) as any;
+      const result = adapter.translateMcpServersByShort(servers) as any;
       expect(result.mcpServers.bigquery.oauth).toEqual({
         clientId: "my-client",
         clientSecret: "${BQ_CLIENT_SECRET}",
@@ -238,15 +238,15 @@ describe("ClaudeAdapter", () => {
   describe("generateConfig", () => {
     it("defaults to empty artifacts when no root is specified (opt-in)", () => {
       const artifacts = emptyArtifacts();
-      artifacts.skills["a"] = {
+      artifacts.skills["@local/a"] = {
         description: "Skill A",
         path: "skills/a",
       };
-      artifacts.skills["b"] = {
+      artifacts.skills["@local/b"] = {
         description: "Skill B",
         path: "skills/b",
       };
-      artifacts.mcp["server"] = {
+      artifacts.mcp["@local/server"] = {
         type: "stdio",
         command: "test",
       };
@@ -258,19 +258,19 @@ describe("ClaudeAdapter", () => {
 
     it("filters by root defaults when root is specified", () => {
       const artifacts = emptyArtifacts();
-      artifacts.skills["deploy"] = {
+      artifacts.skills["@local/deploy"] = {
         description: "Deploy",
         path: "skills/deploy",
       };
-      artifacts.skills["review"] = {
+      artifacts.skills["@local/review"] = {
         description: "Review",
         path: "skills/review",
       };
-      artifacts.mcp["github"] = {
+      artifacts.mcp["@local/github"] = {
         type: "stdio",
         command: "gh",
       };
-      artifacts.mcp["slack"] = {
+      artifacts.mcp["@local/slack"] = {
         type: "stdio",
         command: "slack",
       };
@@ -292,7 +292,7 @@ describe("ClaudeAdapter", () => {
 
     it("throws on unknown skill IDs in root defaults", () => {
       const artifacts = emptyArtifacts();
-      artifacts.skills["deploy"] = {
+      artifacts.skills["@local/deploy"] = {
         id: "deploy",
         description: "Deploy",
         path: "skills/deploy",
@@ -303,13 +303,13 @@ describe("ClaudeAdapter", () => {
       };
 
       expect(() => adapter.generateConfig(artifacts, root)).toThrow(
-        /Unknown skill ID\(s\): nonexistent\. Available: deploy/
+        /Unknown skill ID "nonexistent"\. Available: @local\/deploy/
       );
     });
 
     it("throws on unknown MCP server IDs in root defaults", () => {
       const artifacts = emptyArtifacts();
-      artifacts.mcp["github"] = { type: "stdio", command: "gh" };
+      artifacts.mcp["@local/github"] = { type: "stdio", command: "gh" };
       const root: RootEntry = {
         name: "test",
         description: "Test",
@@ -317,7 +317,7 @@ describe("ClaudeAdapter", () => {
       };
 
       expect(() => adapter.generateConfig(artifacts, root)).toThrow(
-        /Unknown MCP server ID\(s\): nonexistent\. Available: github/
+        /Unknown MCP server ID "nonexistent"\. Available: @local\/github/
       );
     });
   });
@@ -373,7 +373,7 @@ describe("ClaudeAdapter", () => {
     it("writes .mcp.json with translated servers", async () => {
       const dir = createTempDir();
       const artifacts = emptyArtifacts();
-      artifacts.mcp["github"] = {
+      artifacts.mcp["@local/github"] = {
         type: "stdio",
         command: "npx",
         args: ["-y", "@mcp/github"],
@@ -400,11 +400,11 @@ describe("ClaudeAdapter", () => {
     it("writes .mcp.json with type field for non-stdio servers", async () => {
       const dir = createTempDir();
       const artifacts = emptyArtifacts();
-      artifacts.mcp["granola"] = {
+      artifacts.mcp["@local/granola"] = {
         type: "streamable-http",
         url: "https://mcp.granola.ai/mcp",
       };
-      artifacts.mcp["events"] = {
+      artifacts.mcp["@local/events"] = {
         type: "sse",
         url: "https://mcp.example.com/sse",
         headers: { Authorization: "Bearer token" },
@@ -428,7 +428,7 @@ describe("ClaudeAdapter", () => {
     it("writes ${VAR} patterns through without resolution", async () => {
       const dir = createTempDir();
       const artifacts = emptyArtifacts();
-      artifacts.mcp["server"] = {
+      artifacts.mcp["@local/server"] = {
         type: "stdio",
         command: "npx",
         env: { API_KEY: "${MY_SECRET}", OTHER: "${ANOTHER_VAR}" },
@@ -461,7 +461,7 @@ describe("ClaudeAdapter", () => {
       );
 
       const artifacts = emptyArtifacts();
-      artifacts.skills["deploy"] = {
+      artifacts.skills["@local/deploy"] = {
         description: "Deploy skill",
         path: resolve(skillSrcDir),
       };
@@ -497,12 +497,12 @@ describe("ClaudeAdapter", () => {
       );
 
       const artifacts = emptyArtifacts();
-      artifacts.skills["deploy"] = {
+      artifacts.skills["@local/deploy"] = {
         description: "Deploy",
         path: resolve(skillSrcDir),
-        references: ["git-workflow"],
+        references: ["@local/git-workflow"],
       };
-      artifacts.references["git-workflow"] = {
+      artifacts.references["@local/git-workflow"] = {
         description: "Git workflow",
         path: resolve(refSrcDir, "GIT_WORKFLOW.md"),
       };
@@ -541,7 +541,7 @@ describe("ClaudeAdapter", () => {
       writeFileSync(join(catalogSkillDir, "SKILL.md"), "# Catalog version");
 
       const artifacts = emptyArtifacts();
-      artifacts.skills["deploy"] = {
+      artifacts.skills["@local/deploy"] = {
         description: "Deploy",
         path: resolve(catalogSkillDir),
       };
@@ -567,11 +567,11 @@ describe("ClaudeAdapter", () => {
     it("filters artifacts by root defaults", async () => {
       const dir = createTempDir();
       const artifacts = emptyArtifacts();
-      artifacts.mcp["github"] = {
+      artifacts.mcp["@local/github"] = {
         type: "stdio",
         command: "gh",
       };
-      artifacts.mcp["slack"] = {
+      artifacts.mcp["@local/slack"] = {
         type: "stdio",
         command: "slack",
       };
@@ -604,21 +604,21 @@ describe("ClaudeAdapter", () => {
       it("throws on unknown MCP server IDs from overrides", async () => {
         const dir = createTempDir();
         const artifacts = emptyArtifacts();
-        artifacts.mcp["github"] = { type: "stdio", command: "gh" };
+        artifacts.mcp["@local/github"] = { type: "stdio", command: "gh" };
 
         await expect(
           adapter.prepareSession(artifacts, dir, {
             mcpServerOverrides: ["github", "nonexistent"],
           })
         ).rejects.toThrow(
-          /Unknown MCP server ID\(s\): nonexistent\. Available: github/
+          /Unknown MCP server ID "nonexistent"\. Available: @local\/github/
         );
       });
 
       it("throws on unknown MCP server IDs from root defaults", async () => {
         const dir = createTempDir();
         const artifacts = emptyArtifacts();
-        artifacts.mcp["github"] = { type: "stdio", command: "gh" };
+        artifacts.mcp["@local/github"] = { type: "stdio", command: "gh" };
 
         const root: RootEntry = {
           name: "test",
@@ -629,14 +629,14 @@ describe("ClaudeAdapter", () => {
         await expect(
           adapter.prepareSession(artifacts, dir, { root })
         ).rejects.toThrow(
-          /Unknown MCP server ID\(s\): invalid-server\. Available: github/
+          /Unknown MCP server ID "invalid-server"\. Available: @local\/github/
         );
       });
 
       it("throws on unknown skill IDs from overrides", async () => {
         const dir = createTempDir();
         const artifacts = emptyArtifacts();
-        artifacts.skills["deploy"] = {
+        artifacts.skills["@local/deploy"] = {
           id: "deploy",
           description: "Deploy",
           path: "/tmp/skills/deploy",
@@ -647,7 +647,7 @@ describe("ClaudeAdapter", () => {
             skillOverrides: ["deploy", "bogus-skill"],
           })
         ).rejects.toThrow(
-          /Unknown skill ID\(s\): bogus-skill\. Available: deploy/
+          /Unknown skill ID "bogus-skill"\. Available: @local\/deploy/
         );
       });
 
@@ -664,14 +664,14 @@ describe("ClaudeAdapter", () => {
         await expect(
           adapter.prepareSession(artifacts, dir, { root })
         ).rejects.toThrow(
-          /Unknown skill ID\(s\): nonexistent-skill\. None available/
+          /Unknown skill ID "nonexistent-skill"\. Available: \(none\)/
         );
       });
 
       it("throws on unknown hook IDs from root defaults", async () => {
         const dir = createTempDir();
         const artifacts = emptyArtifacts();
-        artifacts.hooks["lint"] = {
+        artifacts.hooks["@local/lint"] = {
           id: "lint",
           description: "Lint hook",
           path: "/tmp/hooks/lint",
@@ -686,14 +686,14 @@ describe("ClaudeAdapter", () => {
         await expect(
           adapter.prepareSession(artifacts, dir, { root })
         ).rejects.toThrow(
-          /Unknown hook ID\(s\): nonexistent-hook\. Available: lint/
+          /Unknown hook ID "nonexistent-hook"\. Available: @local\/lint/
         );
       });
 
       it("throws on unknown plugin IDs from root defaults", async () => {
         const dir = createTempDir();
         const artifacts = emptyArtifacts();
-        artifacts.plugins["code-quality"] = {
+        artifacts.plugins["@local/code-quality"] = {
           id: "code-quality",
           description: "Linting tools",
         };
@@ -707,21 +707,21 @@ describe("ClaudeAdapter", () => {
         await expect(
           adapter.prepareSession(artifacts, dir, { root })
         ).rejects.toThrow(
-          /Unknown plugin ID\(s\): nonexistent-plugin\. Available: code-quality/
+          /Unknown plugin ID "nonexistent-plugin"\. Available: @local\/code-quality/
         );
       });
 
       it("lists multiple unknown IDs in the error", async () => {
         const dir = createTempDir();
         const artifacts = emptyArtifacts();
-        artifacts.mcp["github"] = { type: "stdio", command: "gh" };
+        artifacts.mcp["@local/github"] = { type: "stdio", command: "gh" };
 
         await expect(
           adapter.prepareSession(artifacts, dir, {
             mcpServerOverrides: ["bad-one", "bad-two"],
           })
         ).rejects.toThrow(
-          /Unknown MCP server ID\(s\): bad-one, bad-two/
+          /Unknown MCP server ID "bad-one"[\s\S]*Unknown MCP server ID "bad-two"/
         );
       });
     });
@@ -732,10 +732,10 @@ describe("ClaudeAdapter", () => {
         const artifacts = emptyArtifacts();
 
         // Parent's MCP server
-        artifacts.mcp["github"] = { type: "stdio", command: "gh" };
+        artifacts.mcp["@local/github"] = { type: "stdio", command: "gh" };
         // Subagent's MCP servers
-        artifacts.mcp["postgres"] = { type: "stdio", command: "psql" };
-        artifacts.mcp["slack"] = { type: "stdio", command: "slack" };
+        artifacts.mcp["@local/postgres"] = { type: "stdio", command: "psql" };
+        artifacts.mcp["@local/slack"] = { type: "stdio", command: "slack" };
 
         // Parent skill source
         const parentSkillDir = join(dir, "..", "skills", "deploy");
@@ -747,17 +747,17 @@ describe("ClaudeAdapter", () => {
         mkdirSync(subSkillDir, { recursive: true });
         writeFileSync(join(subSkillDir, "SKILL.md"), "# Validate");
 
-        artifacts.skills["deploy"] = {
+        artifacts.skills["@local/deploy"] = {
           description: "Deploy skill",
           path: resolve(parentSkillDir),
         };
-        artifacts.skills["validate"] = {
+        artifacts.skills["@local/validate"] = {
           description: "Validate skill",
           path: resolve(subSkillDir),
         };
 
         // Define roots
-        artifacts.roots["sub-configs"] = {
+        artifacts.roots["@local/sub-configs"] = {
           description: "Config subagent",
           default_mcp_servers: ["postgres", "slack"],
           default_skills: ["validate"],
@@ -788,14 +788,14 @@ describe("ClaudeAdapter", () => {
         const artifacts = emptyArtifacts();
 
         // Add the MCP server and skill referenced by the subagent root
-        artifacts.mcp["web-search"] = { type: "stdio", command: "search" };
-        artifacts.skills["find-source"] = {
+        artifacts.mcp["@local/web-search"] = { type: "stdio", command: "search" };
+        artifacts.skills["@local/find-source"] = {
           id: "find-source",
           description: "Find source",
           path: join(dir, "..", "skills", "find-source"),
         };
 
-        artifacts.roots["research"] = {
+        artifacts.roots["@local/research"] = {
           display_name: "Research Agent",
           description: "Researches server sources",
           default_mcp_servers: ["web-search"],
@@ -830,10 +830,10 @@ describe("ClaudeAdapter", () => {
         const dir = createTempDir();
         const artifacts = emptyArtifacts();
 
-        artifacts.mcp["github"] = { type: "stdio", command: "gh" };
-        artifacts.mcp["postgres"] = { type: "stdio", command: "psql" };
+        artifacts.mcp["@local/github"] = { type: "stdio", command: "gh" };
+        artifacts.mcp["@local/postgres"] = { type: "stdio", command: "psql" };
 
-        artifacts.roots["sub-db"] = {
+        artifacts.roots["@local/sub-db"] = {
           description: "DB subagent",
           default_mcp_servers: ["postgres"],
         };
@@ -863,7 +863,7 @@ describe("ClaudeAdapter", () => {
         const dir = createTempDir();
         const artifacts = emptyArtifacts();
 
-        artifacts.mcp["github"] = { type: "stdio", command: "gh" };
+        artifacts.mcp["@local/github"] = { type: "stdio", command: "gh" };
 
         const root: RootEntry = {
           description: "Parent root",
@@ -884,15 +884,15 @@ describe("ClaudeAdapter", () => {
         const dir = createTempDir();
         const artifacts = emptyArtifacts();
 
-        artifacts.mcp["github"] = { type: "stdio", command: "gh" };
-        artifacts.mcp["postgres"] = { type: "stdio", command: "psql" };
-        artifacts.mcp["slack"] = { type: "stdio", command: "slack" };
+        artifacts.mcp["@local/github"] = { type: "stdio", command: "gh" };
+        artifacts.mcp["@local/postgres"] = { type: "stdio", command: "psql" };
+        artifacts.mcp["@local/slack"] = { type: "stdio", command: "slack" };
 
-        artifacts.roots["sub-a"] = {
+        artifacts.roots["@local/sub-a"] = {
           description: "Subagent A",
           default_mcp_servers: ["github", "postgres"],
         };
-        artifacts.roots["sub-b"] = {
+        artifacts.roots["@local/sub-b"] = {
           description: "Subagent B",
           default_mcp_servers: ["postgres", "slack"],
         };
@@ -918,11 +918,11 @@ describe("ClaudeAdapter", () => {
         const dir = createTempDir();
         const artifacts = emptyArtifacts();
 
-        artifacts.mcp["github"] = { type: "stdio", command: "gh" };
-        artifacts.mcp["postgres"] = { type: "stdio", command: "psql" };
-        artifacts.mcp["slack"] = { type: "stdio", command: "slack" };
+        artifacts.mcp["@local/github"] = { type: "stdio", command: "gh" };
+        artifacts.mcp["@local/postgres"] = { type: "stdio", command: "psql" };
+        artifacts.mcp["@local/slack"] = { type: "stdio", command: "slack" };
 
-        artifacts.roots["sub-db"] = {
+        artifacts.roots["@local/sub-db"] = {
           description: "DB subagent",
           default_mcp_servers: ["postgres"],
         };
@@ -957,10 +957,10 @@ describe("ClaudeAdapter", () => {
         writeFileSync(join(parentSkillSrc, "SKILL.md"), "# Parent");
         writeFileSync(join(subSkillSrc, "SKILL.md"), "# Sub");
 
-        artifacts.skills["parent-skill"] = { description: "Parent", path: resolve(parentSkillSrc) };
-        artifacts.skills["sub-skill"] = { description: "Sub", path: resolve(subSkillSrc) };
+        artifacts.skills["@local/parent-skill"] = { description: "Parent", path: resolve(parentSkillSrc) };
+        artifacts.skills["@local/sub-skill"] = { description: "Sub", path: resolve(subSkillSrc) };
 
-        artifacts.roots["sub-root"] = {
+        artifacts.roots["@local/sub-root"] = {
           description: "Subagent",
           default_skills: ["sub-skill"],
         };
@@ -985,15 +985,15 @@ describe("ClaudeAdapter", () => {
         const dir = createTempDir();
         const artifacts = emptyArtifacts();
 
-        artifacts.mcp["github"] = { type: "stdio", command: "gh" };
-        artifacts.mcp["postgres"] = { type: "stdio", command: "psql" };
+        artifacts.mcp["@local/github"] = { type: "stdio", command: "gh" };
+        artifacts.mcp["@local/postgres"] = { type: "stdio", command: "psql" };
 
         const parentSkillSrc = join(dir, "..", "skills-src2", "parent-skill");
         mkdirSync(parentSkillSrc, { recursive: true });
         writeFileSync(join(parentSkillSrc, "SKILL.md"), "# Parent");
-        artifacts.skills["parent-skill"] = { description: "Parent", path: resolve(parentSkillSrc) };
+        artifacts.skills["@local/parent-skill"] = { description: "Parent", path: resolve(parentSkillSrc) };
 
-        artifacts.roots["sub-db"] = {
+        artifacts.roots["@local/sub-db"] = {
           description: "DB subagent",
           default_mcp_servers: ["postgres"],
         };
@@ -1019,7 +1019,7 @@ describe("ClaudeAdapter", () => {
         const dir = createTempDir();
         const artifacts = emptyArtifacts();
 
-        artifacts.mcp["github"] = { type: "stdio", command: "gh" };
+        artifacts.mcp["@local/github"] = { type: "stdio", command: "gh" };
 
         const root: RootEntry = {
           description: "Simple root",
@@ -1047,7 +1047,7 @@ describe("ClaudeAdapter", () => {
         writeFileSync(join(hookSrcDir, "run.sh"), "#!/bin/bash\nnpx lint-staged");
 
         const artifacts = emptyArtifacts();
-        artifacts.hooks["lint-pre-commit"] = {
+        artifacts.hooks["@local/lint-pre-commit"] = {
           description: "Pre-commit lint check",
           path: resolve(hookSrcDir),
         };
@@ -1088,7 +1088,7 @@ describe("ClaudeAdapter", () => {
         );
 
         const artifacts = emptyArtifacts();
-        artifacts.hooks["my-hook"] = {
+        artifacts.hooks["@local/my-hook"] = {
           description: "My hook",
           path: resolve(catalogHookDir),
         };
@@ -1122,8 +1122,8 @@ describe("ClaudeAdapter", () => {
         writeFileSync(join(hookBDir, "HOOK.json"), JSON.stringify({ event: "post_commit", command: "b" }));
 
         const artifacts = emptyArtifacts();
-        artifacts.hooks["hook-a"] = { description: "Hook A", path: resolve(hookADir) };
-        artifacts.hooks["hook-b"] = { description: "Hook B", path: resolve(hookBDir) };
+        artifacts.hooks["@local/hook-a"] = { description: "Hook A", path: resolve(hookADir) };
+        artifacts.hooks["@local/hook-b"] = { description: "Hook B", path: resolve(hookBDir) };
 
         const root: RootEntry = {
           description: "Test root",
@@ -1151,12 +1151,12 @@ describe("ClaudeAdapter", () => {
         writeFileSync(join(refSrcDir, "CODE_STANDARDS.md"), "# Code Standards");
 
         const artifacts = emptyArtifacts();
-        artifacts.hooks["my-hook"] = {
+        artifacts.hooks["@local/my-hook"] = {
           description: "My hook",
           path: resolve(hookSrcDir),
-          references: ["code-standards"],
+          references: ["@local/code-standards"],
         };
-        artifacts.references["code-standards"] = {
+        artifacts.references["@local/code-standards"] = {
           description: "Code standards",
           path: resolve(refSrcDir, "CODE_STANDARDS.md"),
         };
@@ -1190,13 +1190,13 @@ describe("ClaudeAdapter", () => {
         const artifacts = emptyArtifacts();
 
         // Add artifacts that should NOT be loaded without explicit root defaults
-        artifacts.mcp["github"] = { type: "stdio", command: "gh" };
-        artifacts.mcp["slack"] = { type: "stdio", command: "slack" };
+        artifacts.mcp["@local/github"] = { type: "stdio", command: "gh" };
+        artifacts.mcp["@local/slack"] = { type: "stdio", command: "slack" };
 
         const skillSrcDir = join(dir, "..", "skills", "deploy");
         mkdirSync(skillSrcDir, { recursive: true });
         writeFileSync(join(skillSrcDir, "SKILL.md"), "# Deploy");
-        artifacts.skills["deploy"] = {
+        artifacts.skills["@local/deploy"] = {
           id: "deploy",
           description: "Deploy",
           path: resolve(skillSrcDir),
@@ -1205,13 +1205,13 @@ describe("ClaudeAdapter", () => {
         const hookSrcDir = join(dir, "..", "hooks", "my-hook");
         mkdirSync(hookSrcDir, { recursive: true });
         writeFileSync(join(hookSrcDir, "HOOK.json"), JSON.stringify({ event: "pre_commit" }));
-        artifacts.hooks["my-hook"] = {
+        artifacts.hooks["@local/my-hook"] = {
           id: "my-hook",
           description: "My hook",
           path: resolve(hookSrcDir),
         };
 
-        artifacts.plugins["quality"] = {
+        artifacts.plugins["@local/quality"] = {
           id: "quality",
           description: "Quality plugin",
         };
@@ -1234,12 +1234,12 @@ describe("ClaudeAdapter", () => {
       it("loads no artifacts when root has no default_* fields", async () => {
         const dir = createTempDir();
         const artifacts = emptyArtifacts();
-        artifacts.mcp["github"] = { type: "stdio", command: "gh" };
+        artifacts.mcp["@local/github"] = { type: "stdio", command: "gh" };
 
         const skillSrcDir = join(dir, "..", "skills", "deploy");
         mkdirSync(skillSrcDir, { recursive: true });
         writeFileSync(join(skillSrcDir, "SKILL.md"), "# Deploy");
-        artifacts.skills["deploy"] = {
+        artifacts.skills["@local/deploy"] = {
           id: "deploy",
           description: "Deploy",
           path: resolve(skillSrcDir),
@@ -1262,13 +1262,13 @@ describe("ClaudeAdapter", () => {
       it("respects CLI overrides even without root defaults", async () => {
         const dir = createTempDir();
         const artifacts = emptyArtifacts();
-        artifacts.mcp["github"] = { type: "stdio", command: "gh" };
-        artifacts.mcp["slack"] = { type: "stdio", command: "slack" };
+        artifacts.mcp["@local/github"] = { type: "stdio", command: "gh" };
+        artifacts.mcp["@local/slack"] = { type: "stdio", command: "slack" };
 
         const skillSrcDir = join(dir, "..", "skills", "deploy");
         mkdirSync(skillSrcDir, { recursive: true });
         writeFileSync(join(skillSrcDir, "SKILL.md"), "# Deploy");
-        artifacts.skills["deploy"] = {
+        artifacts.skills["@local/deploy"] = {
           id: "deploy",
           description: "Deploy",
           path: resolve(skillSrcDir),
@@ -1298,8 +1298,8 @@ describe("ClaudeAdapter", () => {
         writeFileSync(join(hookBDir, "HOOK.json"), JSON.stringify({ event: "post_commit", command: "b" }));
 
         const artifacts = emptyArtifacts();
-        artifacts.hooks["hook-a"] = { description: "Hook A", path: resolve(hookADir) };
-        artifacts.hooks["hook-b"] = { description: "Hook B", path: resolve(hookBDir) };
+        artifacts.hooks["@local/hook-a"] = { description: "Hook A", path: resolve(hookADir) };
+        artifacts.hooks["@local/hook-b"] = { description: "Hook B", path: resolve(hookBDir) };
 
         const root: RootEntry = {
           description: "Test root",
@@ -1325,7 +1325,7 @@ describe("ClaudeAdapter", () => {
         writeFileSync(join(hookDir, "HOOK.json"), JSON.stringify({ event: "pre_commit", command: "a" }));
 
         const artifacts = emptyArtifacts();
-        artifacts.hooks["hook-a"] = { description: "Hook A", path: resolve(hookDir) };
+        artifacts.hooks["@local/hook-a"] = { description: "Hook A", path: resolve(hookDir) };
 
         const result = await adapter.prepareSession(artifacts, dir, {
           hookOverrides: ["hook-a"],
@@ -1338,8 +1338,8 @@ describe("ClaudeAdapter", () => {
       it("respects pluginOverrides over root defaults", async () => {
         const dir = createTempDir();
         const artifacts = emptyArtifacts();
-        artifacts.plugins["quality"] = { description: "Quality plugin" };
-        artifacts.plugins["security"] = { description: "Security plugin" };
+        artifacts.plugins["@local/quality"] = { description: "Quality plugin" };
+        artifacts.plugins["@local/security"] = { description: "Security plugin" };
 
         const root: RootEntry = {
           description: "Test root",
@@ -1359,13 +1359,13 @@ describe("ClaudeAdapter", () => {
             root,
             pluginOverrides: ["nonexistent"],
           })
-        ).rejects.toThrow(/Unknown plugin ID\(s\): nonexistent/);
+        ).rejects.toThrow(/Unknown plugin ID "nonexistent"/);
       });
 
       it("respects pluginOverrides even without root defaults", async () => {
         const dir = createTempDir();
         const artifacts = emptyArtifacts();
-        artifacts.plugins["quality"] = { description: "Quality plugin" };
+        artifacts.plugins["@local/quality"] = { description: "Quality plugin" };
 
         // No root, but pluginOverrides provided — should not throw
         await adapter.prepareSession(artifacts, dir, {
@@ -1381,7 +1381,7 @@ describe("ClaudeAdapter", () => {
         writeFileSync(join(hookDir, "HOOK.json"), JSON.stringify({ event: "pre_commit", command: "a" }));
 
         const artifacts = emptyArtifacts();
-        artifacts.hooks["hook-a"] = { description: "Hook A", path: resolve(hookDir) };
+        artifacts.hooks["@local/hook-a"] = { description: "Hook A", path: resolve(hookDir) };
 
         const root: RootEntry = {
           description: "Test root",
@@ -1401,7 +1401,7 @@ describe("ClaudeAdapter", () => {
       it("empty pluginOverrides activates no plugins even with root defaults", async () => {
         const dir = createTempDir();
         const artifacts = emptyArtifacts();
-        artifacts.plugins["quality"] = { description: "Quality plugin" };
+        artifacts.plugins["@local/quality"] = { description: "Quality plugin" };
 
         const root: RootEntry = {
           description: "Test root",
@@ -1418,7 +1418,7 @@ describe("ClaudeAdapter", () => {
       it("throws on unknown hook IDs from hookOverrides", async () => {
         const dir = createTempDir();
         const artifacts = emptyArtifacts();
-        artifacts.hooks["lint"] = {
+        artifacts.hooks["@local/lint"] = {
           description: "Lint hook",
           path: "/tmp/hooks/lint",
         };
@@ -1428,21 +1428,21 @@ describe("ClaudeAdapter", () => {
             hookOverrides: ["lint", "nonexistent-hook"],
           })
         ).rejects.toThrow(
-          /Unknown hook ID\(s\): nonexistent-hook\. Available: lint/
+          /Unknown hook ID "nonexistent-hook"\. Available: @local\/lint/
         );
       });
 
       it("throws on unknown plugin IDs from pluginOverrides", async () => {
         const dir = createTempDir();
         const artifacts = emptyArtifacts();
-        artifacts.plugins["quality"] = { description: "Quality plugin" };
+        artifacts.plugins["@local/quality"] = { description: "Quality plugin" };
 
         await expect(
           adapter.prepareSession(artifacts, dir, {
             pluginOverrides: ["quality", "nonexistent-plugin"],
           })
         ).rejects.toThrow(
-          /Unknown plugin ID\(s\): nonexistent-plugin\. Available: quality/
+          /Unknown plugin ID "nonexistent-plugin"\. Available: @local\/quality/
         );
       });
     });
@@ -1459,7 +1459,7 @@ describe("ClaudeAdapter", () => {
         );
 
         const artifacts = emptyArtifacts();
-        artifacts.hooks["session-audit"] = {
+        artifacts.hooks["@local/session-audit"] = {
           description: "Session audit",
           path: resolve(hookSrcDir),
         };
@@ -1504,7 +1504,7 @@ describe("ClaudeAdapter", () => {
             join(hookSrcDir, "HOOK.json"),
             JSON.stringify({ event: airEvent, command: `cmd-${i}` })
           );
-          artifacts.hooks[hookId] = {
+          artifacts.hooks[`@local/${hookId}`] = {
             description: `Hook ${i}`,
             path: resolve(hookSrcDir),
           };
@@ -1546,8 +1546,8 @@ describe("ClaudeAdapter", () => {
         );
 
         const artifacts = emptyArtifacts();
-        artifacts.hooks["hook-a"] = { description: "A", path: resolve(hookADir) };
-        artifacts.hooks["hook-b"] = { description: "B", path: resolve(hookBDir) };
+        artifacts.hooks["@local/hook-a"] = { description: "A", path: resolve(hookADir) };
+        artifacts.hooks["@local/hook-b"] = { description: "B", path: resolve(hookBDir) };
 
         const root: RootEntry = {
           description: "Test",
@@ -1587,7 +1587,7 @@ describe("ClaudeAdapter", () => {
         );
 
         const artifacts = emptyArtifacts();
-        artifacts.hooks["my-hook"] = { description: "My hook", path: resolve(hookSrcDir) };
+        artifacts.hooks["@local/my-hook"] = { description: "My hook", path: resolve(hookSrcDir) };
 
         const root: RootEntry = {
           description: "Test",
@@ -1618,7 +1618,7 @@ describe("ClaudeAdapter", () => {
         );
 
         const artifacts = emptyArtifacts();
-        artifacts.hooks["bash-guard"] = { description: "Guard", path: resolve(hookSrcDir) };
+        artifacts.hooks["@local/bash-guard"] = { description: "Guard", path: resolve(hookSrcDir) };
 
         const root: RootEntry = {
           description: "Test",
@@ -1642,7 +1642,7 @@ describe("ClaudeAdapter", () => {
         );
 
         const artifacts = emptyArtifacts();
-        artifacts.hooks["slow-hook"] = { description: "Slow", path: resolve(hookSrcDir) };
+        artifacts.hooks["@local/slow-hook"] = { description: "Slow", path: resolve(hookSrcDir) };
 
         const root: RootEntry = {
           description: "Test",
@@ -1666,7 +1666,7 @@ describe("ClaudeAdapter", () => {
         );
 
         const artifacts = emptyArtifacts();
-        artifacts.hooks["lint-hook"] = { description: "Lint", path: resolve(hookSrcDir) };
+        artifacts.hooks["@local/lint-hook"] = { description: "Lint", path: resolve(hookSrcDir) };
 
         const root: RootEntry = {
           description: "Test",
@@ -1691,7 +1691,7 @@ describe("ClaudeAdapter", () => {
         writeFileSync(join(hookSrcDir, "notify.sh"), "#!/bin/bash\necho hello");
 
         const artifacts = emptyArtifacts();
-        artifacts.hooks["notify"] = { description: "Notify", path: resolve(hookSrcDir) };
+        artifacts.hooks["@local/notify"] = { description: "Notify", path: resolve(hookSrcDir) };
 
         const root: RootEntry = {
           description: "Test",
@@ -1728,7 +1728,7 @@ describe("ClaudeAdapter", () => {
         );
 
         const artifacts = emptyArtifacts();
-        artifacts.hooks["unknown-event-hook"] = {
+        artifacts.hooks["@local/unknown-event-hook"] = {
           description: "Unknown event",
           path: resolve(hookSrcDir),
         };
@@ -1769,7 +1769,7 @@ describe("ClaudeAdapter", () => {
         );
 
         const artifacts = emptyArtifacts();
-        artifacts.hooks["local-hook"] = { description: "Local hook", path: resolve(catalogHookDir) };
+        artifacts.hooks["@local/local-hook"] = { description: "Local hook", path: resolve(catalogHookDir) };
 
         const root: RootEntry = {
           description: "Test",
@@ -1802,8 +1802,8 @@ describe("ClaudeAdapter", () => {
         );
 
         const artifacts = emptyArtifacts();
-        artifacts.hooks["pre-commit-hook"] = { description: "Pre", path: resolve(hookADir) };
-        artifacts.hooks["post-commit-hook"] = { description: "Post", path: resolve(hookBDir) };
+        artifacts.hooks["@local/pre-commit-hook"] = { description: "Pre", path: resolve(hookADir) };
+        artifacts.hooks["@local/post-commit-hook"] = { description: "Post", path: resolve(hookBDir) };
 
         const root: RootEntry = {
           description: "Test",
@@ -1834,7 +1834,7 @@ describe("ClaudeAdapter", () => {
         );
 
         const artifacts = emptyArtifacts();
-        artifacts.hooks["complex-hook"] = { description: "Complex", path: resolve(hookSrcDir) };
+        artifacts.hooks["@local/complex-hook"] = { description: "Complex", path: resolve(hookSrcDir) };
 
         const root: RootEntry = {
           description: "Test",
@@ -1858,7 +1858,7 @@ describe("ClaudeAdapter", () => {
         writeFileSync(join(hookSrcDir, "HOOK.json"), "{ invalid json }");
 
         const artifacts = emptyArtifacts();
-        artifacts.hooks["bad-json-hook"] = {
+        artifacts.hooks["@local/bad-json-hook"] = {
           description: "Bad JSON",
           path: resolve(hookSrcDir),
         };
@@ -1887,7 +1887,7 @@ describe("ClaudeAdapter", () => {
         );
 
         const artifacts = emptyArtifacts();
-        artifacts.hooks["no-cmd-hook"] = {
+        artifacts.hooks["@local/no-cmd-hook"] = {
           description: "No command",
           path: resolve(hookSrcDir),
         };
@@ -1911,11 +1911,11 @@ describe("ClaudeAdapter", () => {
         const dir = createTempDir();
         const artifacts = emptyArtifacts();
 
-        artifacts.mcp["github"] = { type: "stdio", command: "gh" };
-        artifacts.mcp["playwright-custom"] = { type: "stdio", command: "playwright" };
-        artifacts.mcp["remote-fs"] = { type: "stdio", command: "remote-fs" };
+        artifacts.mcp["@local/github"] = { type: "stdio", command: "gh" };
+        artifacts.mcp["@local/playwright-custom"] = { type: "stdio", command: "playwright" };
+        artifacts.mcp["@local/remote-fs"] = { type: "stdio", command: "remote-fs" };
 
-        artifacts.plugins["screenshots-videos"] = {
+        artifacts.plugins["@local/screenshots-videos"] = {
           description: "Screenshot and video capture",
           mcp_servers: ["playwright-custom", "remote-fs"],
         };
@@ -1946,10 +1946,10 @@ describe("ClaudeAdapter", () => {
         writeFileSync(join(parentSkillSrc, "SKILL.md"), "# Deploy");
 
         const artifacts = emptyArtifacts();
-        artifacts.skills["deploy"] = { description: "Deploy", path: resolve(parentSkillSrc) };
-        artifacts.skills["lint-fix"] = { description: "Lint fix", path: resolve(skillSrcDir) };
+        artifacts.skills["@local/deploy"] = { description: "Deploy", path: resolve(parentSkillSrc) };
+        artifacts.skills["@local/lint-fix"] = { description: "Lint fix", path: resolve(skillSrcDir) };
 
-        artifacts.plugins["code-quality"] = {
+        artifacts.plugins["@local/code-quality"] = {
           description: "Code quality tools",
           skills: ["lint-fix"],
         };
@@ -1978,12 +1978,12 @@ describe("ClaudeAdapter", () => {
         );
 
         const artifacts = emptyArtifacts();
-        artifacts.hooks["lint-pre-commit"] = {
+        artifacts.hooks["@local/lint-pre-commit"] = {
           description: "Pre-commit lint",
           path: resolve(hookSrcDir),
         };
 
-        artifacts.plugins["code-quality"] = {
+        artifacts.plugins["@local/code-quality"] = {
           description: "Code quality tools",
           hooks: ["lint-pre-commit"],
         };
@@ -2003,10 +2003,10 @@ describe("ClaudeAdapter", () => {
         const dir = createTempDir();
         const artifacts = emptyArtifacts();
 
-        artifacts.mcp["github"] = { type: "stdio", command: "gh" };
-        artifacts.mcp["slack"] = { type: "stdio", command: "slack" };
+        artifacts.mcp["@local/github"] = { type: "stdio", command: "gh" };
+        artifacts.mcp["@local/slack"] = { type: "stdio", command: "slack" };
 
-        artifacts.plugins["collab-tools"] = {
+        artifacts.plugins["@local/collab-tools"] = {
           description: "Collaboration",
           mcp_servers: ["github", "slack"],
         };
@@ -2027,14 +2027,14 @@ describe("ClaudeAdapter", () => {
         const dir = createTempDir();
         const artifacts = emptyArtifacts();
 
-        artifacts.mcp["playwright"] = { type: "stdio", command: "playwright" };
-        artifacts.mcp["eslint-server"] = { type: "stdio", command: "eslint" };
+        artifacts.mcp["@local/playwright"] = { type: "stdio", command: "playwright" };
+        artifacts.mcp["@local/eslint-server"] = { type: "stdio", command: "eslint" };
 
-        artifacts.plugins["screenshots"] = {
+        artifacts.plugins["@local/screenshots"] = {
           description: "Screenshots",
           mcp_servers: ["playwright"],
         };
-        artifacts.plugins["linting"] = {
+        artifacts.plugins["@local/linting"] = {
           description: "Linting",
           mcp_servers: ["eslint-server"],
         };
@@ -2055,10 +2055,10 @@ describe("ClaudeAdapter", () => {
         const dir = createTempDir();
         const artifacts = emptyArtifacts();
 
-        artifacts.mcp["github"] = { type: "stdio", command: "gh" };
-        artifacts.mcp["playwright"] = { type: "stdio", command: "playwright" };
+        artifacts.mcp["@local/github"] = { type: "stdio", command: "gh" };
+        artifacts.mcp["@local/playwright"] = { type: "stdio", command: "playwright" };
 
-        artifacts.plugins["screenshots"] = {
+        artifacts.plugins["@local/screenshots"] = {
           description: "Screenshots",
           mcp_servers: ["playwright"],
         };
@@ -2083,7 +2083,7 @@ describe("ClaudeAdapter", () => {
         const dir = createTempDir();
         const artifacts = emptyArtifacts();
 
-        artifacts.plugins["bad-plugin"] = {
+        artifacts.plugins["@local/bad-plugin"] = {
           description: "References missing server",
           mcp_servers: ["nonexistent-server"],
         };
@@ -2096,7 +2096,7 @@ describe("ClaudeAdapter", () => {
         await expect(
           adapter.prepareSession(artifacts, dir, { root })
         ).rejects.toThrow(
-          /Unknown MCP server ID\(s\): nonexistent-server/
+          /Unknown MCP server ID "nonexistent-server"/
         );
       });
 
@@ -2104,7 +2104,7 @@ describe("ClaudeAdapter", () => {
         const dir = createTempDir();
         const artifacts = emptyArtifacts();
 
-        artifacts.plugins["bad-plugin"] = {
+        artifacts.plugins["@local/bad-plugin"] = {
           description: "References missing skill",
           skills: ["nonexistent-skill"],
         };
@@ -2117,7 +2117,7 @@ describe("ClaudeAdapter", () => {
         await expect(
           adapter.prepareSession(artifacts, dir, { root })
         ).rejects.toThrow(
-          /Unknown skill ID\(s\): nonexistent-skill/
+          /Unknown skill ID "nonexistent-skill"/
         );
       });
 
@@ -2125,9 +2125,9 @@ describe("ClaudeAdapter", () => {
         const dir = createTempDir();
         const artifacts = emptyArtifacts();
 
-        artifacts.mcp["github"] = { type: "stdio", command: "gh" };
+        artifacts.mcp["@local/github"] = { type: "stdio", command: "gh" };
 
-        artifacts.plugins["minimal"] = {
+        artifacts.plugins["@local/minimal"] = {
           description: "A minimal plugin with no artifacts",
         };
 
@@ -2172,24 +2172,24 @@ describe("ClaudeAdapter", () => {
         const dir = createTempDir();
 
         const artifacts = emptyArtifacts();
-        artifacts.skills["skill-a"] = {
+        artifacts.skills["@local/skill-a"] = {
           description: "A",
           path: writeSkillSrc(dir, "skill-a"),
         };
-        artifacts.skills["skill-b"] = {
+        artifacts.skills["@local/skill-b"] = {
           description: "B",
           path: writeSkillSrc(dir, "skill-b"),
         };
-        artifacts.hooks["hook-a"] = {
+        artifacts.hooks["@local/hook-a"] = {
           description: "A",
           path: writeHookSrc(dir, "hook-a", "cmd-a"),
         };
-        artifacts.hooks["hook-b"] = {
+        artifacts.hooks["@local/hook-b"] = {
           description: "B",
           path: writeHookSrc(dir, "hook-b", "cmd-b"),
         };
-        artifacts.mcp["mcp-a"] = { type: "stdio", command: "cmd-a" };
-        artifacts.mcp["mcp-b"] = { type: "stdio", command: "cmd-b" };
+        artifacts.mcp["@local/mcp-a"] = { type: "stdio", command: "cmd-a" };
+        artifacts.mcp["@local/mcp-b"] = { type: "stdio", command: "cmd-b" };
 
         // First run: selection A (everything).
         await adapter.prepareSession(artifacts, dir, {
@@ -2243,11 +2243,11 @@ describe("ClaudeAdapter", () => {
         const dir = createTempDir();
 
         const artifacts = emptyArtifacts();
-        artifacts.hooks["hook-a"] = {
+        artifacts.hooks["@local/hook-a"] = {
           description: "A",
           path: writeHookSrc(dir, "hook-a", "cmd-a"),
         };
-        artifacts.mcp["mcp-a"] = { type: "stdio", command: "cmd-a" };
+        artifacts.mcp["@local/mcp-a"] = { type: "stdio", command: "cmd-a" };
 
         // Seed .mcp.json and .claude/settings.json with user-authored entries
         // that AIR must never touch.
@@ -2315,7 +2315,7 @@ describe("ClaudeAdapter", () => {
         const dir = createTempDir();
 
         const artifacts = emptyArtifacts();
-        artifacts.skills["skill-a"] = {
+        artifacts.skills["@local/skill-a"] = {
           description: "A",
           path: writeSkillSrc(dir, "skill-a"),
         };
@@ -2332,7 +2332,7 @@ describe("ClaudeAdapter", () => {
         const dir = createTempDir();
 
         const artifacts = emptyArtifacts();
-        artifacts.skills["skill-a"] = {
+        artifacts.skills["@local/skill-a"] = {
           description: "A",
           path: writeSkillSrc(dir, "skill-a"),
         };
@@ -2357,7 +2357,7 @@ describe("ClaudeAdapter", () => {
         const dir = createTempDir();
 
         const artifacts = emptyArtifacts();
-        artifacts.skills["skill-a"] = {
+        artifacts.skills["@local/skill-a"] = {
           description: "A",
           path: writeSkillSrc(dir, "skill-a"),
         };
@@ -2396,7 +2396,7 @@ describe("ClaudeAdapter", () => {
         writeFileSync(join(userHookDir, "marker.txt"), "user-content");
 
         const artifacts = emptyArtifacts();
-        artifacts.hooks["hook-a"] = {
+        artifacts.hooks["@local/hook-a"] = {
           description: "A",
           path: writeHookSrc(dir, "hook-a", "air-cmd"),
         };
@@ -2437,10 +2437,10 @@ describe("ClaudeAdapter", () => {
   describe("generateConfig plugin artifact resolution", () => {
     it("merges plugin mcp_servers into config", () => {
       const artifacts = emptyArtifacts();
-      artifacts.mcp["github"] = { type: "stdio", command: "gh" };
-      artifacts.mcp["playwright"] = { type: "stdio", command: "playwright" };
+      artifacts.mcp["@local/github"] = { type: "stdio", command: "gh" };
+      artifacts.mcp["@local/playwright"] = { type: "stdio", command: "playwright" };
 
-      artifacts.plugins["screenshots"] = {
+      artifacts.plugins["@local/screenshots"] = {
         description: "Screenshots",
         mcp_servers: ["playwright"],
       };
@@ -2460,10 +2460,10 @@ describe("ClaudeAdapter", () => {
 
     it("merges plugin skills into config", () => {
       const artifacts = emptyArtifacts();
-      artifacts.skills["deploy"] = { description: "Deploy", path: "skills/deploy" };
-      artifacts.skills["lint-fix"] = { description: "Lint fix", path: "skills/lint-fix" };
+      artifacts.skills["@local/deploy"] = { description: "Deploy", path: "skills/deploy" };
+      artifacts.skills["@local/lint-fix"] = { description: "Lint fix", path: "skills/lint-fix" };
 
-      artifacts.plugins["code-quality"] = {
+      artifacts.plugins["@local/code-quality"] = {
         description: "Code quality",
         skills: ["lint-fix"],
       };
@@ -2480,9 +2480,9 @@ describe("ClaudeAdapter", () => {
 
     it("handles plugin mcp_servers when root has no default_mcp_servers", () => {
       const artifacts = emptyArtifacts();
-      artifacts.mcp["playwright"] = { type: "stdio", command: "playwright" };
+      artifacts.mcp["@local/playwright"] = { type: "stdio", command: "playwright" };
 
-      artifacts.plugins["screenshots"] = {
+      artifacts.plugins["@local/screenshots"] = {
         description: "Screenshots",
         mcp_servers: ["playwright"],
       };

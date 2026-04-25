@@ -12,12 +12,23 @@ import type {
   PluginEmitter,
   ResolvedArtifacts,
   PluginEntry,
-  McpServerEntry,
   McpOAuthConfig,
   BuildMarketplaceOptions,
   BuiltPlugin,
   BuiltMarketplace,
+  QualifiedId,
 } from "@pulsemcp/air-core";
+import { parseQualifiedId, resolveReference } from "@pulsemcp/air-core";
+
+interface PluginActivation {
+  qualified: QualifiedId;
+  short: string;
+}
+
+interface ChildActivation {
+  qualified: QualifiedId;
+  short: string;
+}
 
 /**
  * AIR event names → Claude Co-work hook event names.
@@ -42,15 +53,15 @@ export class CoworkEmitter implements PluginEmitter {
     outputDir: string,
     options?: BuildMarketplaceOptions
   ): Promise<BuiltMarketplace> {
-    this.validatePluginIds(artifacts, pluginIds);
+    const activations = this.resolvePluginActivations(artifacts, pluginIds);
     mkdirSync(outputDir, { recursive: true });
 
     const builtPlugins: BuiltPlugin[] = [];
 
-    for (const pluginId of pluginIds) {
-      const plugin = artifacts.plugins[pluginId];
-      const pluginDir = join(outputDir, pluginId);
-      const built = this.buildPlugin(artifacts, pluginId, plugin, pluginDir);
+    for (const a of activations) {
+      const plugin = artifacts.plugins[a.qualified];
+      const pluginDir = join(outputDir, a.short);
+      const built = this.buildPlugin(artifacts, a.qualified, a.short, plugin, pluginDir);
       builtPlugins.push(built);
     }
 
@@ -59,8 +70,7 @@ export class CoworkEmitter implements PluginEmitter {
     const indexPath = join(claudePluginDir, "marketplace.json");
     const index = this.buildMarketplaceIndex(
       artifacts,
-      pluginIds,
-      builtPlugins,
+      activations,
       options
     );
     writeFileSync(indexPath, JSON.stringify(index, null, 2) + "\n");
@@ -70,13 +80,14 @@ export class CoworkEmitter implements PluginEmitter {
 
   buildPlugin(
     artifacts: ResolvedArtifacts,
-    pluginId: string,
+    pluginId: QualifiedId,
+    shortId: string,
     plugin: PluginEntry,
     outputDir: string
   ): BuiltPlugin {
     mkdirSync(outputDir, { recursive: true });
 
-    const manifest = this.buildManifest(pluginId, plugin);
+    const manifest = this.buildManifest(shortId, plugin);
     const manifestDir = join(outputDir, ".claude-plugin");
     mkdirSync(manifestDir, { recursive: true });
     writeFileSync(
@@ -84,15 +95,15 @@ export class CoworkEmitter implements PluginEmitter {
       JSON.stringify(manifest, null, 2) + "\n"
     );
 
-    const skillIds = plugin.skills ?? [];
-    const hookIds = plugin.hooks ?? [];
-    const mcpServerIds = plugin.mcp_servers ?? [];
+    const skillActs = this.shortenChildIds(plugin.skills ?? []);
+    const hookActs = this.shortenChildIds(plugin.hooks ?? []);
+    const mcpActs = this.shortenChildIds(plugin.mcp_servers ?? []);
 
-    // Emit skills
-    for (const skillId of skillIds) {
-      const skill = artifacts.skills[skillId];
+    // Emit skills under skills/<short>/
+    for (const a of skillActs) {
+      const skill = artifacts.skills[a.qualified];
       if (!skill) continue;
-      const skillTargetDir = join(outputDir, "skills", skillId);
+      const skillTargetDir = join(outputDir, "skills", a.short);
       if (existsSync(skill.path)) {
         this.copyDirRecursive(skill.path, skillTargetDir);
       }
@@ -102,8 +113,8 @@ export class CoworkEmitter implements PluginEmitter {
     }
 
     // Emit hooks
-    if (hookIds.length > 0) {
-      const hooksConfig = this.buildHooksConfig(artifacts, hookIds, outputDir);
+    if (hookActs.length > 0) {
+      const hooksConfig = this.buildHooksConfig(artifacts, hookActs);
       if (Object.keys(hooksConfig.hooks).length > 0) {
         const hooksDir = join(outputDir, "hooks");
         mkdirSync(hooksDir, { recursive: true });
@@ -111,13 +122,13 @@ export class CoworkEmitter implements PluginEmitter {
           join(hooksDir, "hooks.json"),
           JSON.stringify(hooksConfig, null, 2) + "\n"
         );
-        this.copyHookScripts(artifacts, hookIds, outputDir);
+        this.copyHookScripts(artifacts, hookActs, outputDir);
       }
     }
 
     // Emit MCP servers
-    if (mcpServerIds.length > 0) {
-      const mcpConfig = this.buildMcpConfig(artifacts, mcpServerIds);
+    if (mcpActs.length > 0) {
+      const mcpConfig = this.buildMcpConfig(artifacts, mcpActs);
       if (Object.keys(mcpConfig.mcpServers).length > 0) {
         writeFileSync(
           join(outputDir, ".mcp.json"),
@@ -127,20 +138,20 @@ export class CoworkEmitter implements PluginEmitter {
     }
 
     return {
-      id: pluginId,
+      id: shortId,
       path: outputDir,
-      skillCount: skillIds.filter((id) => artifacts.skills[id]).length,
-      hookCount: hookIds.filter((id) => artifacts.hooks[id]).length,
-      mcpServerCount: mcpServerIds.filter((id) => artifacts.mcp[id]).length,
+      skillCount: skillActs.filter((a) => artifacts.skills[a.qualified]).length,
+      hookCount: hookActs.filter((a) => artifacts.hooks[a.qualified]).length,
+      mcpServerCount: mcpActs.filter((a) => artifacts.mcp[a.qualified]).length,
     };
   }
 
   buildManifest(
-    pluginId: string,
+    shortId: string,
     plugin: PluginEntry
   ): Record<string, unknown> {
     const manifest: Record<string, unknown> = {
-      name: pluginId,
+      name: shortId,
       description: plugin.description,
     };
     if (plugin.version) manifest.version = plugin.version;
@@ -153,21 +164,18 @@ export class CoworkEmitter implements PluginEmitter {
   }
 
   /**
-   * Build inline hooks.json in the Co-work format:
-   * { hooks: { EventName: [{ matcher, hooks: [{ type, command }] }] } }
-   *
-   * Each AIR HOOK.json is read, its event mapped, and its command rewritten
-   * to use ${CLAUDE_PLUGIN_ROOT} for script paths.
+   * Build inline hooks.json in the Co-work format.
+   * Each hook activation contributes one matcher group; commands are rewritten
+   * to use ${CLAUDE_PLUGIN_ROOT}/scripts/<short>/ for relative paths.
    */
   buildHooksConfig(
     artifacts: ResolvedArtifacts,
-    hookIds: string[],
-    pluginDir: string
+    hookActs: ChildActivation[]
   ): { hooks: Record<string, unknown[]> } {
     const hooks: Record<string, unknown[]> = {};
 
-    for (const hookId of hookIds) {
-      const hook = artifacts.hooks[hookId];
+    for (const a of hookActs) {
+      const hook = artifacts.hooks[a.qualified];
       if (!hook) continue;
 
       const hookJsonPath = join(hook.path, "HOOK.json");
@@ -184,7 +192,7 @@ export class CoworkEmitter implements PluginEmitter {
       if (!coworkEvent || !hookJson.command) continue;
 
       const command = this.buildHookCommand(
-        hookId,
+        a.short,
         hookJson.command as string,
         hookJson.args as string[] | undefined
       );
@@ -211,19 +219,14 @@ export class CoworkEmitter implements PluginEmitter {
     return { hooks };
   }
 
-  /**
-   * Build a hook command using ${CLAUDE_PLUGIN_ROOT} for relative paths.
-   * Hook scripts are copied to scripts/{hookId}/ in the plugin directory,
-   * so relative paths point there.
-   */
   buildHookCommand(
-    hookId: string,
+    shortId: string,
     command: string,
     args?: string[]
   ): string {
     let cmd = command;
     if (cmd.startsWith("./")) {
-      cmd = `\${CLAUDE_PLUGIN_ROOT}/scripts/${hookId}/${cmd.slice(2)}`;
+      cmd = `\${CLAUDE_PLUGIN_ROOT}/scripts/${shortId}/${cmd.slice(2)}`;
     }
     if (args?.length) {
       const escaped = args.map((a) =>
@@ -235,19 +238,18 @@ export class CoworkEmitter implements PluginEmitter {
   }
 
   /**
-   * Copy hook scripts into scripts/{hookId}/ inside the plugin directory.
-   * Only copies executable files and scripts (not HOOK.json itself).
+   * Copy hook scripts into scripts/<short>/ inside the plugin directory.
    */
   copyHookScripts(
     artifacts: ResolvedArtifacts,
-    hookIds: string[],
+    hookActs: ChildActivation[],
     pluginDir: string
   ): void {
-    for (const hookId of hookIds) {
-      const hook = artifacts.hooks[hookId];
+    for (const a of hookActs) {
+      const hook = artifacts.hooks[a.qualified];
       if (!hook || !existsSync(hook.path)) continue;
 
-      const scriptsDir = join(pluginDir, "scripts", hookId);
+      const scriptsDir = join(pluginDir, "scripts", a.short);
       const entries = readdirSync(hook.path);
 
       for (const entry of entries) {
@@ -265,20 +267,20 @@ export class CoworkEmitter implements PluginEmitter {
 
   /**
    * Translate AIR MCP server entries to Co-work .mcp.json format.
-   * Same translation as Claude Code — Co-work uses the same MCP config format.
+   * Keys are bare shortnames — Co-work's MCP namespace is scope-naive.
    */
   buildMcpConfig(
     artifacts: ResolvedArtifacts,
-    mcpServerIds: string[]
+    mcpActs: ChildActivation[]
   ): { mcpServers: Record<string, Record<string, unknown>> } {
     const mcpServers: Record<string, Record<string, unknown>> = {};
 
-    for (const id of mcpServerIds) {
-      const server = artifacts.mcp[id];
+    for (const a of mcpActs) {
+      const server = artifacts.mcp[a.qualified];
       if (!server) continue;
 
       if (server.type === "stdio") {
-        mcpServers[id] = {
+        mcpServers[a.short] = {
           command: server.command,
           ...(server.args && { args: server.args }),
           ...(server.env && { env: server.env }),
@@ -286,7 +288,7 @@ export class CoworkEmitter implements PluginEmitter {
       } else {
         const coworkType =
           server.type === "streamable-http" ? "http" : server.type;
-        mcpServers[id] = {
+        mcpServers[a.short] = {
           type: coworkType,
           url: server.url,
           ...(server.headers && { headers: server.headers }),
@@ -321,15 +323,14 @@ export class CoworkEmitter implements PluginEmitter {
 
   private buildMarketplaceIndex(
     artifacts: ResolvedArtifacts,
-    pluginIds: string[],
-    builtPlugins: BuiltPlugin[],
+    activations: PluginActivation[],
     options?: BuildMarketplaceOptions
   ): Record<string, unknown> {
-    const plugins: Record<string, unknown>[] = pluginIds.map((id) => {
-      const plugin = artifacts.plugins[id];
+    const plugins: Record<string, unknown>[] = activations.map((a) => {
+      const plugin = artifacts.plugins[a.qualified];
       const entry: Record<string, unknown> = {
-        name: id,
-        source: `./${id}`,
+        name: a.short,
+        source: `./${a.short}`,
         description: plugin.description,
       };
       if (plugin.version) entry.version = plugin.version;
@@ -352,21 +353,77 @@ export class CoworkEmitter implements PluginEmitter {
     return index;
   }
 
-  private validatePluginIds(
+  /**
+   * Resolve plugin IDs (qualified or short) into qualified-shortname pairs.
+   * Throws on unknown / ambiguous IDs and on shortname collisions across the
+   * activation set (the marketplace can't host two plugins with the same dir).
+   */
+  private resolvePluginActivations(
     artifacts: ResolvedArtifacts,
     pluginIds: string[]
-  ): void {
-    const unknown = pluginIds.filter((id) => !artifacts.plugins[id]);
-    if (unknown.length > 0) {
-      const available = Object.keys(artifacts.plugins);
-      const availableMsg =
-        available.length > 0
-          ? `Available: ${available.join(", ")}`
-          : "None available";
+  ): PluginActivation[] {
+    const acts: PluginActivation[] = [];
+    const errors: string[] = [];
+    const shortToQualified = new Map<string, string>();
+
+    for (const id of pluginIds) {
+      const res = resolveReference(artifacts.plugins, id, undefined);
+      if (res.status === "missing") {
+        errors.push(`Unknown plugin ID "${id}".`);
+        continue;
+      }
+      if (res.status === "ambiguous") {
+        errors.push(
+          `Plugin reference "${id}" is ambiguous — candidates: ` +
+            `${res.candidates.join(", ")}.`
+        );
+        continue;
+      }
+      const { id: short } = parseQualifiedId(res.qualified);
+      const prior = shortToQualified.get(short);
+      if (prior !== undefined && prior !== res.qualified) {
+        errors.push(
+          `Plugin shortname collision: "${prior}" and "${res.qualified}" ` +
+            `both want directory "${short}".`
+        );
+        continue;
+      }
+      if (prior === res.qualified) continue;
+      shortToQualified.set(short, res.qualified);
+      acts.push({ qualified: res.qualified, short });
+    }
+
+    if (errors.length > 0) {
       throw new Error(
-        `Unknown plugin ID(s): ${unknown.join(", ")}. ${availableMsg}`
+        errors.length === 1
+          ? errors[0]
+          : `Plugin activation errors:\n  - ${errors.join("\n  - ")}`
       );
     }
+    return acts;
+  }
+
+  /**
+   * Convert a list of qualified child IDs (already canonicalized at composition
+   * time) into qualified+short pairs for filesystem materialization.
+   */
+  private shortenChildIds(ids: string[]): ChildActivation[] {
+    const acts: ChildActivation[] = [];
+    const shortToQualified = new Map<string, string>();
+    for (const id of ids) {
+      const { id: short } = parseQualifiedId(id);
+      const prior = shortToQualified.get(short);
+      if (prior !== undefined && prior !== id) {
+        throw new Error(
+          `Shortname collision in plugin contents: "${prior}" and "${id}" ` +
+            `both want target name "${short}". Add one to air.json#exclude.`
+        );
+      }
+      if (prior === id) continue;
+      shortToQualified.set(short, id);
+      acts.push({ qualified: id, short });
+    }
+    return acts;
   }
 
   private copyReferences(

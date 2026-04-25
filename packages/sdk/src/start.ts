@@ -3,6 +3,7 @@ import {
   getAirJsonPath,
   loadAirConfig,
   resolveArtifacts,
+  resolveReference,
   emptyArtifacts,
   type ResolvedArtifacts,
   type RootEntry,
@@ -128,12 +129,19 @@ export async function startSession(
 
   let root: RootEntry | undefined;
   if (options?.root) {
-    root = artifacts.roots[options.root];
-    if (!root) {
+    const res = resolveReference(artifacts.roots, options.root, undefined);
+    if (res.status === "missing") {
       throw new Error(
         `Root "${options.root}" not found. Available roots: ${Object.keys(artifacts.roots).join(", ") || "(none)"}`
       );
     }
+    if (res.status === "ambiguous") {
+      throw new Error(
+        `Root "${options.root}" is ambiguous across scopes — candidates: ` +
+          `${res.candidates.join(", ")}. Use the qualified form to disambiguate.`
+      );
+    }
+    root = artifacts.roots[res.qualified];
   }
 
   const sessionConfig = adapter.generateConfig(artifacts, root);

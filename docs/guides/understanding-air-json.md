@@ -93,23 +93,29 @@ Paths can also be remote URIs when a catalog provider is installed:
 
 See [Composition and Overrides](composition-and-overrides.md) for details on remote configs.
 
-## Composition: array ordering matters
+## Composition: scoped identity, no overrides
 
-Each artifact field is an **ordered array** of index file paths. Files are loaded and merged **in order** — later entries override earlier ones **by ID**, using **full replacement** (no deep merge).
+Each artifact has a qualified identity of the form `@scope/id`. Local indexes contribute under `@local/`; remote catalogs contribute under their provider-derived scope (for `github://owner/repo` that's `@<owner>/<repo>/`).
+
+Composition is additive:
+
+1. **Disjoint qualified IDs** accumulate (union)
+2. **Duplicate qualified IDs** hard-fail — you cannot silently override an artifact
+3. **Cross-scope shortname collisions** warn but keep both — disambiguate with the qualified form
+4. **`exclude`** is the only way to drop an artifact (takes a list of qualified IDs)
 
 ```json
 {
-  "mcp": [
-    "./mcp/org-defaults.json",
-    "./mcp/team-overrides.json",
-    "./mcp/local.json"
-  ]
+  "catalogs": [
+    "github://acme/air-org",
+    "./platform-team-catalog"
+  ],
+  "mcp": ["./mcp/local.json"],
+  "exclude": ["@acme/air-org/legacy-server"]
 }
 ```
 
-If `org-defaults.json` defines a server with ID `"github"` and `team-overrides.json` also defines `"github"`, the team version completely replaces the org version. The org definition is discarded entirely — fields are not merged between the two.
-
-This makes override behavior predictable: you always know which definition wins by looking at array order.
+The org catalog ships under `@acme/air-org/...`, the platform team catalog under `@local/...` (any local catalog scope), and per-type arrays under `@local/...`. There is no later-wins override. To replace an artifact, `exclude` it from the upstream catalog and ship a replacement under your own scope.
 
 ## Whole-catalog composition
 
@@ -126,11 +132,11 @@ For the common case of layering two or more full catalogs, the `catalogs` field 
 
 Each entry is a directory (local path or provider URI). AIR walks the catalog up to 3 directory levels deep and picks up any file whose filename or `$schema` identifies it as an AIR artifact index (`skills.json`, `roots.json`, `mcp.json`, `references.json`, `plugins.json`, `hooks.json`, or any filename containing those keywords as delimited tokens). Folder names are free — `agents/agent-roots/roots.json`, `config/mcp-servers/mcp.json`, and the conventional `<type>/<type>.json` layout all work.
 
-Within a single catalog, if two indexes of the same type are found, they merge in sorted relative-path order with later-wins by ID. Across multiple catalogs, earlier entries are merged first; later catalogs override. Per-type arrays (`skills`, `mcp`, …) layer on top last. See [Composition and Overrides](composition-and-overrides.md) for details.
+Within a single catalog, multiple indexes of the same type contribute to the same scope, so their shortnames must be disjoint — duplicates hard-fail. Different catalogs contribute under different scopes (`@<owner>/<repo>/...` for `github://`, `@local/...` for local paths), so they never collide on qualified IDs. Per-type arrays (`skills`, `mcp`, …) contribute under `@local/...` alongside any local catalogs. See [Composition and Overrides](composition-and-overrides.md) for details.
 
 ### Example
 
-**org-defaults.json:**
+**org catalog `mcp.json`:**
 ```json
 {
   "github": {
@@ -146,10 +152,12 @@ Within a single catalog, if two indexes of the same type are found, they merge i
 }
 ```
 
-**team-overrides.json:**
+**local `mcp.json`:**
 ```json
 {
   "github": {
+    "title": "GitHub (team build)",
+    "description": "Team-managed GitHub server",
     "type": "stdio",
     "command": "npx",
     "args": ["-y", "@modelcontextprotocol/server-github@0.7.0"],
@@ -160,7 +168,15 @@ Within a single catalog, if two indexes of the same type are found, they merge i
 }
 ```
 
-Result: the team override wins entirely. The `title` and `description` from the org default are **not preserved** — the team definition is a complete replacement. If you want to keep them, include them in the override.
+These resolve to two distinct artifacts: `@acme/air-org/github` and `@local/github`. Both are available — they have the same shortname (`github`), so AIR emits a cross-scope collision warning and you must reference them by qualified ID to disambiguate. To use only the local one, exclude the org's:
+
+```json
+{
+  "catalogs": ["github://acme/air-org"],
+  "mcp": ["./mcp/local.json"],
+  "exclude": ["@acme/air-org/github"]
+}
+```
 
 ## Extensions
 
@@ -202,9 +218,9 @@ This is valid but won't do anything useful. Add artifact arrays as you need them
 
 ## Common mistakes
 
-### Using deep merge expectations
+### Expecting later-wins overrides
 
-AIR uses **full replacement** by ID, never deep merge. If you override an MCP server, you must include all fields you want — not just the ones that changed.
+AIR no longer silently overrides artifacts by ID. Composition is additive: every artifact is identified by its `@scope/id`. If two catalogs ship the same qualified ID, AIR hard-fails. To replace an upstream artifact, `exclude` it and ship a replacement under your own scope (e.g. `@local/`).
 
 ### Forgetting that paths are relative to air.json
 
@@ -224,7 +240,7 @@ Each artifact's key in its index file should match the `id` (or `name` for roots
 }
 ```
 
-If the key is `"my-skill"` but `id` is `"other-skill"`, this mismatch is not caught by `air validate` (JSON Schema cannot enforce key-value correspondence), but it can cause unexpected override behavior at runtime. Always keep keys and IDs in sync.
+If the key is `"my-skill"` but `id` is `"other-skill"`, this mismatch is not caught by `air validate` (JSON Schema cannot enforce key-value correspondence), but it can cause confusing collision errors at runtime. Always keep keys and IDs in sync.
 
 ### Adding unknown fields
 
