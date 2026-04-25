@@ -59,7 +59,7 @@ What AIR's defaults need to do here: validate eagerly and fail loudly. A solo us
 
 ### 2. Small team with shared scope plus a local in-flight layer
 
-A handful of engineers who share one team catalog (typically a git repo everyone clones) but want a place to iterate on skills, hooks, or MCP servers locally before committing them to the shared catalog. The scope is still essentially "the team," but a local workshop layer is a real distinction worth supporting first-class.
+A handful of engineers who share one team catalog (typically a git repo everyone clones) but want a place to iterate on skills, hooks, or MCP servers locally before committing them to the shared catalog. The scope is still essentially "the team," but a local workshop layer is a real distinction worth supporting first-class. Unlike [scenario 4](#4-mid-size-org-with-a-developer-experience-team), there's no separate platform team owning the shared layer — the same engineers who consume the team catalog also maintain it.
 
 - **Collision risk:** low — collisions tend to be intentional ("I'm prototyping a v2 of `code-review` locally before merging it upstream").
 - **Value of scoping:** moderate — the team catalog has a clear identity (`@team/team-catalog`), the local layer is consciously a workshop, and the difference matters when explaining unexpected behavior.
@@ -77,11 +77,13 @@ A handful of engineers who share one team catalog (typically a git repo everyone
 }
 ```
 
+If the local workshop defines `code-review` and the team catalog also defines `code-review`, the local entry wins by [full replacement](#full-replacement-by-id-no-deep-merge) — which is the desired behavior for an intentional prototype but the failure mode above when it's accidental.
+
 What AIR's defaults need to do here: surface "your local layer overrode something from the team catalog" as a visible event, not an invisible last-wins. Intentional shadowing is fine; silent shadowing is the bug.
 
 ### 3. Mid-size org without a Developer Experience team
 
-Multiple product teams, no central platform owner. Each team builds and maintains its own catalog. There's no shared baseline, but teams sometimes pull from each other or reference each other's tools when work overlaps. Naming happens in parallel, with no coordination.
+Multiple product teams, no central platform owner. Each team builds and maintains its own catalog. There's no shared baseline, but teams sometimes pull from each other or reference each other's tools when work overlaps.
 
 - **Collision risk:** medium — same-shortname artifacts emerge in parallel because nobody is brokering naming.
 - **Value of scoping:** high — when team A pulls team B's catalog, the qualified ID `@team-b/team-b-catalog/deploy-staging` makes the cross-team origin obvious, and team A's own `deploy-staging` doesn't get clobbered.
