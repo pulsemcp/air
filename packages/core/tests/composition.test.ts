@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { join } from "path";
 import { resolveArtifacts } from "../src/config.js";
+import type { CatalogProvider } from "../src/types.js";
 import {
   createTempAirDir,
   exampleSkill,
@@ -234,5 +235,111 @@ describe("composition", () => {
     await expect(resolveArtifacts(join(dir, "air.json"))).rejects.toThrow(
       /references unknown reference "missing-ref"/,
     );
+  });
+
+  it("reference to an excluded artifact emits a tailored error", async () => {
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        skills: ["./skills.json"],
+        references: ["./refs.json"],
+        exclude: ["@local/git-workflow"],
+      },
+      "skills.json": {
+        deploy: exampleSkill("deploy", { references: ["git-workflow"] }),
+      },
+      "refs.json": {
+        "git-workflow": exampleReference("git-workflow"),
+      },
+    });
+    cleanup = c;
+
+    await expect(resolveArtifacts(join(dir, "air.json"))).rejects.toThrow(
+      /removed by air\.json#exclude.*@local\/git-workflow/s,
+    );
+  });
+
+  it("cross-scope shortname collision warns once when both scopes survive exclude", async () => {
+    const warnings: string[] = [];
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        catalogs: ["mock://acme"],
+        skills: ["./local-skills.json"],
+      },
+      "local-skills.json": {
+        review: exampleSkill("review"),
+      },
+      "remote/skills/skills.json": {
+        review: exampleSkill("review", { description: "Org review" }),
+      },
+    });
+    cleanup = c;
+
+    const provider: CatalogProvider = {
+      scheme: "mock",
+      async resolveCatalogDir(): Promise<string> {
+        return join(dir, "remote");
+      },
+      async resolve(): Promise<Record<string, unknown>> {
+        return {};
+      },
+      getScope: () => "acme/skills",
+    };
+
+    const artifacts = await resolveArtifacts(join(dir, "air.json"), {
+      providers: [provider],
+      onWarning: (m) => warnings.push(m),
+    });
+
+    expect(artifacts.skills["@local/review"]).toBeDefined();
+    expect(artifacts.skills["@acme/skills/review"]).toBeDefined();
+    const collisionWarns = warnings.filter((w) =>
+      w.includes("Cross-scope shortname collision"),
+    );
+    expect(collisionWarns).toHaveLength(1);
+    expect(collisionWarns[0]).toMatch(/skills "review"/);
+  });
+
+  it("cross-scope shortname collision warning is silenced when exclude removes one side", async () => {
+    const warnings: string[] = [];
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        catalogs: ["mock://acme"],
+        skills: ["./local-skills.json"],
+        exclude: ["@acme/skills/review"],
+      },
+      "local-skills.json": {
+        review: exampleSkill("review"),
+      },
+      "remote/skills/skills.json": {
+        review: exampleSkill("review", { description: "Org review" }),
+      },
+    });
+    cleanup = c;
+
+    const provider: CatalogProvider = {
+      scheme: "mock",
+      async resolveCatalogDir(): Promise<string> {
+        return join(dir, "remote");
+      },
+      async resolve(): Promise<Record<string, unknown>> {
+        return {};
+      },
+      getScope: () => "acme/skills",
+    };
+
+    const artifacts = await resolveArtifacts(join(dir, "air.json"), {
+      providers: [provider],
+      onWarning: (m) => warnings.push(m),
+    });
+
+    expect(artifacts.skills["@local/review"]).toBeDefined();
+    expect(artifacts.skills["@acme/skills/review"]).toBeUndefined();
+    expect(
+      warnings.filter((w) => w.includes("Cross-scope shortname collision"))
+        .length,
+    ).toBe(0);
   });
 });

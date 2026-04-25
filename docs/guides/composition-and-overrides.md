@@ -68,12 +68,14 @@ There is no "later-wins" override. The only way to drop an artifact is `exclude`
 When two **different** scopes happen to ship the same shortname, AIR warns once at resolution time and keeps both:
 
 ```
-Warning: Shortname "review" appears in multiple scopes
-(@local/review, @acme/air-org/review). Short references to
-"review" must use the qualified form to disambiguate.
+Warning: Cross-scope shortname collision: skills "review" is provided
+by 2 scopes — @local (from ./local-skills.json),
+@acme/air-org (from github://acme/air-org). Short references to
+"review" without a scope are ambiguous; use the qualified form
+"@scope/review" to disambiguate.
 ```
 
-The artifacts both stay in the resolved set — the warning just tells you that any short reference to `review` will need the qualified form.
+The artifacts both stay in the resolved set — the warning just tells you that any short reference to `review` will need the qualified form. Excluding either side via [`exclude`](#4-exclude-drops-artifacts-by-qualified-id) silences the warning, since the collision check runs after `exclude` has applied.
 
 ### 4. `exclude` drops artifacts by qualified ID
 

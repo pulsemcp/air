@@ -138,17 +138,19 @@ async function loadContributions<T>(
  *   - Two contributions producing the same qualified ID hard-fail with a
  *     diagnostic that names both sources.
  *   - Two contributions producing the same shortname under different scopes
- *     succeed (both qualified IDs land in the map) but emit a warning so
- *     authors notice and can disambiguate references.
+ *     both land in the map. Cross-scope shortname collisions are reported by
+ *     {@link warnCrossScopeShortnames} *after* `exclude` runs, so excluding
+ *     one of the colliding artifacts silences the warning.
+ *
+ * Returns the merged map plus a `sources` map that records which contribution
+ * each qualified ID came from — used later for the post-exclude warning pass.
  */
 function mergeContributions<T>(
   contributions: ArtifactContribution<T>[],
-  artifactType: string,
-  warnings: string[]
-): Record<QualifiedId, T> {
+  artifactType: string
+): { merged: Record<QualifiedId, T>; sources: Map<QualifiedId, string> } {
   const merged: Record<QualifiedId, T> = {};
   const sourceByQualified = new Map<QualifiedId, string>();
-  const scopesByShortname = new Map<string, Map<string, string>>();
 
   for (const contribution of contributions) {
     for (const [shortname, entry] of Object.entries(contribution.entries)) {
@@ -172,30 +174,51 @@ function mergeContributions<T>(
       }
       sourceByQualified.set(qualified, contribution.source);
       merged[qualified] = entry;
+    }
+  }
 
+  return { merged, sources: sourceByQualified };
+}
+
+/**
+ * Emit one warning per shortname that survives `exclude` under more than one
+ * scope. Running this after {@link applyExclude} means excluding either side
+ * of the collision silences the warning.
+ */
+function warnCrossScopeShortnames(
+  artifacts: ResolvedArtifacts,
+  sourcesByType: Record<ArtifactType, Map<QualifiedId, string>>,
+  warnings: string[]
+): void {
+  for (const type of ARTIFACT_TYPES) {
+    const pool = artifacts[type] as Record<string, unknown>;
+    const sources = sourcesByType[type];
+    const scopesByShortname = new Map<string, Map<string, string>>();
+
+    for (const qualified of Object.keys(pool)) {
+      const { scope, id: shortname } = parseQualifiedId(qualified);
+      const source = sources.get(qualified) ?? "(unknown source)";
       let scopeMap = scopesByShortname.get(shortname);
       if (!scopeMap) {
         scopeMap = new Map<string, string>();
         scopesByShortname.set(shortname, scopeMap);
       }
-      scopeMap.set(contribution.scope, contribution.source);
+      scopeMap.set(scope, source);
+    }
+
+    for (const [shortname, scopeMap] of scopesByShortname) {
+      if (scopeMap.size <= 1) continue;
+      const scopeList = [...scopeMap.entries()]
+        .map(([scope, source]) => `@${scope} (from ${source})`)
+        .join(", ");
+      warnings.push(
+        `Cross-scope shortname collision: ${type} "${shortname}" is ` +
+          `provided by ${scopeMap.size} scopes — ${scopeList}. Short references ` +
+          `to "${shortname}" without a scope are ambiguous; use the qualified ` +
+          `form "@scope/${shortname}" to disambiguate.`
+      );
     }
   }
-
-  for (const [shortname, scopeMap] of scopesByShortname) {
-    if (scopeMap.size <= 1) continue;
-    const scopeList = [...scopeMap.entries()]
-      .map(([scope, source]) => `@${scope} (from ${source})`)
-      .join(", ");
-    warnings.push(
-      `Cross-scope shortname collision: ${artifactType} "${shortname}" is ` +
-        `provided by ${scopeMap.size} scopes — ${scopeList}. Short references ` +
-        `to "${shortname}" without a scope are ambiguous; use the qualified ` +
-        `form "@scope/${shortname}" to disambiguate.`
-    );
-  }
-
-  return merged;
 }
 
 export function loadAirConfig(airJsonPath: string): AirConfig {
@@ -524,6 +547,7 @@ async function expandAllCatalogs(
  */
 function canonicalizeReferences(
   artifacts: ResolvedArtifacts,
+  excluded: Set<QualifiedId>,
   errors: string[]
 ): ResolvedArtifacts {
   type RefField =
@@ -541,6 +565,23 @@ function canonicalizeReferences(
     hooks: { ...artifacts.hooks },
   };
 
+  /**
+   * For a `missing` reference, decide whether the target was specifically
+   * dropped by `air.json#exclude`. Exact qualified-ID match wins; otherwise a
+   * short reference matches any excluded entry whose shortname matches `ref`.
+   * The list of matching excluded IDs is returned so the error can name them.
+   */
+  function excludedMatches(ref: string): QualifiedId[] {
+    if (isQualified(ref)) {
+      return excluded.has(ref) ? [ref] : [];
+    }
+    const matches: QualifiedId[] = [];
+    for (const id of excluded) {
+      if (parseQualifiedId(id).id === ref) matches.push(id);
+    }
+    return matches;
+  }
+
   function resolveList(
     list: string[] | undefined,
     pool: Record<string, unknown>,
@@ -556,10 +597,20 @@ function canonicalizeReferences(
       if (res.status === "ok") {
         out.push(res.qualified);
       } else if (res.status === "missing") {
-        errors.push(
-          `${ownerLabel}.${field} references unknown ${poolType} "${ref}". ` +
-            `Available qualified IDs: ${listIds(pool)}.`
-        );
+        const matches = excludedMatches(ref);
+        if (matches.length > 0) {
+          errors.push(
+            `${ownerLabel}.${field} references ${poolType} "${ref}", ` +
+              `which is removed by air.json#exclude (${matches.join(", ")}). ` +
+              `Drop the exclude entry or also remove every artifact that ` +
+              `references it.`
+          );
+        } else {
+          errors.push(
+            `${ownerLabel}.${field} references unknown ${poolType} "${ref}". ` +
+              `Available qualified IDs: ${listIds(pool)}.`
+          );
+        }
       } else {
         errors.push(
           `${ownerLabel}.${field} reference "${ref}" is ambiguous across ` +
@@ -705,8 +756,10 @@ function applyExclude(
   artifacts: ResolvedArtifacts,
   exclude: string[],
   warnings: string[]
-): ResolvedArtifacts {
-  if (exclude.length === 0) return artifacts;
+): { artifacts: ResolvedArtifacts; excluded: Set<string> } {
+  if (exclude.length === 0) {
+    return { artifacts, excluded: new Set() };
+  }
 
   const excludeSet = new Set<string>();
   for (const id of exclude) {
@@ -749,7 +802,7 @@ function applyExclude(
     }
   }
 
-  return result;
+  return { artifacts: result, excluded: excludeSet };
 }
 
 /**
@@ -809,10 +862,21 @@ export async function resolveArtifacts(
     return list;
   }
 
+  const sourcesByType: Record<ArtifactType, Map<QualifiedId, string>> = {
+    skills: new Map(),
+    references: new Map(),
+    mcp: new Map(),
+    plugins: new Map(),
+    roots: new Map(),
+    hooks: new Map(),
+  };
+
   async function load<T>(type: ArtifactType): Promise<Record<string, T>> {
     const paths = pathsFor(type);
     const contributions = await loadContributions<T>(paths, baseDir, providers);
-    return mergeContributions<T>(contributions, type, warnings);
+    const { merged, sources } = mergeContributions<T>(contributions, type);
+    sourcesByType[type] = sources;
+    return merged;
   }
 
   const resolved: ResolvedArtifacts = {
@@ -826,10 +890,18 @@ export async function resolveArtifacts(
 
   // Apply exclude before reference canonicalization so dropped IDs cannot
   // satisfy references and a clear "missing reference" error surfaces.
-  const filtered = applyExclude(resolved, airConfig.exclude || [], warnings);
+  const { artifacts: filtered, excluded } = applyExclude(
+    resolved,
+    airConfig.exclude || [],
+    warnings
+  );
+
+  // Cross-scope shortname collisions are reported on the post-exclude pool, so
+  // excluding one side of the collision silences the warning automatically.
+  warnCrossScopeShortnames(filtered, sourcesByType, warnings);
 
   const refErrors: string[] = [];
-  const canonical = canonicalizeReferences(filtered, refErrors);
+  const canonical = canonicalizeReferences(filtered, excluded, refErrors);
   if (refErrors.length > 0) {
     throw new Error(
       `Reference resolution failed:\n  - ${refErrors.join("\n  - ")}`

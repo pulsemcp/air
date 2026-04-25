@@ -347,8 +347,9 @@ export function computeMergedDefaults(
  * When a `pool` is supplied, short-form `add` and `remove` IDs are
  * canonicalized to their qualified form (e.g. `skill-a` → `@local/skill-a`)
  * via `resolveReference` so set operations match the canonical merged
- * defaults. Unknown or ambiguous short IDs pass through unchanged so the
- * caller can surface them as "(not found)".
+ * defaults. Unknown short IDs pass through unchanged so the caller can
+ * surface them as "(not found)". Ambiguous short IDs throw — the caller
+ * must disambiguate with the qualified form before re-invoking.
  */
 export function resolveCategoryOverride(
   explicitOverride: string[] | undefined,
@@ -362,14 +363,22 @@ export function resolveCategoryOverride(
   const hasIntent =
     add !== undefined || remove !== undefined || (withoutDefaults ?? false);
   if (!hasIntent) return undefined;
-  const canonicalize = (id: string): string => {
+  const canonicalize = (id: string, source: "add" | "remove"): string => {
     if (!pool) return id;
     const res = resolveReference(pool, id, undefined);
-    return res.status === "ok" ? res.qualified : id;
+    if (res.status === "ok") return res.qualified;
+    if (res.status === "ambiguous") {
+      throw new Error(
+        `${source} reference "${id}" is ambiguous across scopes — ` +
+          `candidates: ${res.candidates.join(", ")}. ` +
+          `Use the qualified form to disambiguate.`
+      );
+    }
+    return id;
   };
   const base = withoutDefaults ? [] : mergedDefaults;
   const set = new Set(base);
-  for (const id of add ?? []) set.add(canonicalize(id));
-  for (const id of remove ?? []) set.delete(canonicalize(id));
+  for (const id of add ?? []) set.add(canonicalize(id, "add"));
+  for (const id of remove ?? []) set.delete(canonicalize(id, "remove"));
   return [...set];
 }
