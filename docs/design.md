@@ -33,7 +33,7 @@ Issue tracking and historical context live in the linked GitHub issues. This doc
 
 ## User scenarios
 
-These are the team and org shapes AIR's defaults are designed for, ordered roughly from smallest unit to largest collision surface. The first three are internal team shapes (where the consumer also owns the catalog); the last two are external composition shapes (where the consumer pulls in catalogs they don't own). They're a starting point, not the final list — candidates worth considering later include agent-platform vendors shipping AIR-as-config and individual-developer + employer-org composition.
+These are the team and org shapes AIR's defaults are designed for, ordered roughly from smallest unit and tightest trust boundary outward. The first three are internal team shapes (where the consumer also owns the catalog); the last two are external composition shapes (where the consumer pulls in catalogs they don't own). They're a starting point, not the final list — candidates worth considering later include agent-platform vendors shipping AIR-as-config, and individual-developer + employer-org composition.
 
 ### 1. Solo developer — local-only, no Git
 
@@ -75,7 +75,7 @@ A team that maintains one shared catalog in a single Git repo. Everyone consumes
 }
 ```
 
-What AIR's defaults need to do here: make full-replacement-by-ID semantics legible in PR review — a maintainer reviewing a change should be able to tell at a glance whether an entry is new or replaces an existing one. Single-namespace catalogs are workable as long as override mechanics are visible in diff.
+What AIR's defaults need to do here: surface ID collisions clearly in `air resolve` / validation output so a maintainer reviewing a PR can tell at a glance whether an entry is new or replaces an existing one. Single-namespace catalogs are workable as long as the tool makes override events visible — they shouldn't have to be inferred from a diff.
 
 ### 3. Multiple teams — per-team catalogs layered onto a global catalog
 
@@ -105,7 +105,7 @@ What AIR's defaults need to do here: keep cross-team scopes visibly distinct, su
 
 A consumer composes a catalog they don't own — for example, a customer's `air.json` shipped alongside an integration. Some artifacts apply, some don't, and there's no upstream commit access.
 
-- **Collision risk:** variable.
+- **Collision risk:** variable — depends on how much the customer's catalog overlaps in shortnames with yours.
 - **Value of scoping:** high — `@customer/repo/...` is obviously not yours, and an agent reading descriptions can tell which entries are customer-specific.
 - **Failure mode that matters most:** an external artifact silently shadowing a local one (or vice versa), with no way for the consumer to express "I want this catalog *minus* these items" without forking it.
 
