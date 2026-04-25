@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-04-25
+
+### Added
+- **`air resolve --no-scope` flag** for emitting shortname-keyed output. Pass `--no-scope` to rewrite both top-level keys (`@local/github` → `github`) and reference fields inside entries (`default_skills`, `default_mcp_servers`, `skills.references`, `plugins.{skills,mcp_servers,hooks,plugins}`, `hooks.references`) to bare shortnames. The flag is opt-in and **hard-fails** when a shortname is contributed by more than one scope within the same artifact category — the error lists every colliding qualified ID so you can pick which one to drop via `air.json#exclude`. Useful for single-scope universes (local-only, internal-only, or single private catalog) and for downstream consumers that were built around bare shortnames before 0.1.0. The default qualified output is unchanged. New exports: `stripScopes` and `ShortnameCollisionError` from both `@pulsemcp/air-core` and `@pulsemcp/air-sdk`. Resolves [#116](https://github.com/pulsemcp/air/issues/116).
+
 ## [0.1.0] - 2026-04-25
 
 ### Added

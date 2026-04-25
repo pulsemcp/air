@@ -277,24 +277,65 @@ air resolve --json
 
 ```json
 {
-  "skills":     { "<id>": { "description": "...", "path": "/abs/path" } },
-  "references": { "<id>": { "description": "...", "path": "/abs/path" } },
-  "mcp":        { "<id>": { "type": "stdio", "command": "...", "args": [] } },
-  "plugins":    { "<id>": { "description": "...", "skills": [], "mcp_servers": [] } },
-  "roots":      { "<id>": { "description": "...", "default_skills": [] } },
-  "hooks":      { "<id>": { "description": "...", "path": "/abs/path" } }
+  "skills":     { "@scope/<id>": { "description": "...", "path": "/abs/path" } },
+  "references": { "@scope/<id>": { "description": "...", "path": "/abs/path" } },
+  "mcp":        { "@scope/<id>": { "type": "stdio", "command": "...", "args": [] } },
+  "plugins":    { "@scope/<id>": { "description": "...", "skills": [], "mcp_servers": [] } },
+  "roots":      { "@scope/<id>": { "description": "...", "default_skills": [] } },
+  "hooks":      { "@scope/<id>": { "description": "...", "path": "/abs/path" } }
 }
 ```
 
-All `path` fields are absolute, matching what `resolveArtifacts()` returns from `@pulsemcp/air-core`. Unused artifact types are emitted as empty objects.
+Keys are qualified IDs (`@scope/id`); reference fields inside entries are likewise qualified. All `path` fields are absolute, matching what `resolveArtifacts()` returns from `@pulsemcp/air-core`. Unused artifact types are emitted as empty objects.
 
 ### Options
 
 | Flag | Description |
 |------|-------------|
 | `--json` | Emit JSON output (currently the only supported format) |
+| `--no-scope` | Emit shortname-keyed output instead of qualified-ID keys; hard-fails on cross-scope shortname collisions (see below) |
 | `--config <path>` | Path to air.json (default: `AIR_CONFIG` env or `~/.air/air.json`) |
 | `--git-protocol <ssh\|https>` | Protocol used by git-based catalog providers when cloning |
+
+### Shortname-keyed output (`--no-scope`)
+
+```bash
+air resolve --no-scope
+```
+
+Same artifact tree, but every key — and every reference inside an entry — is a bare shortname:
+
+```json
+{
+  "mcp":   { "github": { "type": "stdio", "command": "..." } },
+  "roots": { "default": { "default_mcp_servers": ["github"] } }
+}
+```
+
+`--no-scope` is opt-in and hard-fails when a shortname is contributed by more than one scope within the same artifact category:
+
+```
+Error: --no-scope requires unique shortnames across all scopes, but
+  shortname "github" maps to multiple qualified IDs:
+    - @local/github
+    - @reframe-systems/agentic-engineering/github
+  Either use the default qualified output, or exclude one of them
+  via air.json#exclude.
+```
+
+There is no silent later-wins. Either drop the colliding entry via `air.json#exclude`, or stay on the default qualified output.
+
+**Use `--no-scope` when:**
+
+- You are committed to a single-scope universe — local-only, internal-only, or a single private catalog.
+- You are an early adopter whose downstream consumer (database schema, UI, scripts) was built around bare shortnames and would otherwise need to maintain a regex-stripping shim.
+- The output is consumed by humans, scripts, or UIs where qualified IDs add noise (`jq`, tables, dashboards, demos).
+
+**Do not use `--no-scope` when:**
+
+- You compose multiple catalogs intentionally and want both `@acme/review` and `@local/review` to coexist — that is exactly what the default qualified output is for.
+
+**Trade-off.** Using `--no-scope` is a commitment. Add a second catalog later that contributes a colliding shortname, and your build breaks until you either exclude one of them via `air.json#exclude` or switch back to the default qualified output and update consumers. Brevity now in exchange for an enforced invariant; users who want compositional flexibility should stick with the default.
 
 ### When to use it
 
@@ -302,7 +343,7 @@ All `path` fields are absolute, matching what `resolveArtifacts()` returns from 
 - **Orchestrators** that show users "what skills/roots are available" before they pick a root for `air prepare`
 - **Debugging** — confirm that `github://` URIs and `catalogs` entries resolve to the expected merged view
 
-For programmatic TypeScript/JavaScript consumers, use `resolveFullArtifacts()` from `@pulsemcp/air-sdk` instead — it returns the same object without spawning a subprocess.
+For programmatic TypeScript/JavaScript consumers, use `resolveFullArtifacts()` from `@pulsemcp/air-sdk` instead — it returns the same object without spawning a subprocess. The same `stripScopes(artifacts)` helper used internally by `--no-scope` is also exported from `@pulsemcp/air-sdk` for callers that want shortname-keyed output programmatically.
 
 ## air export — building plugin marketplaces
 

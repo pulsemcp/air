@@ -1,6 +1,6 @@
 {
   "name": "@pulsemcp/air-cowork",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publishConfig": {
     "access": "public"
   },
@@ -29,7 +29,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@pulsemcp/air-core": "0.1.0"
+    "@pulsemcp/air-core": "0.2.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

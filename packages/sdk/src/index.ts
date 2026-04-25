@@ -18,6 +18,8 @@ export {
   buildShortnameIndex,
   lookupArtifactId,
   resolveReference,
+  stripScopes,
+  ShortnameCollisionError,
   // Validation
   validateJson,
   // Schemas
@@ -85,6 +87,7 @@ export type {
   // Scoped identity types
   QualifiedId,
   ReferenceResolution,
+  ShortnameCollision,
 } from "@pulsemcp/air-core";
 
 // Adapter registry
