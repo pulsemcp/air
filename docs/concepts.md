@@ -59,7 +59,7 @@ For each artifact type:
 1. **Disjoint qualified IDs** accumulate (additive union)
 2. **Duplicate qualified IDs** hard-fail — you cannot silently override an artifact
 3. **Cross-scope shortname collisions** warn but keep both — disambiguate with the qualified form
-4. **`exclude`** is the only way to drop an artifact (takes a list of qualified IDs)
+4. **`exclude`** is the only way to drop an artifact. It takes a per-type object (keys: `skills`, `references`, `mcp`, `plugins`, `roots`, `hooks`) where each value is a list of qualified-ID patterns. `*` is allowed within a single segment (matches one full segment, no boundary spanning).
 
 ### Example
 
@@ -71,14 +71,16 @@ For each artifact type:
     "github://acme/air-frontend"
   ],
   "mcp": ["./mcp/mcp.json"],
-  "exclude": ["@acme/air-org/legacy-server"]
+  "exclude": {
+    "mcp": ["@acme/air-org/legacy-server"]
+  }
 }
 ```
 
 - **Org catalog** ships under `@acme/air-org/...`
 - **Frontend team catalog** ships under `@acme/air-frontend/...`
 - **Local `mcp.json`** ships under `@local/...`
-- `exclude` drops `@acme/air-org/legacy-server`. To replace an upstream artifact, exclude it and ship a replacement under your own scope.
+- `exclude.mcp` drops the MCP server `@acme/air-org/legacy-server`. To replace an upstream artifact, exclude it under the right type and ship a replacement under your own scope.
 
 ## Design Principles
 

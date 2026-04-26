@@ -32,9 +32,35 @@
       "description": "Paths or URIs to artifact catalogs. AIR walks each catalog up to 3 directory levels deep and discovers artifact index files (skills, references, mcp, plugins, roots, hooks) by filename or `$schema`. Every artifact discovered in a catalog is qualified `@scope/id`, where scope is supplied by the catalog provider (e.g. `owner/repo` for github://) or `local` for filesystem catalogs. Composition is union-only — duplicate qualified IDs across catalogs are an error; same shortname under different scopes is allowed and reported as a warning."
     },
     "exclude": {
-      "type": "array",
-      "items": { "type": "string", "pattern": "^@[a-zA-Z0-9._\\-/]+/[^/]+$" },
-      "description": "Qualified IDs (`@scope/id`) to drop from the resolved artifact set. This is the only composition control AIR offers — there is no override or field-level patching. Entries that do not match a resolved artifact surface as warnings."
+      "type": "object",
+      "description": "Per-type lists of qualified IDs (`@scope/id`) — or wildcard patterns of the same shape — to drop from the resolved artifact set. This is the only composition control AIR offers; there is no override or field-level patching. Each `*` segment matches one or more non-slash characters within a single qualified-ID segment and does not span segment boundaries. Entries that do not match any resolved artifact of their type surface as warnings naming both the type and the offending pattern. The legacy flat-array form (e.g. `exclude: [\"@a/x\"]`) is rejected — use `exclude: { \"<type>\": [\"@a/x\"] }` instead.",
+      "properties": {
+        "skills": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^@[a-zA-Z0-9._\\-/*]+/[a-zA-Z0-9._\\-*]+$" }
+        },
+        "references": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^@[a-zA-Z0-9._\\-/*]+/[a-zA-Z0-9._\\-*]+$" }
+        },
+        "mcp": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^@[a-zA-Z0-9._\\-/*]+/[a-zA-Z0-9._\\-*]+$" }
+        },
+        "plugins": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^@[a-zA-Z0-9._\\-/*]+/[a-zA-Z0-9._\\-*]+$" }
+        },
+        "roots": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^@[a-zA-Z0-9._\\-/*]+/[a-zA-Z0-9._\\-*]+$" }
+        },
+        "hooks": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^@[a-zA-Z0-9._\\-/*]+/[a-zA-Z0-9._\\-*]+$" }
+        }
+      },
+      "additionalProperties": false
     },
     "skills": {
       "type": "array",

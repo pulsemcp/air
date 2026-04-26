@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-04-26
+
+### Breaking
+- **`air.json#exclude` is now a per-type object with wildcard support.** The previous flat-array shape (`exclude: ["@scope/id"]`) is no longer accepted — resolution hard-fails with a migration error. The new shape is an object keyed by artifact type: `exclude: { skills: [...], references: [...], mcp: [...], plugins: [...], roots: [...], hooks: [...] }`. Each value is a list of qualified-ID patterns where `*` matches one full segment (no boundary spanning). This makes exclusion type-safe — excluding a skill named `github` no longer drops an MCP server with the same shortname — and lets callers drop whole groups (e.g. `@vendor/legacy/*`) without enumerating every entry. Each pattern is matched against its declared type only, and entries that match nothing are surfaced as per-type/per-pattern warnings so typos are easy to catch. **Migration:** replace `"exclude": ["@a/x"]` with `"exclude": { "<type>": ["@a/x"] }`, where `<type>` is the artifact kind that `@a/x` was meant to drop. The schema (`schemas/air.schema.json`) and all docs have been updated. Resolves [#118](https://github.com/pulsemcp/air/issues/118).
+
 ## [0.1.1] - 2026-04-25
 
 ### Added

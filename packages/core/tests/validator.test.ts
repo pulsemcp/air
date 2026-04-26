@@ -37,6 +37,45 @@ describe("validateJson", () => {
       );
       expect(result.valid).toBe(true);
     });
+
+    it("accepts the per-type exclude object shape with exact and wildcard entries", () => {
+      const result = validateJson(
+        {
+          name: "with-exclude",
+          exclude: {
+            skills: [
+              "@customer/agentic-engineering/github",
+              "@vendor/legacy/*",
+              "@vendor/*/github",
+              "@*/agentic-engineering/*",
+            ],
+            mcp: ["@some-scope/some-repo/github"],
+            hooks: ["@other-scope/some-repo/legacy-hook"],
+          },
+        },
+        "air"
+      );
+      expect(result.valid).toBe(true);
+    });
+
+    it("rejects the legacy flat-array exclude shape", () => {
+      const result = validateJson(
+        { name: "legacy", exclude: ["@local/lint"] },
+        "air"
+      );
+      expect(result.valid).toBe(false);
+    });
+
+    it("rejects an exclude object with an unknown artifact-type key", () => {
+      const result = validateJson(
+        {
+          name: "bad-key",
+          exclude: { not_a_real_type: ["@local/lint"] },
+        },
+        "air"
+      );
+      expect(result.valid).toBe(false);
+    });
   });
 
   describe("skills.json", () => {

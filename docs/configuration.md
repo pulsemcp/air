@@ -99,9 +99,13 @@ If you want to drop the org's `slack` server:
 ```json
 {
   "catalogs": ["github://acme/air-org"],
-  "exclude": ["@acme/air-org/slack"]
+  "exclude": {
+    "mcp": ["@acme/air-org/slack"]
+  }
 }
 ```
+
+`exclude` is an object keyed by artifact type (`skills`, `references`, `mcp`, `plugins`, `roots`, `hooks`); each value is a list of qualified-ID patterns where `*` matches a single segment.
 
 If you want a different `github` configuration, ship it under `@local/`:
 
@@ -109,7 +113,9 @@ If you want a different `github` configuration, ship it under `@local/`:
 {
   "catalogs": ["github://acme/air-org"],
   "mcp": ["./mcp/mcp.json"],
-  "exclude": ["@acme/air-org/github"]
+  "exclude": {
+    "mcp": ["@acme/air-org/github"]
+  }
 }
 ```
 

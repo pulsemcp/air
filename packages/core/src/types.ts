@@ -33,12 +33,25 @@ export interface AirConfig {
   roots?: string[];
   hooks?: string[];
   /**
-   * Qualified IDs (`@scope/id`) to drop from the resolved artifact set. This
-   * is the only composition control: there is no override, no field-level
-   * patching. An entry that does not match any resolved artifact is reported
-   * as a warning so typos surface immediately.
+   * Per-type lists of qualified IDs (`@scope/id`) — or wildcard patterns —
+   * to drop from the resolved artifact set. This is the only composition
+   * control: there is no override, no field-level patching.
+   *
+   * Keys are artifact-type names (`skills`, `references`, `mcp`, `plugins`,
+   * `roots`, `hooks`); each value is an array of qualified IDs or wildcard
+   * patterns scoped to that type. A `*` segment in a pattern matches one or
+   * more non-slash characters within a single qualified-ID segment and does
+   * not span segment boundaries (e.g. `@vendor/legacy/*` drops every
+   * artifact of this type contributed by `@vendor/legacy`).
+   *
+   * An entry — exact or wildcard — that does not match any resolved
+   * artifact of its type is reported as a warning so typos surface
+   * immediately.
+   *
+   * The legacy flat-array form (`exclude: ["@a/x"]`) is no longer accepted;
+   * resolution hard-fails with a migration error pointing at the new shape.
    */
-  exclude?: string[];
+  exclude?: ExcludeConfig;
   /**
    * Protocol used by git-based catalog providers (e.g., github://) when
    * cloning remote repositories. Defaults to "ssh". Set to "https" for
@@ -56,6 +69,21 @@ export interface ResolvedArtifacts {
   plugins: Record<string, PluginEntry>;
   roots: Record<string, RootEntry>;
   hooks: Record<string, HookEntry>;
+}
+
+/**
+ * Per-type exclude configuration. Each key is an artifact-type name and
+ * its value is the list of qualified IDs (or wildcard patterns) of that
+ * type to drop from the resolved set. Omitted keys exclude nothing of
+ * their type.
+ */
+export interface ExcludeConfig {
+  skills?: string[];
+  references?: string[];
+  mcp?: string[];
+  plugins?: string[];
+  roots?: string[];
+  hooks?: string[];
 }
 
 export interface SkillEntry {

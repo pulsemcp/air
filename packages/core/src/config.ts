@@ -3,6 +3,7 @@ import { resolve, dirname } from "path";
 import ignore, { type Ignore } from "ignore";
 import type {
   AirConfig,
+  ExcludeConfig,
   ResolvedArtifacts,
   SkillEntry,
   ReferenceEntry,
@@ -547,7 +548,7 @@ async function expandAllCatalogs(
  */
 function canonicalizeReferences(
   artifacts: ResolvedArtifacts,
-  excluded: Set<QualifiedId>,
+  excluded: Map<ArtifactType, Set<QualifiedId>>,
   errors: string[]
 ): ResolvedArtifacts {
   type RefField =
@@ -567,16 +568,26 @@ function canonicalizeReferences(
 
   /**
    * For a `missing` reference, decide whether the target was specifically
-   * dropped by `air.json#exclude`. Exact qualified-ID match wins; otherwise a
-   * short reference matches any excluded entry whose shortname matches `ref`.
-   * The list of matching excluded IDs is returned so the error can name them.
+   * dropped by `air.json#exclude` for the same artifact type as the pool
+   * being resolved. Exact qualified-ID match wins; otherwise a short
+   * reference matches any excluded entry of that type whose shortname
+   * equals `ref`. The list of matching excluded IDs is returned so the
+   * error can name them.
+   *
+   * Per-type scoping matters here: a skill named `github` excluded under
+   * `exclude.skills` should not produce a "removed by exclude" error when
+   * a missing MCP-server reference happens to also be named `github`.
    */
-  function excludedMatches(ref: string): QualifiedId[] {
+  function excludedMatches(
+    ref: string,
+    artifactType: ArtifactType
+  ): QualifiedId[] {
+    const set = excluded.get(artifactType) ?? new Set<QualifiedId>();
     if (isQualified(ref)) {
-      return excluded.has(ref) ? [ref] : [];
+      return set.has(ref) ? [ref] : [];
     }
     const matches: QualifiedId[] = [];
-    for (const id of excluded) {
+    for (const id of set) {
       if (parseQualifiedId(id).id === ref) matches.push(id);
     }
     return matches;
@@ -587,6 +598,7 @@ function canonicalizeReferences(
     pool: Record<string, unknown>,
     fromScope: string,
     poolType: string,
+    artifactType: ArtifactType,
     ownerLabel: string,
     field: string
   ): string[] | undefined {
@@ -597,7 +609,7 @@ function canonicalizeReferences(
       if (res.status === "ok") {
         out.push(res.qualified);
       } else if (res.status === "missing") {
-        const matches = excludedMatches(ref);
+        const matches = excludedMatches(ref, artifactType);
         if (matches.length > 0) {
           errors.push(
             `${ownerLabel}.${field} references ${poolType} "${ref}", ` +
@@ -636,6 +648,7 @@ function canonicalizeReferences(
         result.references,
         scope,
         "reference",
+        "references",
         ownerLabel,
         "references"
       );
@@ -648,6 +661,7 @@ function canonicalizeReferences(
         result.skills,
         scope,
         "skill",
+        "skills",
         ownerLabel,
         "skills"
       );
@@ -655,6 +669,7 @@ function canonicalizeReferences(
         next.mcp_servers,
         result.mcp,
         scope,
+        "mcp",
         "mcp",
         ownerLabel,
         "mcp_servers"
@@ -664,6 +679,7 @@ function canonicalizeReferences(
         result.hooks,
         scope,
         "hook",
+        "hooks",
         ownerLabel,
         "hooks"
       );
@@ -672,6 +688,7 @@ function canonicalizeReferences(
         result.plugins,
         scope,
         "plugin",
+        "plugins",
         ownerLabel,
         "plugins"
       );
@@ -683,6 +700,7 @@ function canonicalizeReferences(
         result.skills,
         scope,
         "skill",
+        "skills",
         ownerLabel,
         "default_skills"
       );
@@ -690,6 +708,7 @@ function canonicalizeReferences(
         next.default_mcp_servers,
         result.mcp,
         scope,
+        "mcp",
         "mcp",
         ownerLabel,
         "default_mcp_servers"
@@ -699,6 +718,7 @@ function canonicalizeReferences(
         result.plugins,
         scope,
         "plugin",
+        "plugins",
         ownerLabel,
         "default_plugins"
       );
@@ -707,6 +727,7 @@ function canonicalizeReferences(
         result.hooks,
         scope,
         "hook",
+        "hooks",
         ownerLabel,
         "default_hooks"
       );
@@ -715,6 +736,7 @@ function canonicalizeReferences(
         result.roots,
         scope,
         "root",
+        "roots",
         ownerLabel,
         "default_subagent_roots"
       );
@@ -748,27 +770,162 @@ function listIds(pool: Record<string, unknown>): string {
 }
 
 /**
- * Apply `air.json#exclude` to a resolved artifact set. Excluded qualified IDs
- * disappear from every artifact map; entries that don't match anything are
- * surfaced as warnings so typos in `exclude` are visible to authors.
+ * Empty per-type excluded map — one entry per artifact type, each with an
+ * empty `Set<QualifiedId>`. Used as the default return when `exclude` is
+ * absent from `air.json`, and as the seed for the populated form returned
+ * by `applyExclude`.
+ */
+function emptyExcludedByType(): Map<ArtifactType, Set<QualifiedId>> {
+  return new Map(
+    ARTIFACT_TYPES.map((t) => [t, new Set<QualifiedId>()])
+  );
+}
+
+/**
+ * Compile a single exclude entry containing `*` into a regex matching
+ * qualified IDs. Each `*` matches one or more non-slash characters within
+ * a single qualified-ID segment; segment boundaries are preserved because
+ * `[^/]+` excludes `/`.
+ */
+function compileExcludePattern(pattern: string): RegExp {
+  // Escape regex specials except `*`, which is replaced with the segment
+  // wildcard `[^/]+`.
+  let out = "";
+  for (const ch of pattern) {
+    if (ch === "*") {
+      out += "[^/]+";
+    } else if (/[.+?^${}()|[\]\\]/.test(ch)) {
+      out += "\\" + ch;
+    } else {
+      out += ch;
+    }
+  }
+  return new RegExp(`^${out}$`);
+}
+
+/**
+ * Validate the structural shape of an exclude entry: either a qualified ID
+ * (`@scope/id`) or a wildcard pattern of the same shape with `*` segments
+ * permitted. The compiled pattern handles the actual matching; this guard
+ * just rules out obvious nonsense (bare shortnames, missing `@`, empty
+ * segments).
+ */
+function isValidExcludeEntry(entry: string): boolean {
+  return /^@[^/]+(?:\/[^/]+)+$/.test(entry);
+}
+
+/**
+ * Apply `air.json#exclude` to a resolved artifact set. Each artifact type
+ * has its own list of qualified IDs / wildcard patterns; matching is
+ * scoped strictly to that type, so excluding a skill named `github` does
+ * not drop an MCP server with the same shortname. Entries that do not
+ * match anything of their type are surfaced as warnings naming both the
+ * type and the offending pattern so typos are easy to fix.
+ *
+ * The legacy flat-array shape (`exclude: ["@a/x"]`) is rejected with a
+ * migration error; there is no dual-shape acceptance.
+ *
+ * The returned `excluded` map keys artifact types to the resolved
+ * qualified IDs that were dropped — wildcard patterns are already
+ * expanded so downstream consumers (e.g. reference canonicalization) do
+ * not need to know about wildcards.
  */
 function applyExclude(
   artifacts: ResolvedArtifacts,
-  exclude: string[],
+  exclude: ExcludeConfig | string[] | undefined,
   warnings: string[]
-): { artifacts: ResolvedArtifacts; excluded: Set<string> } {
-  if (exclude.length === 0) {
-    return { artifacts, excluded: new Set() };
+): {
+  artifacts: ResolvedArtifacts;
+  excluded: Map<ArtifactType, Set<QualifiedId>>;
+} {
+  if (exclude === undefined) {
+    return { artifacts, excluded: emptyExcludedByType() };
   }
 
-  const excludeSet = new Set<string>();
-  for (const id of exclude) {
-    if (!isQualified(id)) {
+  // Hard-reject the legacy flat-array shape. The error must point at the
+  // new shape clearly enough that the fix is obvious from the message
+  // alone.
+  if (Array.isArray(exclude)) {
+    throw new Error(
+      `air.json "exclude" must be an object keyed by artifact type ` +
+        `(${ARTIFACT_TYPES.join(", ")}), not an array. ` +
+        `Migration: replace exclude: ["@a/x"] with ` +
+        `exclude: { "<type>": ["@a/x"] }, where <type> is the artifact ` +
+        `kind "@a/x" was meant to drop.`
+    );
+  }
+  if (typeof exclude !== "object" || exclude === null) {
+    throw new Error(
+      `air.json "exclude" must be an object keyed by artifact type ` +
+        `(${ARTIFACT_TYPES.join(", ")}); got ${typeof exclude}.`
+    );
+  }
+
+  for (const key of Object.keys(exclude)) {
+    if (!ARTIFACT_TYPES.includes(key as ArtifactType)) {
       throw new Error(
-        `air.json "exclude" entries must be qualified IDs (@scope/id); got "${id}".`
+        `air.json "exclude" key "${key}" is not a valid artifact type. ` +
+          `Valid keys: ${ARTIFACT_TYPES.join(", ")}.`
       );
     }
-    excludeSet.add(id);
+  }
+
+  interface CompiledExclude {
+    exact: Set<QualifiedId>;
+    patterns: { source: string; regex: RegExp; matched: boolean }[];
+  }
+  const compiled: Record<ArtifactType, CompiledExclude> = {
+    skills: { exact: new Set(), patterns: [] },
+    references: { exact: new Set(), patterns: [] },
+    mcp: { exact: new Set(), patterns: [] },
+    plugins: { exact: new Set(), patterns: [] },
+    roots: { exact: new Set(), patterns: [] },
+    hooks: { exact: new Set(), patterns: [] },
+  };
+  const exactSeen: Record<ArtifactType, Set<QualifiedId>> = {
+    skills: new Set(),
+    references: new Set(),
+    mcp: new Set(),
+    plugins: new Set(),
+    roots: new Set(),
+    hooks: new Set(),
+  };
+
+  const excludeRecord = exclude as Record<string, unknown>;
+  for (const type of ARTIFACT_TYPES) {
+    const entries = excludeRecord[type];
+    if (entries === undefined) continue;
+    if (!Array.isArray(entries)) {
+      throw new Error(
+        `air.json "exclude.${type}" must be an array of qualified IDs ` +
+          `or wildcard patterns; got ${typeof entries}.`
+      );
+    }
+    for (const raw of entries) {
+      if (typeof raw !== "string") {
+        throw new Error(
+          `air.json "exclude.${type}" entries must be strings; got ` +
+            `${typeof raw}.`
+        );
+      }
+      if (!isValidExcludeEntry(raw)) {
+        throw new Error(
+          `air.json "exclude.${type}" entry "${raw}" must be a qualified ` +
+            `ID (@scope/id) or a wildcard pattern of the same shape ` +
+            `(\`*\` matches one or more non-slash characters within a ` +
+            `single segment).`
+        );
+      }
+      if (raw.includes("*")) {
+        compiled[type].patterns.push({
+          source: raw,
+          regex: compileExcludePattern(raw),
+          matched: false,
+        });
+      } else {
+        compiled[type].exact.add(raw);
+      }
+    }
   }
 
   const result: ResolvedArtifacts = {
@@ -779,30 +936,58 @@ function applyExclude(
     roots: {},
     hooks: {},
   };
-  const seen = new Set<string>();
+  const excludedByType = emptyExcludedByType();
 
   for (const type of ARTIFACT_TYPES) {
     const src = artifacts[type] as Record<string, unknown>;
     const dst = result[type] as Record<string, unknown>;
+    const c = compiled[type];
+    const dropped = excludedByType.get(type)!;
+
     for (const [id, entry] of Object.entries(src)) {
-      if (excludeSet.has(id)) {
-        seen.add(id);
-        continue;
+      let drop = false;
+      if (c.exact.has(id)) {
+        drop = true;
+        exactSeen[type].add(id);
       }
-      dst[id] = entry;
+      // Always test wildcard patterns so each one tracks its own match
+      // status — needed for the per-pattern stale-entry warning.
+      for (const pat of c.patterns) {
+        if (pat.regex.test(id)) {
+          drop = true;
+          pat.matched = true;
+        }
+      }
+      if (drop) {
+        dropped.add(id);
+      } else {
+        dst[id] = entry;
+      }
     }
   }
 
-  for (const id of excludeSet) {
-    if (!seen.has(id)) {
-      warnings.push(
-        `air.json "exclude" entry "${id}" did not match any resolved ` +
-          `artifact. Remove it or check for typos.`
-      );
+  for (const type of ARTIFACT_TYPES) {
+    const c = compiled[type];
+    for (const id of c.exact) {
+      if (!exactSeen[type].has(id)) {
+        warnings.push(
+          `air.json "exclude.${type}" entry "${id}" did not match any ` +
+            `resolved ${type} artifact. Remove it or check for typos.`
+        );
+      }
+    }
+    for (const pat of c.patterns) {
+      if (!pat.matched) {
+        warnings.push(
+          `air.json "exclude.${type}" pattern "${pat.source}" did not ` +
+            `match any resolved ${type} artifact. Remove it or check ` +
+            `for typos.`
+        );
+      }
     }
   }
 
-  return { artifacts: result, excluded: excludeSet };
+  return { artifacts: result, excluded: excludedByType };
 }
 
 /**
@@ -892,7 +1077,7 @@ export async function resolveArtifacts(
   // satisfy references and a clear "missing reference" error surfaces.
   const { artifacts: filtered, excluded } = applyExclude(
     resolved,
-    airConfig.exclude || [],
+    airConfig.exclude,
     warnings
   );
 
