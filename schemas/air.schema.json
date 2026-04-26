@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://raw.githubusercontent.com/pulsemcp/air/main/schemas/air.schema.json",
   "title": "AIR Configuration",
-  "description": "Root configuration file for the AIR framework. Points to artifact catalogs and per-type index files. Every resolved artifact is canonically addressed as `@scope/id`: catalog providers supply scope (e.g. the GitHub provider returns `owner/repo`); local catalogs and per-type arrays use scope `local`. Composition is union-only — there is no override or field-level patching. Use the `exclude` array to drop specific qualified IDs from the resolved set.",
+  "description": "Root configuration file for the AIR framework. Points to artifact catalogs and per-type index files. Every resolved artifact is canonically addressed as `@scope/id`: catalog providers supply scope (e.g. the GitHub provider returns `owner/repo`); local catalogs and per-type arrays use scope `local`. Composition is union-only — there is no override or field-level patching. Use the `exclude` object (keyed by artifact type) to drop specific qualified IDs or wildcard patterns from the resolved set.",
   "type": "object",
   "properties": {
     "$schema": {
@@ -37,27 +37,27 @@
       "properties": {
         "skills": {
           "type": "array",
-          "items": { "type": "string", "pattern": "^@[a-zA-Z0-9._\\-/*]+/[a-zA-Z0-9._\\-*]+$" }
+          "items": { "type": "string", "pattern": "^@[a-zA-Z0-9._\\-*]+(?:/[a-zA-Z0-9._\\-*]+)+$" }
         },
         "references": {
           "type": "array",
-          "items": { "type": "string", "pattern": "^@[a-zA-Z0-9._\\-/*]+/[a-zA-Z0-9._\\-*]+$" }
+          "items": { "type": "string", "pattern": "^@[a-zA-Z0-9._\\-*]+(?:/[a-zA-Z0-9._\\-*]+)+$" }
         },
         "mcp": {
           "type": "array",
-          "items": { "type": "string", "pattern": "^@[a-zA-Z0-9._\\-/*]+/[a-zA-Z0-9._\\-*]+$" }
+          "items": { "type": "string", "pattern": "^@[a-zA-Z0-9._\\-*]+(?:/[a-zA-Z0-9._\\-*]+)+$" }
         },
         "plugins": {
           "type": "array",
-          "items": { "type": "string", "pattern": "^@[a-zA-Z0-9._\\-/*]+/[a-zA-Z0-9._\\-*]+$" }
+          "items": { "type": "string", "pattern": "^@[a-zA-Z0-9._\\-*]+(?:/[a-zA-Z0-9._\\-*]+)+$" }
         },
         "roots": {
           "type": "array",
-          "items": { "type": "string", "pattern": "^@[a-zA-Z0-9._\\-/*]+/[a-zA-Z0-9._\\-*]+$" }
+          "items": { "type": "string", "pattern": "^@[a-zA-Z0-9._\\-*]+(?:/[a-zA-Z0-9._\\-*]+)+$" }
         },
         "hooks": {
           "type": "array",
-          "items": { "type": "string", "pattern": "^@[a-zA-Z0-9._\\-/*]+/[a-zA-Z0-9._\\-*]+$" }
+          "items": { "type": "string", "pattern": "^@[a-zA-Z0-9._\\-*]+(?:/[a-zA-Z0-9._\\-*]+)+$" }
         }
       },
       "additionalProperties": false

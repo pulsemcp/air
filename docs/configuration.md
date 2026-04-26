@@ -69,7 +69,7 @@ For each artifact type:
 1. **Different qualified IDs** accumulate (additive union)
 2. **Duplicate qualified IDs** hard-fail — you cannot silently override an artifact
 3. **Cross-scope shortname collisions** warn but keep both — disambiguate with the qualified form
-4. **`exclude`** is the only way to drop an artifact (takes a list of qualified IDs)
+4. **`exclude`** is the only way to drop an artifact. Provide an object keyed by artifact type (`skills`, `references`, `mcp`, `plugins`, `roots`, `hooks`); each value is a list of qualified-ID patterns where `*` matches one full segment.
 
 See [Composition and Overrides](guides/composition-and-overrides.md) for the full rules and examples.
 

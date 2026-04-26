@@ -8,6 +8,7 @@ import {
   exampleMcpStdio,
   exampleRoot,
   exampleReference,
+  exampleHook,
 } from "./helpers.js";
 
 let cleanup: (() => void) | undefined;
@@ -364,6 +365,28 @@ describe("composition", () => {
         w.includes("did not match"),
     );
     expect(stale).toHaveLength(1);
+  });
+
+  it("wildcards work uniformly across artifact types — exclude.hooks drops a wildcard pattern", async () => {
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        hooks: ["./hooks.json"],
+        exclude: { hooks: ["@local/legacy-*"] },
+      },
+      "hooks.json": {
+        "legacy-pre-commit": exampleHook("legacy-pre-commit"),
+        "legacy-post-merge": exampleHook("legacy-post-merge"),
+        "modern-pre-commit": exampleHook("modern-pre-commit"),
+      },
+    });
+    cleanup = c;
+
+    const artifacts = await resolveArtifacts(join(dir, "air.json"));
+
+    expect(artifacts.hooks["@local/legacy-pre-commit"]).toBeUndefined();
+    expect(artifacts.hooks["@local/legacy-post-merge"]).toBeUndefined();
+    expect(artifacts.hooks["@local/modern-pre-commit"]).toBeDefined();
   });
 
   it("wildcard segments do not span '/' boundaries", async () => {

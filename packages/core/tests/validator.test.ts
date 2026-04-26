@@ -66,6 +66,19 @@ describe("validateJson", () => {
       expect(result.valid).toBe(false);
     });
 
+    it("returns a migration-friendly error for the legacy flat-array exclude shape", () => {
+      const result = validateJson(
+        { name: "legacy", exclude: ["@local/lint"] },
+        "air"
+      );
+      expect(result.valid).toBe(false);
+      expect(result.errors[0].path).toBe("/exclude");
+      expect(result.errors[0].message).toMatch(
+        /must be an object keyed by artifact type/
+      );
+      expect(result.errors[0].message).toMatch(/Migration/);
+    });
+
     it("rejects an exclude object with an unknown artifact-type key", () => {
       const result = validateJson(
         {

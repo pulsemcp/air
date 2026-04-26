@@ -146,7 +146,9 @@ AIR expands each catalog into all six artifact arrays automatically — missing 
     "github://acme/air-frontend"
   ],
   "mcp": ["./mcp/mcp.json"],
-  "exclude": ["@acme/air-org/legacy-server"]
+  "exclude": {
+    "mcp": ["@acme/air-org/legacy-server"]
+  }
 }
 ```
 
