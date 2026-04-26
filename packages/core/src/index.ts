@@ -62,6 +62,10 @@ export {
 } from "./scope.js";
 export type { QualifiedId, ReferenceResolution } from "./scope.js";
 
+// Scope stripping (powers `air resolve --no-scope`)
+export { stripScopes, ShortnameCollisionError } from "./strip-scopes.js";
+export type { ShortnameCollision } from "./strip-scopes.js";
+
 // Validation
 export { validateJson } from "./validator.js";
 export type { ValidationResult, ValidationError } from "./validator.js";

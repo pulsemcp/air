@@ -145,28 +145,69 @@ Loads `air.json`, runs catalog providers (e.g., `github://`) declared under `ext
 
 ```json
 {
-  "skills":     { "<id>": { "description": "...", "path": "/abs/path" } },
-  "references": { "<id>": { "description": "...", "path": "/abs/path" } },
-  "mcp":        { "<id>": { "type": "stdio", "command": "...", "args": [] } },
-  "plugins":    { "<id>": { "description": "...", "skills": [], "mcp_servers": [] } },
-  "roots":      { "<id>": { "description": "...", "default_skills": [] } },
-  "hooks":      { "<id>": { "description": "...", "path": "/abs/path" } }
+  "skills":     { "@scope/<id>": { "description": "...", "path": "/abs/path" } },
+  "references": { "@scope/<id>": { "description": "...", "path": "/abs/path" } },
+  "mcp":        { "@scope/<id>": { "type": "stdio", "command": "...", "args": [] } },
+  "plugins":    { "@scope/<id>": { "description": "...", "skills": [], "mcp_servers": [] } },
+  "roots":      { "@scope/<id>": { "description": "...", "default_skills": [] } },
+  "hooks":      { "@scope/<id>": { "description": "...", "path": "/abs/path" } }
 }
 ```
 
-All `path` fields are absolute, making the output self-contained regardless of where the `air.json` lives.
+Keys are qualified IDs (`@scope/id`); reference fields inside entries (e.g. `default_skills`, `mcp_servers`) are likewise qualified. All `path` fields are absolute, making the output self-contained regardless of where the `air.json` lives.
 
 **Options:**
 
 | Flag | Description |
 |------|-------------|
 | `--json` | Emit JSON output (default and currently the only supported format; accepted for forward-compat). |
+| `--no-scope` | Emit shortname-keyed output instead of the default qualified-ID keys. Hard-fails if any shortname is contributed by more than one scope. See [Shortname-keyed output](#shortname-keyed-output---no-scope) below. |
 | `--config <path>` | Path to `air.json`. Defaults to `AIR_CONFIG` env or `~/.air/air.json`. |
 | `--git-protocol <ssh\|https>` | Protocol used by git-based catalog providers when cloning. Defaults to `ssh`. Overrides the `gitProtocol` field in `air.json` and the `AIR_GIT_PROTOCOL` env var for this invocation. |
 
 **Exit codes:**
 - `0` — resolved successfully; JSON written to stdout
-- `1` — resolution failed (e.g., missing `air.json`, unreachable provider); error on stderr
+- `1` — resolution failed (e.g., missing `air.json`, unreachable provider, or `--no-scope` with cross-scope shortname collisions); error on stderr
+
+#### Shortname-keyed output (`--no-scope`)
+
+Pass `--no-scope` to emit the same artifact tree but keyed by bare shortnames (`github`) instead of qualified IDs (`@local/github`). Reference fields inside entries — `default_skills`, `mcp_servers`, `skills.references`, etc. — are likewise rewritten to bare form.
+
+```bash
+air resolve --no-scope
+```
+
+```json
+{
+  "mcp":   { "github": { "type": "stdio", "command": "..." } },
+  "roots": { "default": { "default_mcp_servers": ["github"] } }
+}
+```
+
+`--no-scope` is **opt-in** and **hard-fails** when a shortname is contributed by more than one scope within the same artifact category. The error lists every colliding qualified ID so you can pick which one to drop:
+
+```
+Error: --no-scope requires unique shortnames across all scopes, but
+  shortname "github" maps to multiple qualified IDs:
+    - @local/github
+    - @reframe-systems/agentic-engineering/github
+  Either use the default qualified output, or exclude one of them
+  via air.json#exclude.
+```
+
+There is no silent later-wins. Either drop the colliding entry via `air.json#exclude`, or stay on the default qualified output.
+
+**When to use `--no-scope`:**
+
+- You are committed to a single-scope universe — local-only, internal-only, or a single private catalog.
+- You are an early adopter whose downstream consumer (database schema, UI, scripts) was built around bare shortnames and would otherwise need to maintain a regex-stripping shim.
+- The output is consumed by humans, scripts, or UIs where qualified IDs add noise (`jq`, tables, dashboards, demos).
+
+**When NOT to use `--no-scope`:**
+
+- You compose multiple catalogs intentionally and want both `@acme/review` and `@local/review` to coexist — that is exactly what the default qualified output is for.
+
+**Trade-off.** Using `--no-scope` is a commitment. Add a second catalog later that contributes a colliding shortname, and your build breaks until you either exclude the colliding artifact via `air.json#exclude` or switch back to the default qualified output (and update consumers). That's the right trade-off for this flag — brevity now in exchange for an enforced invariant. Users who want compositional flexibility should stick with the default.
 
 ## Environment Variables
 

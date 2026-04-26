@@ -283,6 +283,161 @@ export default {
     ]);
   });
 
+  describe("--no-scope flag", () => {
+    it("rewrites all keys to bare shortnames in a single-scope universe", () => {
+      const catalog = createTemp({
+        "air.json": {
+          name: "test",
+          mcp: ["./mcp.json"],
+          skills: ["./skills.json"],
+          roots: ["./roots.json"],
+        },
+        "mcp.json": {
+          github: {
+            type: "stdio",
+            command: "npx",
+            args: ["-y", "@mcp/github"],
+          },
+        },
+        "skills.json": {
+          deploy: {
+            description: "Deploy skill",
+            path: "skills/deploy",
+          },
+        },
+        "skills/deploy/SKILL.md": "# Deploy",
+        "roots.json": {
+          default: {
+            description: "Default root",
+            default_mcp_servers: ["github"],
+            default_skills: ["deploy"],
+          },
+        },
+      });
+
+      const result = tryRun(
+        `resolve --no-scope --config ${join(catalog, "air.json")}`
+      );
+      expect(result.exitCode).toBe(0);
+
+      const output = JSON.parse(result.stdout);
+
+      // Top-level keys are bare shortnames.
+      expect(output.mcp["github"]).toBeDefined();
+      expect(output.mcp["@local/github"]).toBeUndefined();
+      expect(output.skills["deploy"]).toBeDefined();
+      expect(output.skills["@local/deploy"]).toBeUndefined();
+      expect(output.roots["default"]).toBeDefined();
+      expect(output.roots["@local/default"]).toBeUndefined();
+
+      // Reference fields inside entries are bare too.
+      expect(output.roots["default"].default_mcp_servers).toEqual(["github"]);
+      expect(output.roots["default"].default_skills).toEqual(["deploy"]);
+    });
+
+    it("rewrites reference fields across plugins, hooks, and skills", () => {
+      const catalog = createTemp({
+        "air.json": {
+          name: "test",
+          mcp: ["./mcp.json"],
+          skills: ["./skills.json"],
+          plugins: ["./plugins.json"],
+        },
+        "mcp.json": {
+          gh: { type: "stdio", command: "npx", args: ["gh"] },
+        },
+        "skills.json": {
+          deploy: {
+            description: "Deploy",
+            path: "skills/deploy",
+          },
+        },
+        "skills/deploy/SKILL.md": "# Deploy",
+        "plugins.json": {
+          quality: {
+            description: "Quality",
+            skills: ["deploy"],
+            mcp_servers: ["gh"],
+          },
+        },
+      });
+
+      const result = tryRun(
+        `resolve --no-scope --config ${join(catalog, "air.json")}`
+      );
+      expect(result.exitCode).toBe(0);
+
+      const output = JSON.parse(result.stdout);
+      expect(output.plugins["quality"].skills).toEqual(["deploy"]);
+      expect(output.plugins["quality"].mcp_servers).toEqual(["gh"]);
+    });
+
+    it("hard-fails on cross-scope shortname collisions with the documented error format", () => {
+      // Two scopes contribute the same shortname `github`: @local from
+      // ./local-mcp.json and @acme via the stub provider's getScope.
+      const catalog = createTemp({
+        "air.json": {
+          name: "test",
+          extensions: ["./stub-provider-ext.js"],
+          mcp: ["./local-mcp.json", "stub://acme-mcp"],
+        },
+        "local-mcp.json": {
+          github: { type: "stdio", command: "npx", args: ["local-gh"] },
+        },
+        "stub-provider-ext.js": `
+export default {
+  name: "stub-provider-ext",
+  provider: {
+    scheme: "stub",
+    getScope() { return "acme"; },
+    async resolve(uri) {
+      return {
+        github: { type: "stdio", command: "npx", args: ["acme-gh"] },
+      };
+    },
+    resolveSourceDir() { return "/tmp"; },
+  },
+};
+`,
+      });
+
+      const result = tryRun(
+        `resolve --no-scope --config ${join(catalog, "air.json")}`
+      );
+      expect(result.exitCode).not.toBe(0);
+      expect(result.stderr).toContain(
+        "--no-scope requires unique shortnames across all scopes"
+      );
+      expect(result.stderr).toContain(
+        'shortname "github" maps to multiple qualified IDs'
+      );
+      expect(result.stderr).toContain("- @local/github");
+      expect(result.stderr).toContain("- @acme/github");
+      expect(result.stderr).toContain("air.json#exclude");
+    });
+
+    it("default behavior (no flag) is unchanged — keys remain qualified", () => {
+      const catalog = createTemp({
+        "air.json": {
+          name: "test",
+          mcp: ["./mcp.json"],
+        },
+        "mcp.json": {
+          github: { type: "stdio", command: "npx", args: ["gh"] },
+        },
+      });
+
+      const result = tryRun(
+        `resolve --config ${join(catalog, "air.json")}`
+      );
+      expect(result.exitCode).toBe(0);
+
+      const output = JSON.parse(result.stdout);
+      expect(output.mcp["@local/github"]).toBeDefined();
+      expect(output.mcp["github"]).toBeUndefined();
+    });
+  });
+
   it("expands plugins into their constituent artifacts", () => {
     const catalog = createTemp({
       "air.json": {

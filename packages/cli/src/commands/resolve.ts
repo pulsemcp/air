@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { resolveFullArtifacts } from "@pulsemcp/air-sdk";
+import { resolveFullArtifacts, stripScopes } from "@pulsemcp/air-sdk";
 import { parseGitProtocolFlag } from "./git-protocol.js";
 
 export function resolveCommand(): Command {
@@ -16,6 +16,10 @@ export function resolveCommand(): Command {
       "Emit JSON output (default and currently the only supported format; accepted for forward-compat)"
     )
     .option(
+      "--no-scope",
+      "Emit shortname-keyed output instead of the default qualified-ID (@scope/id) keys. Hard-fails if any shortname is contributed by more than one scope. Use only when committed to a single-scope universe."
+    )
+    .option(
       "--git-protocol <protocol>",
       "Protocol used by git-based catalog providers: \"ssh\" (default) or \"https\". Overrides the gitProtocol field in air.json."
     )
@@ -23,6 +27,7 @@ export function resolveCommand(): Command {
       async (options: {
         config?: string;
         json?: boolean;
+        scope?: boolean;
         gitProtocol?: string;
       }) => {
         const gitProtocol = parseGitProtocolFlag(options.gitProtocol);
@@ -31,7 +36,10 @@ export function resolveCommand(): Command {
             config: options.config,
             gitProtocol,
           });
-          console.log(JSON.stringify(artifacts, null, 2));
+          // Commander's `--no-scope` sets `options.scope` to false.
+          const output =
+            options.scope === false ? stripScopes(artifacts) : artifacts;
+          console.log(JSON.stringify(output, null, 2));
         } catch (err) {
           const message = err instanceof Error ? err.message : "Unknown error";
           console.error(`Error: ${message}`);

@@ -123,6 +123,10 @@ Error: Reference "review" is ambiguous — candidates: @acme/air-org/review,
 
 After resolution, root and plugin reference fields are stored in **canonical (qualified) form** so adapters and consumers do not need to re-resolve them.
 
+### Single-scope universes: `air resolve --no-scope`
+
+If you are committed to a single-scope setup — local-only, internal-only, or one private catalog — and the qualified form is more friction than it is worth, `air resolve --no-scope` emits the same artifact tree keyed by bare shortnames instead of qualified IDs. The flag hard-fails if any shortname is contributed by more than one scope, so you cannot lose an artifact silently. This is opt-in and narrowly scoped: every consumer that adopts it commits to the single-scope invariant. See [`air resolve` in the CLI reference](../cli.md#shortname-keyed-output---no-scope) for the full trade-off and example error output.
+
 ## Whole-catalog composition
 
 When you want to layer two or more full catalogs you don't need to list every artifact type separately. The `catalogs` field in `air.json` accepts an ordered array of catalog roots, and AIR expands each one into all six artifact arrays automatically.
