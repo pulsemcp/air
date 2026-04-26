@@ -120,10 +120,10 @@ The consumer pulls in the customer's catalog, then drops the entries that don't 
     "github://customer-co/their-air-config",
     "./local-catalog"
   ],
-  "exclude": [
-    "@customer-co/their-air-config/legacy-deploy",
-    "@customer-co/their-air-config/internal-only-mcp"
-  ]
+  "exclude": {
+    "skills": ["@customer-co/their-air-config/legacy-deploy"],
+    "mcp": ["@customer-co/their-air-config/internal-only-mcp"]
+  }
 }
 ```
 
@@ -148,9 +148,9 @@ A user composing two community catalogs plus their own local layer:
     "github://oss-author-2/air-toolkit",
     "./my-local-catalog"
   ],
-  "exclude": [
-    "@oss-author-2/air-toolkit/aggressive-cleanup-hook"
-  ]
+  "exclude": {
+    "hooks": ["@oss-author-2/air-toolkit/aggressive-cleanup-hook"]
+  }
 }
 ```
 

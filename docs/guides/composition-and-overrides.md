@@ -79,7 +79,7 @@ The artifacts both stay in the resolved set — the warning just tells you that 
 
 ### 4. `exclude` drops artifacts by qualified ID
 
-`exclude` is the only composition control. It takes a list of **qualified** IDs to remove from the resolved set:
+`exclude` is the only composition control. It is an **object keyed by artifact type** (`skills`, `references`, `mcp`, `plugins`, `roots`, `hooks`); each value is a list of qualified IDs — or wildcard patterns — to drop from that type:
 
 ```json
 {
@@ -89,20 +89,62 @@ The artifacts both stay in the resolved set — the warning just tells you that 
     "github://acme/air-org",
     "./platform-team-catalog"
   ],
-  "exclude": [
-    "@acme/air-org/legacy-deploy",
-    "@acme/air-org/dont-use-this-mcp-server"
-  ]
+  "exclude": {
+    "skills": ["@acme/air-org/legacy-deploy"],
+    "mcp": ["@acme/air-org/dont-use-this-mcp-server"]
+  }
+}
+```
+
+Per-type matching is strict: an entry under `exclude.skills` only removes skills, never an MCP server with the same shortname. This matters because the same shortname (e.g. `github`) can legitimately exist as both a skill and an MCP server within a single scope — the legacy flat-array form silently fanned out across types and is no longer accepted.
+
+#### Wildcards
+
+Each entry may be either a literal qualified ID or a wildcard pattern. A `*` segment matches one or more non-slash characters within a single qualified-ID segment; `*` does **not** span segment boundaries:
+
+| Pattern | Matches |
+|---------|---------|
+| `@vendor/legacy/*` | Every artifact of this type contributed by `@vendor/legacy` (drops the entire scope's contribution to one type) |
+| `@vendor/*/github` | The `github` shortname under every repo whose scope's first segment is `vendor` |
+| `@*/agentic-engineering/*` | Every artifact of this type contributed by any repo named `agentic-engineering`, regardless of the scope's first segment |
+
+Example:
+
+```json
+{
+  "exclude": {
+    "skills": [
+      "@customer/agentic-engineering/github",
+      "@vendor/legacy/*",
+      "@*/agentic-engineering/*"
+    ],
+    "mcp": ["@some-scope/some-repo/github"],
+    "hooks": ["@other-scope/some-repo/legacy-hook"]
+  }
 }
 ```
 
 Notes:
 
-- Entries **must** be qualified — bare shortnames are rejected with a hard error.
-- An `exclude` entry that does not match any resolved artifact emits a warning (typo guard, not an error).
+- Each entry must be a qualified ID (`@scope/id`) or a wildcard pattern of the same shape — bare shortnames are rejected with a hard error.
+- An entry — exact or wildcard — that does not match any resolved artifact of its type emits a warning that names both the type and the offending pattern (typo guard, not an error).
 - `exclude` runs after composition, so a catalog you depend on cannot bypass it.
+- Omitting a key means "don't exclude anything of that type."
 
 There is no field-level patch, no "override this one field" knob. If you want a different behavior for a skill, ship a new skill under your own scope.
+
+#### Migrating from the legacy flat-array form
+
+Earlier versions of AIR (≤ 0.1.x) accepted `exclude` as a flat array of qualified IDs. That shape is now rejected at resolution time with a migration error:
+
+```
+air.json "exclude" must be an object keyed by artifact type
+(skills, references, mcp, plugins, roots, hooks), not an array.
+Migration: replace exclude: ["@a/x"] with exclude: { "<type>": ["@a/x"] },
+where <type> is the artifact kind "@a/x" was meant to drop.
+```
+
+Pick the artifact type you intended to drop and move the entry under that key. There is no dual-shape acceptance — you must update every `air.json` in your tree before resolution will succeed.
 
 ## Reference syntax
 
@@ -268,14 +310,24 @@ Three scopes coexist: `@acme/air-org/...`, `@acme/air-platform-team/...`, and `@
 {
   "extensions": ["@pulsemcp/air-provider-github"],
   "catalogs": ["github://acme/air-org"],
-  "exclude": [
-    "@acme/air-org/legacy-deploy",
-    "@acme/air-org/old-mcp-server"
-  ]
+  "exclude": {
+    "skills": ["@acme/air-org/legacy-deploy"],
+    "mcp": ["@acme/air-org/old-mcp-server"]
+  }
 }
 ```
 
 The two excluded artifacts disappear from the resolved set; everything else from `@acme/air-org` is kept.
+
+To drop an entire scope's contribution of one type, use a wildcard:
+
+```json
+{
+  "exclude": {
+    "skills": ["@acme/legacy-org/*"]
+  }
+}
+```
 
 ## Remote configuration with providers
 
@@ -365,7 +417,9 @@ Subagent root references follow the same short / qualified rules.
 ```json
 {
   "catalogs": ["github://acme/air-org"],
-  "exclude": ["@acme/air-org/skill-i-dont-want"]
+  "exclude": {
+    "skills": ["@acme/air-org/skill-i-dont-want"]
+  }
 }
 ```
 
@@ -378,9 +432,12 @@ There is no "disabled" flag, no override-with-empty-entry trick. If you want a t
 | Different scopes contribute different shortnames | All artifacts kept (additive) |
 | Different scopes contribute the same shortname | All kept; warning logged; short refs must qualify |
 | Same scope, two indexes, same shortname | Hard-fail (duplicate qualified ID) |
-| `exclude` matches a qualified ID | Artifact removed from the resolved set |
-| `exclude` entry matches nothing | Warning logged; resolution continues |
-| `exclude` entry is not qualified | Hard-fail (must be `@scope/id`) |
+| `exclude.<type>` matches a qualified ID | Artifact of that type removed from the resolved set; identically-named artifacts of other types untouched |
+| `exclude.<type>` matches a wildcard pattern | Every qualified ID of that type matching the pattern is removed |
+| `exclude.<type>` entry matches nothing | Per-type/per-pattern warning logged; resolution continues |
+| `exclude.<type>` entry is not a qualified ID or wildcard | Hard-fail with the offending entry |
+| `exclude` is an array (legacy shape) | Hard-fail with a migration error pointing at the per-type object form |
+| `exclude` key is not a valid artifact type | Hard-fail naming the unknown key and listing valid keys |
 | Short reference, unambiguous | Resolved to its qualified ID |
 | Short reference, ambiguous | Hard-fail with candidate list |
 | Short reference inside a catalog index | Resolved to the catalog's own scope first |

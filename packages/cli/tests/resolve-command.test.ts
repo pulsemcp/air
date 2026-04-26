@@ -169,7 +169,7 @@ describe("resolve command", () => {
       "air.json": {
         name: "test",
         mcp: ["./mcp.json"],
-        exclude: ["@local/dropped"],
+        exclude: { mcp: ["@local/dropped"] },
       },
       "mcp.json": {
         kept: { type: "stdio", command: "npx", args: ["kept"] },

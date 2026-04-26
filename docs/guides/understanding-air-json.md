@@ -102,7 +102,7 @@ Composition is additive:
 1. **Disjoint qualified IDs** accumulate (union)
 2. **Duplicate qualified IDs** hard-fail — you cannot silently override an artifact
 3. **Cross-scope shortname collisions** warn but keep both — disambiguate with the qualified form
-4. **`exclude`** is the only way to drop an artifact (takes a list of qualified IDs)
+4. **`exclude`** is the only way to drop an artifact. It takes a per-type object — keys are artifact types (`skills`, `references`, `mcp`, `plugins`, `roots`, `hooks`) and values are arrays of qualified-ID patterns. Each segment of a pattern may be a literal or `*` (matches one full segment).
 
 ```json
 {
@@ -111,7 +111,9 @@ Composition is additive:
     "./platform-team-catalog"
   ],
   "mcp": ["./mcp/local.json"],
-  "exclude": ["@acme/air-org/legacy-server"]
+  "exclude": {
+    "mcp": ["@acme/air-org/legacy-server"]
+  }
 }
 ```
 
@@ -174,7 +176,9 @@ These resolve to two distinct artifacts: `@acme/air-org/github` and `@local/gith
 {
   "catalogs": ["github://acme/air-org"],
   "mcp": ["./mcp/local.json"],
-  "exclude": ["@acme/air-org/github"]
+  "exclude": {
+    "mcp": ["@acme/air-org/github"]
+  }
 }
 ```
 
