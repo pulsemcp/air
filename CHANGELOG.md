@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`.claude/settings.json` is no longer rewritten when its content is unparseable.** During cleanup the previous behavior would silently substitute `{}` for a corrupt-or-truncated settings file and overwrite, clobbering user-authored top-level keys (`permissions`, `env`, `model`, …). The clean path now leaves the file byte-for-byte intact when it can't be parsed and reports `settingsPath: null` so callers can see we declined to act.
 - **Corrupt manifests no longer make `air clean` silently no-op.** Previously a manifest that failed JSON validation was treated as "no manifest" and the file was left on disk; the result reported `manifestExisted: false` even though a file was sitting there. Now the result honestly reports `manifestExisted: true`, and a full clean removes the corrupt manifest itself (under any `--keep-*` flag the corrupt manifest is preserved so the user can recover it).
 
+## [0.2.1] - 2026-04-28
+
+### Changed
+- **README repositioning.** The top of the README now opens with a one-paragraph pitch, a side-by-side "Without AIR vs. with AIR" video comparison (linked from `assets/`), a "What's a catalog?" section that walks readers through `examples/`, and a "How does it drop into your workflow?" section showing `~/.air/air.json` plus `air start claude`. The intent is that the first three sections above the fold answer "what is a catalog?" and "how does this drop into my workflow?" before the reader hits the deeper concept material. No code, schema, or CLI behavior changed.
+
 ## [0.2.0] - 2026-04-26
 
 ### Breaking
