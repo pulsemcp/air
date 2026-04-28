@@ -209,6 +209,47 @@ There is no silent later-wins. Either drop the colliding entry via `air.json#exc
 
 **Trade-off.** Using `--no-scope` is a commitment. Add a second catalog later that contributes a colliding shortname, and your build breaks until you either exclude the colliding artifact via `air.json#exclude` or switch back to the default qualified output (and update consumers). That's the right trade-off for this flag — brevity now in exchange for an enforced invariant. Users who want compositional flexibility should stick with the default.
 
+### `air clean <adapter>`
+
+Remove every artifact AIR has previously written to a target directory. Reads the AIR manifest (`~/.air/manifests/<sha>.json`) for the target, then asks the adapter to remove the tracked skill directories, hook directories, MCP server keys (from `.mcp.json`), and adapter-managed hook entries (from `.claude/settings.json` for Claude). User-authored entries that AIR did not write are preserved.
+
+```bash
+# Clean every AIR-managed artifact from the current directory
+air clean claude
+
+# Clean a different target directory
+air clean claude --target /path/to/repo
+
+# Preview what would be removed without modifying disk
+air clean claude --dry-run
+
+# Keep skills (or hooks, or MCP servers) — preserves both the files and the manifest entries
+air clean claude --keep-skills
+air clean claude --keep-hooks
+air clean claude --keep-mcp
+```
+
+The manifest is deleted only on a full clean. If any `--keep-*` flag is set, the manifest is rewritten with the kept entries preserved so future `prepare`/`clean` cycles still track them. Items listed in the manifest that no longer exist on disk are silently skipped (handles drift where files were removed manually).
+
+If `.mcp.json` would be left empty after removing AIR-managed servers (no other top-level keys), the file is deleted entirely. Otherwise it is rewritten with the user-authored entries intact.
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--target <dir>` | Target directory to clean. Defaults to the current directory. |
+| `--dry-run` | Print what would be removed without modifying disk. |
+| `--keep-skills` | Don't remove skill directories — preserve them in the manifest. |
+| `--keep-hooks` | Don't remove hook directories or AIR-managed hook entries from `.claude/settings.json`. |
+| `--keep-mcp` | Don't remove AIR-managed MCP server keys from `.mcp.json`. |
+| `--config <path>` | Path to `air.json`. Used only to locate adapter packages installed via `air install`. Defaults to `AIR_CONFIG` env or `~/.air/air.json`. |
+
+**Output:** A human-readable summary is printed to stderr; a structured JSON result is printed to stdout (suitable for `jq` or scripting).
+
+**Exit codes:**
+- `0` — clean succeeded (including the no-manifest no-op case)
+- `1` — clean failed (e.g., adapter not installed, adapter does not implement clean)
+
 ## Environment Variables
 
 | Variable | Description |

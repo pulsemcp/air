@@ -3,6 +3,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  rmSync,
   writeFileSync,
 } from "fs";
 import { dirname, resolve } from "path";
@@ -183,6 +184,20 @@ export function buildManifest(
     hooks: [...(selection.hooks ?? [])],
     mcpServers: [...(selection.mcpServers ?? [])],
   };
+}
+
+/**
+ * Delete the manifest file for `targetDir`. Returns true when a file was
+ * removed, false when no manifest existed. Safe to call repeatedly.
+ */
+export function deleteManifest(
+  targetDir: string,
+  options?: { airHome?: string }
+): boolean {
+  const path = getManifestPath(targetDir, options);
+  if (!existsSync(path)) return false;
+  rmSync(path, { force: true });
+  return true;
 }
 
 /**

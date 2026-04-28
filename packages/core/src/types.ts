@@ -212,6 +212,27 @@ export interface AgentAdapter {
    * can omit this method.
    */
   listLocalArtifacts?(targetDir: string): Promise<LocalArtifacts>;
+
+  /**
+   * Remove every artifact AIR has previously written to `targetDir`.
+   *
+   * The adapter consults the on-disk manifest (the same one written by
+   * `prepareSession`) to know what to remove — this is the inverse of
+   * `prepareSession` with an empty selection. Adapters that don't write
+   * durable state can omit this method.
+   *
+   * Implementations should:
+   *   - No-op gracefully when the manifest is missing.
+   *   - Skip categories listed via `keepSkills` / `keepHooks` /
+   *     `keepMcpServers` and update (rather than delete) the manifest so the
+   *     remaining entries are still tracked.
+   *   - Honor `dryRun` by reporting what would be removed without touching
+   *     disk.
+   */
+  cleanSession?(
+    targetDir: string,
+    options?: CleanSessionOptions
+  ): Promise<CleanSessionResult>;
 }
 
 /**
@@ -267,6 +288,38 @@ export interface PrepareSessionOptions {
    * an MCP server) should set this to true.
    */
   skipSubagentMerge?: boolean;
+}
+
+export interface CleanSessionOptions {
+  /** Print what would be removed without touching disk. */
+  dryRun?: boolean;
+  /** Skip skill removal — the manifest entry for skills is preserved. */
+  keepSkills?: boolean;
+  /** Skip hook removal — the manifest entry for hooks is preserved. */
+  keepHooks?: boolean;
+  /** Skip MCP server removal — the manifest entry for MCP servers is preserved. */
+  keepMcpServers?: boolean;
+}
+
+export interface CleanSessionResult {
+  /** Skill IDs that were (or in dry-run, would be) removed from disk. */
+  removedSkills: string[];
+  /** Hook IDs that were (or in dry-run, would be) removed from disk. */
+  removedHooks: string[];
+  /** MCP server IDs that were (or in dry-run, would be) removed from `.mcp.json`. */
+  removedMcpServers: string[];
+  /** Path to the MCP config file modified, or null if untouched. */
+  mcpConfigPath: string | null;
+  /** Path to the agent settings file modified (e.g. `.claude/settings.json`), or null if untouched. */
+  settingsPath: string | null;
+  /**
+   * Path to the manifest file. `removed` is true when the manifest itself
+   * was deleted (full clean); false when it was rewritten with the kept
+   * entries (partial clean) or absent before the call.
+   */
+  manifestPath: string;
+  manifestExisted: boolean;
+  manifestRemoved: boolean;
 }
 
 export interface PreparedSession {

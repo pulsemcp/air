@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-04-28
+
+### Added
+- **`air clean <adapter>` command** for explicit teardown of AIR-managed artifacts in a target directory. Reads the prior-run manifest at `~/.air/manifests/<sha>.json` and asks the adapter to remove every tracked skill directory (`.claude/skills/<id>/`), hook directory (`.claude/hooks/<id>/`), AIR-written entries in `.claude/settings.json` (identified by the `_airHookId` marker), and AIR-managed MCP server keys in `.mcp.json`. User-authored entries are preserved — keys AIR did not write to `.mcp.json` and hook entries without the `_airHookId` marker pass through untouched. If `.mcp.json` would be left empty after the prune, the file is deleted entirely. The manifest itself is deleted on a full clean; partial cleans (any `--keep-*` flag set) rewrite the manifest with the kept entries preserved so future `prepare`/`clean` cycles still track them. Supports `--target <dir>`, `--dry-run`, `--keep-skills`, `--keep-hooks`, `--keep-mcp`, and `--config <path>`. New optional `cleanSession?(targetDir, options)` method on the `AgentAdapter` interface (existing adapters that don't implement it raise a clear error). New SDK exports: `cleanSession`, `CleanSessionOptions`, `CleanSessionSdkResult`, `deleteManifest`. Resolves [#121](https://github.com/pulsemcp/air/issues/121).
+
 ## [0.2.0] - 2026-04-26
 
 ### Breaking

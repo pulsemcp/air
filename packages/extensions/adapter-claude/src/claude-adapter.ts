@@ -21,12 +21,16 @@ import type {
   PluginEntry,
   PrepareSessionOptions,
   PreparedSession,
+  CleanSessionOptions,
+  CleanSessionResult,
   LocalArtifacts,
   QualifiedId,
 } from "@pulsemcp/air-core";
 import {
   buildManifest,
+  deleteManifest,
   diffManifest,
+  getManifestPath,
   loadManifest,
   writeManifest,
   parseQualifiedId,
@@ -339,6 +343,122 @@ export class ClaudeAdapter implements AgentAdapter {
    */
   async listLocalArtifacts(targetDir: string): Promise<LocalArtifacts> {
     return { skills: scanLocalSkills(targetDir) };
+  }
+
+  /**
+   * Remove every artifact AIR has previously written into `targetDir`.
+   *
+   * Reads the per-target manifest, deletes each tracked skill / hook
+   * directory, removes tracked MCP server keys from `.mcp.json`, and prunes
+   * AIR-tagged hook entries from `.claude/settings.json`. When every category
+   * is cleaned, the manifest itself is deleted; partial cleans (any
+   * `keep*` flag set) update the manifest with the kept entries so future
+   * runs continue to track them.
+   *
+   * Items in the manifest that no longer exist on disk are silently skipped
+   * — the manifest can drift if a user removed files manually between runs.
+   */
+  async cleanSession(
+    targetDir: string,
+    options?: CleanSessionOptions
+  ): Promise<CleanSessionResult> {
+    const dryRun = options?.dryRun ?? false;
+    const cleanSkills = !(options?.keepSkills ?? false);
+    const cleanHooks = !(options?.keepHooks ?? false);
+    const cleanMcpServers = !(options?.keepMcpServers ?? false);
+
+    const manifestPath = getManifestPath(targetDir);
+    const manifest = loadManifest(targetDir);
+    if (!manifest) {
+      return {
+        removedSkills: [],
+        removedHooks: [],
+        removedMcpServers: [],
+        mcpConfigPath: null,
+        settingsPath: null,
+        manifestPath,
+        manifestExisted: false,
+        manifestRemoved: false,
+      };
+    }
+
+    const removedSkills: string[] = [];
+    if (cleanSkills) {
+      for (const id of manifest.skills) {
+        const dir = join(targetDir, ".claude", "skills", id);
+        if (!existsSync(dir)) continue;
+        if (!dryRun) rmSync(dir, { recursive: true, force: true });
+        removedSkills.push(id);
+      }
+    }
+
+    const removedHooks: string[] = [];
+    let settingsPath: string | null = null;
+    if (cleanHooks) {
+      for (const id of manifest.hooks) {
+        const dir = join(targetDir, ".claude", "hooks", id);
+        if (!existsSync(dir)) continue;
+        if (!dryRun) rmSync(dir, { recursive: true, force: true });
+        removedHooks.push(id);
+      }
+
+      if (manifest.hooks.length > 0) {
+        const candidate = join(targetDir, ".claude", "settings.json");
+        if (existsSync(candidate)) {
+          if (!dryRun) {
+            const written = this.reconcileSettingsHooks(
+              targetDir,
+              [],
+              new Set(manifest.hooks)
+            );
+            settingsPath = written;
+          } else {
+            settingsPath = candidate;
+          }
+        }
+      }
+    }
+
+    const removedMcpServers: string[] = [];
+    let mcpConfigPath: string | null = null;
+    if (cleanMcpServers && manifest.mcpServers.length > 0) {
+      const candidate = join(targetDir, ".mcp.json");
+      if (existsSync(candidate)) {
+        if (!dryRun) {
+          mcpConfigPath = this.pruneMcpServers(candidate, manifest.mcpServers);
+        } else {
+          mcpConfigPath = candidate;
+        }
+        for (const id of manifest.mcpServers) removedMcpServers.push(id);
+      }
+    }
+
+    let manifestRemoved = false;
+    if (!dryRun) {
+      const fullClean = cleanSkills && cleanHooks && cleanMcpServers;
+      if (fullClean) {
+        manifestRemoved = deleteManifest(targetDir);
+      } else {
+        writeManifest(
+          buildManifest(targetDir, {
+            skills: cleanSkills ? [] : manifest.skills,
+            hooks: cleanHooks ? [] : manifest.hooks,
+            mcpServers: cleanMcpServers ? [] : manifest.mcpServers,
+          })
+        );
+      }
+    }
+
+    return {
+      removedSkills,
+      removedHooks,
+      removedMcpServers,
+      mcpConfigPath,
+      settingsPath,
+      manifestPath,
+      manifestExisted: true,
+      manifestRemoved,
+    };
   }
 
   /**
@@ -741,6 +861,38 @@ export class ClaudeAdapter implements AgentAdapter {
       ...existing,
       mcpServers: mergedServers,
     };
+  }
+
+  /**
+   * Remove `ids` from `.mcp.json`'s `mcpServers` map, preserving any
+   * user-authored entries and other top-level fields. Returns the path of
+   * the file that was rewritten, or null if the file became empty and was
+   * deleted (no `mcpServers` entries left and no other top-level keys).
+   */
+  private pruneMcpServers(mcpConfigPath: string, ids: string[]): string | null {
+    let existing: Record<string, unknown>;
+    try {
+      existing = JSON.parse(readFileSync(mcpConfigPath, "utf-8"));
+    } catch {
+      return mcpConfigPath;
+    }
+
+    const servers = (existing.mcpServers as Record<string, unknown>) ?? {};
+    for (const id of ids) {
+      delete servers[id];
+    }
+
+    const otherKeys = Object.keys(existing).filter((k) => k !== "mcpServers");
+    if (otherKeys.length === 0 && Object.keys(servers).length === 0) {
+      rmSync(mcpConfigPath, { force: true });
+      return null;
+    }
+
+    writeFileSync(
+      mcpConfigPath,
+      JSON.stringify({ ...existing, mcpServers: servers }, null, 2) + "\n"
+    );
+    return mcpConfigPath;
   }
 
   /**
