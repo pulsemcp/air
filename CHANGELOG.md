@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2026-04-29
+
+### Changed
+- **README demo videos now play inline.** Replaced the poster-image-links-to-MP4 markup with `<video controls>` tags pointing at GitHub user-attachments URLs, which are the only video-hosting origin allowed by GitHub's README CSP. Previously, clicking a poster opened the GitHub blob viewer for the MP4 — which only offers "Download / View raw" buttons, not an inline player. Removed the now-unused `assets/{with,without}-air.{mp4,jpg}` files from the repo since the videos are hosted on GitHub's user-attachments CDN. No code, schema, or CLI behavior changed.
+
 ## [0.2.1] - 2026-04-28
 
 ### Changed
