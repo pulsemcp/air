@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-04-28
+
+### Changed
+- **README repositioning.** The top of the README now opens with a one-paragraph pitch, a side-by-side "Without AIR vs. with AIR" video comparison (linked from `assets/`), a "What's a catalog?" section that walks readers through `examples/`, and a "How does it drop into your workflow?" section showing `~/.air/air.json` plus `air start claude`. The intent is that the first three sections above the fold answer "what is a catalog?" and "how does this drop into my workflow?" before the reader hits the deeper concept material. No code, schema, or CLI behavior changed.
+
 ## [0.2.0] - 2026-04-26
 
 ### Breaking
