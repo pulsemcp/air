@@ -14,11 +14,11 @@ Today, every Claude Code session ships the kitchen sink: every MCP server you've
 <td width="50%" align="center"><strong>With AIR</strong><br/><sub><code>air start claude</code> composes a focused subset — 2 servers, only the skills this session needs</sub></td>
 </tr>
 <tr>
-<td><a href="assets/without-air.mp4"><img src="assets/without-air-poster.jpg" alt="Without AIR demo" width="100%"/></a></td>
-<td><a href="assets/with-air.mp4"><img src="assets/with-air-poster.jpg" alt="With AIR demo" width="100%"/></a></td>
+<td><video controls width="100%" src="https://github.com/user-attachments/assets/09b78ac4-0ddf-4353-9320-0dd8f58ba68c"></video></td>
+<td><video controls width="100%" src="https://github.com/user-attachments/assets/a11a9b65-6427-4603-8026-0f36d1b5132d"></video></td>
 </tr>
 <tr>
-<td colspan="2" align="center"><sub>Click either thumbnail for the ~30s demo (opens GitHub's video player). Source files: <a href="assets/without-air.mp4"><code>assets/without-air.mp4</code></a> · <a href="assets/with-air.mp4"><code>assets/with-air.mp4</code></a></sub></td>
+<td colspan="2" align="center"><sub>~30s demos — press play on either side.</sub></td>
 </tr>
 </table>
 

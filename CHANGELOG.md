@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`.claude/settings.json` is no longer rewritten when its content is unparseable.** During cleanup the previous behavior would silently substitute `{}` for a corrupt-or-truncated settings file and overwrite, clobbering user-authored top-level keys (`permissions`, `env`, `model`, …). The clean path now leaves the file byte-for-byte intact when it can't be parsed and reports `settingsPath: null` so callers can see we declined to act.
 - **Corrupt manifests no longer make `air clean` silently no-op.** Previously a manifest that failed JSON validation was treated as "no manifest" and the file was left on disk; the result reported `manifestExisted: false` even though a file was sitting there. Now the result honestly reports `manifestExisted: true`, and a full clean removes the corrupt manifest itself (under any `--keep-*` flag the corrupt manifest is preserved so the user can recover it).
 
+## [0.2.2] - 2026-04-29
+
+### Changed
+- **README demo videos now play inline.** Replaced the poster-image-links-to-MP4 markup with `<video controls>` tags pointing at GitHub user-attachments URLs, which are the only video-hosting origin allowed by GitHub's README CSP. Previously, clicking a poster opened the GitHub blob viewer for the MP4 — which only offers "Download / View raw" buttons, not an inline player. Removed the now-unused `assets/{with,without}-air.{mp4,jpg}` files from the repo since the videos are hosted on GitHub's user-attachments CDN. No code, schema, or CLI behavior changed.
+
 ## [0.2.1] - 2026-04-28
 
 ### Changed
