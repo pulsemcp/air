@@ -11,7 +11,7 @@ Today, every Claude Code session ships the kitchen sink: every MCP server you've
 <table>
 <tr>
 <td width="50%" align="center"><strong>Without AIR</strong><br/><sub>All MCP servers loaded, every skill in scope — 5 servers needing auth, your entire skill catalog visible at once</sub></td>
-<td width="50%" align="center"><strong>With AIR</strong><br/><sub><code>air start claude</code> composes a focused subset — only the MCP servers and skills this session needs</sub></td>
+<td width="50%" align="center"><strong>With AIR</strong><br/><sub><code>air start claude</code> composes a focused subset — 2 servers, only the skills this session needs</sub></td>
 </tr>
 <tr>
 <td><a href="assets/without-air.mp4"><img src="assets/without-air-poster.jpg" alt="Without AIR demo" width="100%"/></a></td>
@@ -31,7 +31,7 @@ The shape comes through clearest in the [`examples/`](examples/) directory of th
 ```
 examples/
 ├── air.json                   # Composition file: which catalogs are layered, what's excluded
-├── skills/skills.json         # Skill index → SKILL.md files with reusable instructions
+├── skills/skills.json         # Skill index — each entry points at a SKILL.md with reusable instructions
 ├── mcp/mcp.json               # MCP server configs (GitHub, Postgres, Analytics)
 ├── references/references.json # Shared knowledge docs that skills depend on
 ├── plugins/plugins.json       # Bundles of skills + servers + hooks
