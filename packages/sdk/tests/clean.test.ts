@@ -141,7 +141,9 @@ describe("cleanSession (SDK)", () => {
     });
 
     expect(result.removedMcpServers).toEqual(["github"]);
-    expect(result.manifestRemoved).toBe(false);
+    // Full dry-run clean projects manifestRemoved=true even though the file
+    // is left intact on disk — see ClaudeAdapter.cleanSession() for rationale.
+    expect(result.manifestRemoved).toBe(true);
     // Disk state untouched.
     const mcp = JSON.parse(readFileSync(join(target, ".mcp.json"), "utf-8"));
     expect(mcp.mcpServers.github).toBeDefined();

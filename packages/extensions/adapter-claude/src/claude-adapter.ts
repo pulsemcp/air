@@ -366,10 +366,20 @@ export class ClaudeAdapter implements AgentAdapter {
     const cleanSkills = !(options?.keepSkills ?? false);
     const cleanHooks = !(options?.keepHooks ?? false);
     const cleanMcpServers = !(options?.keepMcpServers ?? false);
+    const fullClean = cleanSkills && cleanHooks && cleanMcpServers;
 
     const manifestPath = getManifestPath(targetDir);
+    const manifestFileExists = existsSync(manifestPath);
     const manifest = loadManifest(targetDir);
     if (!manifest) {
+      // Corrupt manifest on disk: we can't know what AIR owns, so we can't
+      // safely remove tracked artifacts. But the manifest file itself is
+      // ours — delete it on a full clean so the user isn't left with stale
+      // state. Treat this as "manifest existed but we couldn't act on it".
+      let corruptManifestRemoved = false;
+      if (manifestFileExists && fullClean && !dryRun) {
+        corruptManifestRemoved = deleteManifest(targetDir);
+      }
       return {
         removedSkills: [],
         removedHooks: [],
@@ -377,8 +387,8 @@ export class ClaudeAdapter implements AgentAdapter {
         mcpConfigPath: null,
         settingsPath: null,
         manifestPath,
-        manifestExisted: false,
-        manifestRemoved: false,
+        manifestExisted: manifestFileExists,
+        manifestRemoved: corruptManifestRemoved,
       };
     }
 
@@ -405,15 +415,26 @@ export class ClaudeAdapter implements AgentAdapter {
       if (manifest.hooks.length > 0) {
         const candidate = join(targetDir, ".claude", "settings.json");
         if (existsSync(candidate)) {
-          if (!dryRun) {
-            const written = this.reconcileSettingsHooks(
-              targetDir,
-              [],
-              new Set(manifest.hooks)
-            );
-            settingsPath = written;
-          } else {
-            settingsPath = candidate;
+          // Refuse to rewrite an unparseable settings.json — overwriting it
+          // with an empty object would clobber user-authored top-level keys
+          // (`permissions`, `env`, `model`, …). Surface the path as null so
+          // callers see we declined to touch it.
+          let parseable = true;
+          try {
+            JSON.parse(readFileSync(candidate, "utf-8"));
+          } catch {
+            parseable = false;
+          }
+          if (parseable) {
+            if (!dryRun) {
+              settingsPath = this.reconcileSettingsHooks(
+                targetDir,
+                [],
+                new Set(manifest.hooks)
+              );
+            } else {
+              settingsPath = candidate;
+            }
           }
         }
       }
@@ -424,29 +445,37 @@ export class ClaudeAdapter implements AgentAdapter {
     if (cleanMcpServers && manifest.mcpServers.length > 0) {
       const candidate = join(targetDir, ".mcp.json");
       if (existsSync(candidate)) {
-        if (!dryRun) {
-          mcpConfigPath = this.pruneMcpServers(candidate, manifest.mcpServers);
-        } else {
-          mcpConfigPath = candidate;
+        const presentIds = this.mcpServerIdsPresent(candidate, manifest.mcpServers);
+        if (presentIds.length > 0) {
+          if (!dryRun) {
+            mcpConfigPath = this.pruneMcpServers(candidate, presentIds);
+          } else {
+            mcpConfigPath = candidate;
+          }
+          for (const id of presentIds) removedMcpServers.push(id);
         }
-        for (const id of manifest.mcpServers) removedMcpServers.push(id);
       }
     }
 
     let manifestRemoved = false;
-    if (!dryRun) {
-      const fullClean = cleanSkills && cleanHooks && cleanMcpServers;
-      if (fullClean) {
+    if (fullClean) {
+      // On a full clean the manifest is always removed (or would be, in
+      // dry-run). Reporting `manifestRemoved: true` in dry-run keeps the
+      // result shape honest for scripted consumers — they don't need to
+      // re-derive the projection from the keep flags.
+      if (!dryRun) {
         manifestRemoved = deleteManifest(targetDir);
       } else {
-        writeManifest(
-          buildManifest(targetDir, {
-            skills: cleanSkills ? [] : manifest.skills,
-            hooks: cleanHooks ? [] : manifest.hooks,
-            mcpServers: cleanMcpServers ? [] : manifest.mcpServers,
-          })
-        );
+        manifestRemoved = manifestFileExists;
       }
+    } else if (!dryRun) {
+      writeManifest(
+        buildManifest(targetDir, {
+          skills: cleanSkills ? [] : manifest.skills,
+          hooks: cleanHooks ? [] : manifest.hooks,
+          mcpServers: cleanMcpServers ? [] : manifest.mcpServers,
+        })
+      );
     }
 
     return {
@@ -459,6 +488,23 @@ export class ClaudeAdapter implements AgentAdapter {
       manifestExisted: true,
       manifestRemoved,
     };
+  }
+
+  /**
+   * Read `.mcp.json` and return the subset of `ids` whose key is actually
+   * present under `mcpServers`. Returns an empty list if the file can't be
+   * parsed — we'd rather under-report than claim to have removed entries
+   * we never touched.
+   */
+  private mcpServerIdsPresent(mcpConfigPath: string, ids: string[]): string[] {
+    let existing: Record<string, unknown>;
+    try {
+      existing = JSON.parse(readFileSync(mcpConfigPath, "utf-8"));
+    } catch {
+      return [];
+    }
+    const servers = (existing.mcpServers as Record<string, unknown>) ?? {};
+    return ids.filter((id) => Object.prototype.hasOwnProperty.call(servers, id));
   }
 
   /**
