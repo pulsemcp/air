@@ -2,11 +2,81 @@
 
 > **Experimental** — This framework is under active development and not yet fit for production usage. APIs, schemas, and conventions may change without notice. We welcome early feedback and contributions.
 
-AIR is an open source framework based exclusively on open standards (and emerging standards) that enables org/team collaboration on AI-related artifacts that empower their autonomous agents. Designed for engineering teams, extensible to any knowledge work.
+Coding agents are most useful when they're loaded with the *right* skills, MCP servers, and references for the task at hand — not the union of every tool you've ever installed. **AIR is an open-source, git-native catalog framework for assembling that focused configuration once per session, on top of open standards.** Designed for engineering teams, extensible to any knowledge work.
+
+## Without AIR vs. with AIR
+
+Today, every Claude Code session ships the kitchen sink: every MCP server you've configured globally, every skill in your `~/.claude/skills` directory. Auth prompts pile up. Useful skills are buried in noise. With AIR, you compose a small, scoped slice — exactly the artifacts this session needs.
+
+<table>
+<tr>
+<td width="50%" align="center"><strong>Without AIR</strong><br/><sub>All MCP servers loaded, every skill in scope — 5 servers needing auth, your entire skill catalog visible at once</sub></td>
+<td width="50%" align="center"><strong>With AIR</strong><br/><sub><code>air start claude</code> composes a focused subset — 2 servers, only the skills this session needs</sub></td>
+</tr>
+<tr>
+<td><a href="assets/without-air.mp4"><img src="assets/without-air-poster.jpg" alt="Without AIR demo" width="100%"/></a></td>
+<td><a href="assets/with-air.mp4"><img src="assets/with-air-poster.jpg" alt="With AIR demo" width="100%"/></a></td>
+</tr>
+<tr>
+<td colspan="2" align="center"><sub>Click either thumbnail for the ~30s demo (opens GitHub's video player). Source files: <a href="assets/without-air.mp4"><code>assets/without-air.mp4</code></a> · <a href="assets/with-air.mp4"><code>assets/with-air.mp4</code></a></sub></td>
+</tr>
+</table>
+
+## What's a catalog?
+
+A **catalog** is a directory (or git repo) that ships AIR artifacts — skills, MCP servers, references, plugins, hooks, roots — each defined as a JSON index validated against an open schema. Anyone can publish one. Your team maintains its own. Org catalogs, team catalogs, personal catalogs — they're all the same shape.
+
+The shape comes through clearest in the [`examples/`](examples/) directory of this repo:
+
+```
+examples/
+├── air.json                   # Composition file: which catalogs are layered, what's excluded
+├── skills/skills.json         # Skill index — each entry points at a SKILL.md with reusable instructions
+├── mcp/mcp.json               # MCP server configs (GitHub, Postgres, Analytics)
+├── references/references.json # Shared knowledge docs that skills depend on
+├── plugins/plugins.json       # Bundles of skills + servers + hooks
+├── roots/roots.json           # Per-project agent workspaces with their own defaults
+└── hooks/hooks.json           # Lifecycle hooks (pre-commit, session-start, etc.)
+```
+
+Browse [`examples/air.json`](examples/air.json) for the composition file, [`examples/skills/skills.json`](examples/skills/skills.json) for a skill index, and [`examples/mcp/mcp.json`](examples/mcp/mcp.json) for a real MCP server set — each artifact validated by a [JSON Schema in `schemas/`](schemas/).
+
+## How does it drop into your workflow?
+
+You install AIR once and write one composition file at `~/.air/air.json`. After that, every agent session is one command.
+
+```jsonc
+// ~/.air/air.json — your single composition surface
+{
+  "name": "frontend-team",
+  "catalogs": [
+    "github://acme/air-org",          // org-wide catalog
+    "github://acme/air-frontend"      // team-scoped catalog
+  ],
+  "skills": [
+    "./skills/skills.json"            // your personal additions
+  ],
+  "exclude": {
+    "mcp": ["@acme/air-org/legacy-server"]
+  }
+}
+```
+
+```bash
+$ air start claude
+# Claude Code boots with exactly the artifacts composed above — nothing more, nothing less.
+```
+
+- **Layer multiple catalogs.** Org → team → personal. Composition is additive, not later-wins.
+- **Scoped identity.** Every artifact is `@scope/id`, so duplicates hard-fail and `exclude` is the only knob to drop something.
+- **Pluggable agents.** Claude Code today, more agents soon — adapter packages translate AIR config into agent-specific formats.
+- **No proprietary backend.** Catalogs live in git repos. AIR fetches them on demand and composes them at session start.
+
+[Quickstart →](#quickstart) · [`air.json` reference →](docs/configuration.md) · [Writing a catalog →](docs/concepts.md)
 
 ## Why AIR?
 
-As teams adopt agents, they inevitably accumulate configuration: MCP server definitions, reusable skills, coding conventions, environment setups. Without structure, this configuration drifts, duplicates, and becomes impossible to share.
+As teams adopt agents, they accumulate configuration: MCP server definitions, reusable skills, coding conventions, environment setups. Without structure, this configuration drifts, duplicates, and becomes impossible to share.
 
 AIR solves this by:
 
