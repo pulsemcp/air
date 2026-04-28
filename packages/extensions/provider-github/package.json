@@ -9,7 +9,7 @@
     "url": "https://github.com/pulsemcp/air.git",
     "directory": "packages/extensions/provider-github"
   },
-  "description": "AIR catalog provider for GitHub \u2014 resolves github:// URIs to artifact indexes",
+  "description": "AIR catalog provider for GitHub — resolves github:// URIs to artifact indexes",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

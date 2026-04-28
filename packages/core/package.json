@@ -9,7 +9,7 @@
     "url": "https://github.com/pulsemcp/air.git",
     "directory": "packages/core"
   },
-  "description": "AIR core \u2014 config resolution, validation, schemas, and extension interfaces",
+  "description": "AIR core — config resolution, validation, schemas, and extension interfaces",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

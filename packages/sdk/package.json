@@ -9,7 +9,7 @@
     "url": "https://github.com/pulsemcp/air.git",
     "directory": "packages/sdk"
   },
-  "description": "AIR SDK \u2014 programmatic API for the Agent Infrastructure Repository framework",
+  "description": "AIR SDK — programmatic API for the Agent Infrastructure Repository framework",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

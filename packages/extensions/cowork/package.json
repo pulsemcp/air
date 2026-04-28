@@ -9,7 +9,7 @@
     "url": "https://github.com/pulsemcp/air.git",
     "directory": "packages/extensions/cowork"
   },
-  "description": "AIR plugin emitter for Claude Co-work \u2014 builds distributable plugin directories from AIR artifacts",
+  "description": "AIR plugin emitter for Claude Co-work — builds distributable plugin directories from AIR artifacts",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
