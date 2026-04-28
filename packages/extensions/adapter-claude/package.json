@@ -1,6 +1,6 @@
 {
   "name": "@pulsemcp/air-adapter-claude",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "publishConfig": {
     "access": "public"
   },
@@ -9,7 +9,7 @@
     "url": "https://github.com/pulsemcp/air.git",
     "directory": "packages/extensions/adapter-claude"
   },
-  "description": "AIR adapter for Claude Code — translates AIR config to Claude Code format",
+  "description": "AIR adapter for Claude Code \u2014 translates AIR config to Claude Code format",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -29,7 +29,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@pulsemcp/air-core": "0.2.1"
+    "@pulsemcp/air-core": "0.2.2"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

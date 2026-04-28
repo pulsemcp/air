@@ -1,6 +1,6 @@
 {
   "name": "@pulsemcp/air-cowork",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "publishConfig": {
     "access": "public"
   },
@@ -9,7 +9,7 @@
     "url": "https://github.com/pulsemcp/air.git",
     "directory": "packages/extensions/cowork"
   },
-  "description": "AIR plugin emitter for Claude Co-work — builds distributable plugin directories from AIR artifacts",
+  "description": "AIR plugin emitter for Claude Co-work \u2014 builds distributable plugin directories from AIR artifacts",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -29,7 +29,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@pulsemcp/air-core": "0.2.1"
+    "@pulsemcp/air-core": "0.2.2"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
