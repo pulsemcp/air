@@ -1,6 +1,6 @@
 ---
 name: air-version-bump
-description: 'Bump versions in lockstep across the AIR monorepo when a PR ships new package contents to npm. TRIGGER when the PR changes publishable code under `packages/*/src/`, JSON schemas under `schemas/` or `packages/core/schemas/`, or shipped fields (dependencies, peerDependencies, bin, exports, main, files) in a `packages/*/package.json`. SKIP when the PR is scoped to non-published files only: `README.md`, `docs/`, `CHANGELOG.md`, `examples/`, `tests/` (root or `packages/*/test/`), `.github/`, `.claude/`, or root config files such as `tsconfig.base.json`, `vitest.workspace.ts`, `.gitignore`, root `package.json` — none of those ship to npm.'
+description: 'Bump versions in lockstep across the AIR monorepo when a PR ships new package contents to npm. TRIGGER when the PR changes publishable code under `packages/*/src/`, JSON schemas under `schemas/` or `packages/core/schemas/`, or shipped fields (dependencies, peerDependencies, bin, exports, main, files) in a `packages/*/package.json`. SKIP when the PR is scoped to non-published files only: `README.md`, `docs/`, `CHANGELOG.md`, `examples/`, `tests/` (root or `packages/*/tests/`), `.github/`, `.claude/`, or root config files such as `tsconfig.base.json`, `vitest.workspace.ts`, `.gitignore`, root `package.json` — none of those ship to npm.'
 user-invocable: true
 argument-hint: '[patch|minor|major]'
 ---
@@ -19,7 +19,7 @@ Versioning exists to publish new package contents to npm — `publish.yml` only 
 - `docs/` — user-facing documentation
 - `CHANGELOG.md` — written by this skill when a real bump happens; never the trigger
 - `examples/` — sample configs, not bundled in any package
-- `tests/` (repo-root) and `packages/*/test/` — never published; only `dist/` (and `schemas/` for core) ships
+- `tests/` (repo-root) and `packages/*/tests/` — never published; only `dist/` (and `schemas/` for core) ships
 - `.github/` — CI and workflow config
 - `.claude/` — Claude / AO session resources (generally gitignored)
 - Root config files: `tsconfig.base.json`, `vitest.workspace.ts`, `.gitignore`, root `package.json` (workspace metadata)
