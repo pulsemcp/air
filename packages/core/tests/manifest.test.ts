@@ -211,6 +211,34 @@ describe("manifest", () => {
       skills.push("b");
       expect(manifest.skills).toEqual(["a"]);
     });
+
+    it("persists the adapter name when supplied so `air clean` can infer it", () => {
+      const manifest = buildManifest(targetDir, { adapter: "claude" });
+      expect(manifest.adapter).toBe("claude");
+      writeManifest(manifest);
+      const raw = readFileSync(getManifestPath(targetDir), "utf-8");
+      expect(JSON.parse(raw).adapter).toBe("claude");
+    });
+
+    it("loads a manifest written without an adapter field (back-compat with older AIR)", () => {
+      // Hand-write a v1-shape manifest without `adapter`, mimicking what an
+      // older AIR install would have produced.
+      const path = getManifestPath(targetDir);
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(
+        path,
+        JSON.stringify({
+          version: 1,
+          target: resolve(targetDir),
+          skills: [],
+          hooks: [],
+          mcpServers: [],
+        })
+      );
+      const loaded = loadManifest(targetDir);
+      expect(loaded).not.toBeNull();
+      expect(loaded!.adapter).toBeUndefined();
+    });
   });
 
   describe("diffManifest", () => {

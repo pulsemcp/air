@@ -263,7 +263,13 @@ If the manifest is missing or unreadable, the current run is treated as "no prio
 `air clean` is the explicit teardown counterpart to `air prepare`. It reads the prior-run manifest for a target directory and asks the adapter to remove every artifact AIR has previously written — without touching anything user-authored.
 
 ```bash
-air clean claude
+air clean
+```
+
+The adapter argument is optional. AIR records which adapter wrote the manifest during `prepare` / `start`, and `air clean` reads that field to decide what to clean. Pass an explicit adapter only to override the inferred value (or for manifests that predate the recorded-adapter field):
+
+```bash
+air clean claude   # explicit override — only needed in rare cases
 ```
 
 Use it when you're done with a session and want to scrub everything AIR added — for example, before deleting a worktree, before committing the directory, or when migrating a repo away from AIR.
@@ -281,7 +287,7 @@ Items listed in the manifest that no longer exist on disk are silently skipped (
 
 ### Options
 
-Required argument: `<adapter>` — the agent adapter that wrote the artifacts (e.g., `claude`).
+Optional argument: `[adapter]` — the agent adapter that wrote the artifacts (e.g., `claude`). When omitted, AIR reads the adapter name from the manifest. When the manifest is missing or written by an older AIR version that didn't record the adapter, the command errors with a hint to pass the adapter explicitly.
 
 | Flag | Description |
 |------|-------------|
@@ -313,17 +319,17 @@ A human-readable summary is printed to stderr; structured JSON is printed to std
 ### Examples
 
 ```bash
-# Preview what would be removed
-air clean claude --dry-run
+# Preview what would be removed (adapter inferred from manifest)
+air clean --dry-run
 
 # Clean a specific directory (e.g., a worktree you're about to delete)
-air clean claude --target ~/agents/web-app-bugfix
+air clean --target ~/agents/web-app-bugfix
 
 # Drop hooks and MCP servers but keep the skill directories on disk
-air clean claude --keep-skills
+air clean --keep-skills
 
 # Used by orchestrators that want only MCP servers torn down between runs
-air clean claude --keep-skills --keep-hooks
+air clean --keep-skills --keep-hooks
 ```
 
 ## air resolve — inspecting the merged artifact tree

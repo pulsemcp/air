@@ -113,6 +113,59 @@ describe("cleanSession (SDK)", () => {
     ).rejects.toThrow(/No adapter found for "no-such-adapter"/);
   });
 
+  it("infers the adapter from the manifest when no adapter is passed", async () => {
+    const catalog = createTemp({
+      "air.json": { name: "test", mcp: ["./mcp.json"] },
+      "mcp.json": { github: { type: "stdio", command: "gh" } },
+    });
+    const target = createTemp({});
+    const configPath = join(catalog, "air.json");
+    process.env.AIR_CONFIG = configPath;
+
+    await prepareSession({
+      adapter: "claude",
+      target,
+      config: configPath,
+      addMcpServers: ["github"],
+    });
+
+    // Note: no `adapter` in the options.
+    const result = await cleanSession({ target });
+
+    expect(result.adapterDisplayName).toBe("Claude Code");
+    expect(result.removedMcpServers).toEqual(["github"]);
+    expect(result.manifestRemoved).toBe(true);
+    expect(existsSync(join(target, ".mcp.json"))).toBe(false);
+  });
+
+  it("errors helpfully when no adapter is passed and no manifest exists", async () => {
+    const target = createTemp({});
+    await expect(cleanSession({ target })).rejects.toThrow(
+      /No AIR manifest found/
+    );
+  });
+
+  it("errors helpfully when no adapter is passed and the manifest predates the adapter field", async () => {
+    const target = createTemp({});
+    // Hand-craft a v1-shape manifest with no `adapter` field, like an older
+    // AIR write would produce.
+    const { writeManifest, getManifestPath } = await import(
+      "@pulsemcp/air-core"
+    );
+    writeManifest({
+      version: 1,
+      target,
+      skills: [],
+      hooks: [],
+      mcpServers: [],
+    });
+    expect(existsSync(getManifestPath(target))).toBe(true);
+
+    await expect(cleanSession({ target })).rejects.toThrow(
+      /does not record which adapter wrote it/
+    );
+  });
+
   it("dry-run preserves disk state", async () => {
     const catalog = createTemp({
       "air.json": {

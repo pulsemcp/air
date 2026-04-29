@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "fs";
 import { resolve, join, dirname } from "path";
 import { tmpdir } from "os";
 import { ClaudeAdapter } from "../src/claude-adapter.js";
+import { loadManifest } from "@pulsemcp/air-core";
 import type {
   ResolvedArtifacts,
   McpServerEntry,
@@ -2512,6 +2513,26 @@ describe("ClaudeAdapter", () => {
         const settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
         expect(settings.hooks).toBeUndefined();
         expect(existsSync(result.manifestPath)).toBe(false);
+      });
+
+      it("records the adapter name in the persisted manifest so `air clean` can infer it later", async () => {
+        const dir = createTempDir();
+        await seedTarget(dir);
+
+        const manifest = loadManifest(dir);
+        expect(manifest).not.toBeNull();
+        expect(manifest!.adapter).toBe("claude");
+      });
+
+      it("preserves the manifest's adapter field across a partial clean (--keep-*)", async () => {
+        const dir = createTempDir();
+        await seedTarget(dir);
+
+        await adapter.cleanSession(dir, { keepSkills: true });
+
+        const manifest = loadManifest(dir);
+        expect(manifest).not.toBeNull();
+        expect(manifest!.adapter).toBe("claude");
       });
 
       it("preserves user-authored MCP server keys when cleaning", async () => {

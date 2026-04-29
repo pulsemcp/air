@@ -209,24 +209,31 @@ There is no silent later-wins. Either drop the colliding entry via `air.json#exc
 
 **Trade-off.** Using `--no-scope` is a commitment. Add a second catalog later that contributes a colliding shortname, and your build breaks until you either exclude the colliding artifact via `air.json#exclude` or switch back to the default qualified output (and update consumers). That's the right trade-off for this flag — brevity now in exchange for an enforced invariant. Users who want compositional flexibility should stick with the default.
 
-### `air clean <adapter>`
+### `air clean [adapter]`
 
 Remove every artifact AIR has previously written to a target directory. Reads the AIR manifest (`~/.air/manifests/<sha>.json`) for the target, then asks the adapter to remove the tracked skill directories, hook directories, MCP server keys (from `.mcp.json`), and adapter-managed hook entries (from `.claude/settings.json` for Claude). User-authored entries that AIR did not write are preserved.
 
+The adapter argument is optional: when omitted, AIR reads the adapter name from the manifest written by the last `air prepare` / `air start` for this target. Pass it explicitly only to override the inferred value (or for manifests written by older AIR versions that predate the recorded-adapter field).
+
 ```bash
 # Clean every AIR-managed artifact from the current directory
-air clean claude
+# (adapter inferred from the manifest)
+air clean
 
-# Clean a different target directory
-air clean claude --target /path/to/repo
+# Same, but for a different target directory
+air clean --target /path/to/repo
 
 # Preview what would be removed without modifying disk
-air clean claude --dry-run
+air clean --dry-run
 
 # Keep skills (or hooks, or MCP servers) — preserves both the files and the manifest entries
-air clean claude --keep-skills
-air clean claude --keep-hooks
-air clean claude --keep-mcp
+air clean --keep-skills
+air clean --keep-hooks
+air clean --keep-mcp
+
+# Override the inferred adapter (rare — only needed for manifests written
+# by older AIR versions without the adapter field, or to force a specific adapter)
+air clean claude
 ```
 
 The manifest is deleted only on a full clean. If any `--keep-*` flag is set, the manifest is rewritten with the kept entries preserved so future `prepare`/`clean` cycles still track them. Items listed in the manifest that no longer exist on disk are silently skipped (handles drift where files were removed manually).

@@ -310,6 +310,7 @@ export class ClaudeAdapter implements AgentAdapter {
     // 8. Persist the updated manifest (shortnames — keyed by filesystem dir).
     writeManifest(
       buildManifest(targetDir, {
+        adapter: this.name,
         skills: skillShortIds,
         hooks: registeredHookShortIds,
         mcpServers: mcpShortIds,
@@ -471,6 +472,10 @@ export class ClaudeAdapter implements AgentAdapter {
     } else if (!dryRun) {
       writeManifest(
         buildManifest(targetDir, {
+          // Preserve the manifest's existing adapter when rewriting; fall back
+          // to this adapter's own name for older manifests that predate the
+          // adapter field.
+          adapter: manifest.adapter ?? this.name,
           skills: cleanSkills ? [] : manifest.skills,
           hooks: cleanHooks ? [] : manifest.hooks,
           mcpServers: cleanMcpServers ? [] : manifest.mcpServers,

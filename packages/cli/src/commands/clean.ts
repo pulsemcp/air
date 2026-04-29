@@ -4,9 +4,12 @@ import { cleanSession } from "@pulsemcp/air-sdk";
 export function cleanCommand(): Command {
   const cmd = new Command("clean")
     .description(
-      "Remove every artifact AIR has previously written to a target directory (skill / hook directories, MCP server keys, manifest)."
+      "Remove every artifact AIR has previously written to a target directory (skill / hook directories, MCP server keys, manifest). The adapter is read from the manifest by default — pass it explicitly only to override."
     )
-    .argument("<adapter>", "Agent adapter to use (e.g., claude)")
+    .argument(
+      "[adapter]",
+      "Agent adapter to use (e.g., claude). Inferred from the manifest when omitted."
+    )
     .option(
       "--target <dir>",
       "Target directory to clean (defaults to cwd)",
@@ -34,7 +37,7 @@ export function cleanCommand(): Command {
     )
     .action(
       async (
-        adapter: string,
+        adapter: string | undefined,
         options: {
           target: string;
           dryRun?: boolean;

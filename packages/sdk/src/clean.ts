@@ -2,14 +2,21 @@ import { resolve, dirname } from "path";
 import {
   getAirJsonPath,
   loadAirConfig,
+  loadManifest,
+  getManifestPath,
   type CleanSessionResult,
 } from "@pulsemcp/air-core";
+import { existsSync } from "fs";
 import { findAdapter, listAvailableAdapters } from "./adapter-registry.js";
 import { loadExtensions } from "./extension-loader.js";
 
 export interface CleanSessionOptions {
-  /** Agent adapter name (e.g., "claude"). */
-  adapter: string;
+  /**
+   * Agent adapter name (e.g., "claude"). When omitted, the adapter is read
+   * from the on-disk manifest written by the previous `prepareSession`. Pass
+   * an explicit value only to override that lookup.
+   */
+  adapter?: string;
   /** Target directory whose AIR-managed artifacts should be removed. Defaults to process.cwd(). */
   target?: string;
   /**
@@ -44,9 +51,26 @@ export interface CleanSessionSdkResult extends CleanSessionResult {
  * implement `cleanSession`.
  */
 export async function cleanSession(
-  options: CleanSessionOptions
+  options: CleanSessionOptions = {}
 ): Promise<CleanSessionSdkResult> {
   const targetDir = resolve(options.target ?? process.cwd());
+
+  const adapterName = options.adapter ?? inferAdapterFromManifest(targetDir);
+  if (!adapterName) {
+    const manifestPath = getManifestPath(targetDir);
+    if (existsSync(manifestPath)) {
+      throw new Error(
+        `Manifest at ${manifestPath} does not record which adapter wrote it ` +
+          `(written by an older AIR version). Re-run with the adapter name, ` +
+          `e.g. \`air clean claude\`.`
+      );
+    }
+    throw new Error(
+      `No AIR manifest found for ${targetDir} (looked for ${manifestPath}). ` +
+        `Run \`air prepare <adapter>\` first, or pass the adapter name explicitly: ` +
+        `\`air clean <adapter>\`.`
+    );
+  }
 
   const airJsonPath = options.config ?? getAirJsonPath();
   const airJsonDir = airJsonPath ? dirname(resolve(airJsonPath)) : undefined;
@@ -54,10 +78,10 @@ export async function cleanSession(
 
   let adapter =
     airJsonPath && airJsonDir
-      ? await findAdapterFromAirJson(options.adapter, airJsonPath, airJsonDir)
+      ? await findAdapterFromAirJson(adapterName, airJsonPath, airJsonDir)
       : null;
   if (!adapter) {
-    adapter = await findAdapter(options.adapter, { searchDirs });
+    adapter = await findAdapter(adapterName, { searchDirs });
   }
   if (!adapter) {
     const available = await listAvailableAdapters({ searchDirs });
@@ -66,14 +90,14 @@ export async function cleanSession(
         ? `Available: ${available.join(", ")}`
         : "No adapters installed";
     throw new Error(
-      `No adapter found for "${options.adapter}". ${availableMsg}.\n` +
-        `Install an adapter: npm install @pulsemcp/air-adapter-${options.adapter}`
+      `No adapter found for "${adapterName}". ${availableMsg}.\n` +
+        `Install an adapter: npm install @pulsemcp/air-adapter-${adapterName}`
     );
   }
 
   if (!adapter.cleanSession) {
     throw new Error(
-      `Adapter "${options.adapter}" does not support clean. ` +
+      `Adapter "${adapterName}" does not support clean. ` +
         `Update the adapter package or remove AIR-managed files manually.`
     );
   }
@@ -86,6 +110,16 @@ export async function cleanSession(
   });
 
   return { ...result, adapterDisplayName: adapter.displayName };
+}
+
+/**
+ * Read the prior-run manifest for `targetDir` and return the adapter name it
+ * records. Returns null when no manifest exists, the manifest is corrupt, or
+ * it predates the adapter field.
+ */
+function inferAdapterFromManifest(targetDir: string): string | null {
+  const manifest = loadManifest(targetDir);
+  return manifest?.adapter ?? null;
 }
 
 async function findAdapterFromAirJson(
