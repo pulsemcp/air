@@ -21,12 +21,16 @@ import type {
   PluginEntry,
   PrepareSessionOptions,
   PreparedSession,
+  CleanSessionOptions,
+  CleanSessionResult,
   LocalArtifacts,
   QualifiedId,
 } from "@pulsemcp/air-core";
 import {
   buildManifest,
+  deleteManifest,
   diffManifest,
+  getManifestPath,
   loadManifest,
   writeManifest,
   parseQualifiedId,
@@ -306,6 +310,7 @@ export class ClaudeAdapter implements AgentAdapter {
     // 8. Persist the updated manifest (shortnames — keyed by filesystem dir).
     writeManifest(
       buildManifest(targetDir, {
+        adapter: this.name,
         skills: skillShortIds,
         hooks: registeredHookShortIds,
         mcpServers: mcpShortIds,
@@ -339,6 +344,172 @@ export class ClaudeAdapter implements AgentAdapter {
    */
   async listLocalArtifacts(targetDir: string): Promise<LocalArtifacts> {
     return { skills: scanLocalSkills(targetDir) };
+  }
+
+  /**
+   * Remove every artifact AIR has previously written into `targetDir`.
+   *
+   * Reads the per-target manifest, deletes each tracked skill / hook
+   * directory, removes tracked MCP server keys from `.mcp.json`, and prunes
+   * AIR-tagged hook entries from `.claude/settings.json`. When every category
+   * is cleaned, the manifest itself is deleted; partial cleans (any
+   * `keep*` flag set) update the manifest with the kept entries so future
+   * runs continue to track them.
+   *
+   * Items in the manifest that no longer exist on disk are silently skipped
+   * — the manifest can drift if a user removed files manually between runs.
+   */
+  async cleanSession(
+    targetDir: string,
+    options?: CleanSessionOptions
+  ): Promise<CleanSessionResult> {
+    const dryRun = options?.dryRun ?? false;
+    const cleanSkills = !(options?.keepSkills ?? false);
+    const cleanHooks = !(options?.keepHooks ?? false);
+    const cleanMcpServers = !(options?.keepMcpServers ?? false);
+    const fullClean = cleanSkills && cleanHooks && cleanMcpServers;
+
+    const manifestPath = getManifestPath(targetDir);
+    const manifestFileExists = existsSync(manifestPath);
+    const manifest = loadManifest(targetDir);
+    if (!manifest) {
+      // Corrupt manifest on disk: we can't know what AIR owns, so we can't
+      // safely remove tracked artifacts. But the manifest file itself is
+      // ours — delete it on a full clean so the user isn't left with stale
+      // state. Treat this as "manifest existed but we couldn't act on it".
+      let corruptManifestRemoved = false;
+      if (manifestFileExists && fullClean && !dryRun) {
+        corruptManifestRemoved = deleteManifest(targetDir);
+      }
+      return {
+        removedSkills: [],
+        removedHooks: [],
+        removedMcpServers: [],
+        mcpConfigPath: null,
+        settingsPath: null,
+        manifestPath,
+        manifestExisted: manifestFileExists,
+        manifestRemoved: corruptManifestRemoved,
+      };
+    }
+
+    const removedSkills: string[] = [];
+    if (cleanSkills) {
+      for (const id of manifest.skills) {
+        const dir = join(targetDir, ".claude", "skills", id);
+        if (!existsSync(dir)) continue;
+        if (!dryRun) rmSync(dir, { recursive: true, force: true });
+        removedSkills.push(id);
+      }
+    }
+
+    const removedHooks: string[] = [];
+    let settingsPath: string | null = null;
+    if (cleanHooks) {
+      for (const id of manifest.hooks) {
+        const dir = join(targetDir, ".claude", "hooks", id);
+        if (!existsSync(dir)) continue;
+        if (!dryRun) rmSync(dir, { recursive: true, force: true });
+        removedHooks.push(id);
+      }
+
+      if (manifest.hooks.length > 0) {
+        const candidate = join(targetDir, ".claude", "settings.json");
+        if (existsSync(candidate)) {
+          // Refuse to rewrite an unparseable settings.json — overwriting it
+          // with an empty object would clobber user-authored top-level keys
+          // (`permissions`, `env`, `model`, …). Surface the path as null so
+          // callers see we declined to touch it.
+          let parseable = true;
+          try {
+            JSON.parse(readFileSync(candidate, "utf-8"));
+          } catch {
+            parseable = false;
+          }
+          if (parseable) {
+            if (!dryRun) {
+              settingsPath = this.reconcileSettingsHooks(
+                targetDir,
+                [],
+                new Set(manifest.hooks)
+              );
+            } else {
+              settingsPath = candidate;
+            }
+          }
+        }
+      }
+    }
+
+    const removedMcpServers: string[] = [];
+    let mcpConfigPath: string | null = null;
+    if (cleanMcpServers && manifest.mcpServers.length > 0) {
+      const candidate = join(targetDir, ".mcp.json");
+      if (existsSync(candidate)) {
+        const presentIds = this.mcpServerIdsPresent(candidate, manifest.mcpServers);
+        if (presentIds.length > 0) {
+          if (!dryRun) {
+            mcpConfigPath = this.pruneMcpServers(candidate, presentIds);
+          } else {
+            mcpConfigPath = candidate;
+          }
+          for (const id of presentIds) removedMcpServers.push(id);
+        }
+      }
+    }
+
+    let manifestRemoved = false;
+    if (fullClean) {
+      // On a full clean the manifest is always removed (or would be, in
+      // dry-run). Reporting `manifestRemoved: true` in dry-run keeps the
+      // result shape honest for scripted consumers — they don't need to
+      // re-derive the projection from the keep flags.
+      if (!dryRun) {
+        manifestRemoved = deleteManifest(targetDir);
+      } else {
+        manifestRemoved = manifestFileExists;
+      }
+    } else if (!dryRun) {
+      writeManifest(
+        buildManifest(targetDir, {
+          // Preserve the manifest's existing adapter when rewriting; fall back
+          // to this adapter's own name for older manifests that predate the
+          // adapter field.
+          adapter: manifest.adapter ?? this.name,
+          skills: cleanSkills ? [] : manifest.skills,
+          hooks: cleanHooks ? [] : manifest.hooks,
+          mcpServers: cleanMcpServers ? [] : manifest.mcpServers,
+        })
+      );
+    }
+
+    return {
+      removedSkills,
+      removedHooks,
+      removedMcpServers,
+      mcpConfigPath,
+      settingsPath,
+      manifestPath,
+      manifestExisted: true,
+      manifestRemoved,
+    };
+  }
+
+  /**
+   * Read `.mcp.json` and return the subset of `ids` whose key is actually
+   * present under `mcpServers`. Returns an empty list if the file can't be
+   * parsed — we'd rather under-report than claim to have removed entries
+   * we never touched.
+   */
+  private mcpServerIdsPresent(mcpConfigPath: string, ids: string[]): string[] {
+    let existing: Record<string, unknown>;
+    try {
+      existing = JSON.parse(readFileSync(mcpConfigPath, "utf-8"));
+    } catch {
+      return [];
+    }
+    const servers = (existing.mcpServers as Record<string, unknown>) ?? {};
+    return ids.filter((id) => Object.prototype.hasOwnProperty.call(servers, id));
   }
 
   /**
@@ -741,6 +912,38 @@ export class ClaudeAdapter implements AgentAdapter {
       ...existing,
       mcpServers: mergedServers,
     };
+  }
+
+  /**
+   * Remove `ids` from `.mcp.json`'s `mcpServers` map, preserving any
+   * user-authored entries and other top-level fields. Returns the path of
+   * the file that was rewritten, or null if the file became empty and was
+   * deleted (no `mcpServers` entries left and no other top-level keys).
+   */
+  private pruneMcpServers(mcpConfigPath: string, ids: string[]): string | null {
+    let existing: Record<string, unknown>;
+    try {
+      existing = JSON.parse(readFileSync(mcpConfigPath, "utf-8"));
+    } catch {
+      return mcpConfigPath;
+    }
+
+    const servers = (existing.mcpServers as Record<string, unknown>) ?? {};
+    for (const id of ids) {
+      delete servers[id];
+    }
+
+    const otherKeys = Object.keys(existing).filter((k) => k !== "mcpServers");
+    if (otherKeys.length === 0 && Object.keys(servers).length === 0) {
+      rmSync(mcpConfigPath, { force: true });
+      return null;
+    }
+
+    writeFileSync(
+      mcpConfigPath,
+      JSON.stringify({ ...existing, mcpServers: servers }, null, 2) + "\n"
+    );
+    return mcpConfigPath;
   }
 
   /**

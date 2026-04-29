@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "fs";
 import { resolve, join, dirname } from "path";
 import { tmpdir } from "os";
 import { ClaudeAdapter } from "../src/claude-adapter.js";
+import { loadManifest } from "@pulsemcp/air-core";
 import type {
   ResolvedArtifacts,
   McpServerEntry,
@@ -2430,6 +2431,356 @@ describe("ClaudeAdapter", () => {
           root: { description: "Test", default_hooks: [] },
         });
         expect(existsSync(join(userHookDir, "marker.txt"))).toBe(true);
+      });
+    });
+
+    describe("cleanSession", () => {
+      function writeSkillSrc(dir: string, id: string): string {
+        const src = join(dir, "..", `src-${id}`, "skills", id);
+        mkdirSync(src, { recursive: true });
+        writeFileSync(join(src, "SKILL.md"), `---\nname: ${id}\n---\n# ${id}`);
+        return resolve(src);
+      }
+
+      function writeHookSrc(dir: string, id: string, command: string): string {
+        const src = join(dir, "..", `src-${id}`, "hooks", id);
+        mkdirSync(src, { recursive: true });
+        writeFileSync(
+          join(src, "HOOK.json"),
+          JSON.stringify({ event: "session_start", command })
+        );
+        return resolve(src);
+      }
+
+      async function seedTarget(dir: string) {
+        const artifacts = emptyArtifacts();
+        artifacts.skills["@local/skill-a"] = {
+          description: "A",
+          path: writeSkillSrc(dir, "skill-a"),
+        };
+        artifacts.hooks["@local/hook-a"] = {
+          description: "A",
+          path: writeHookSrc(dir, "hook-a", "cmd-a"),
+        };
+        artifacts.mcp["@local/mcp-a"] = { type: "stdio", command: "cmd-a" };
+
+        await adapter.prepareSession(artifacts, dir, {
+          root: {
+            description: "Test",
+            default_skills: ["skill-a"],
+            default_hooks: ["hook-a"],
+            default_mcp_servers: ["mcp-a"],
+          },
+        });
+        return artifacts;
+      }
+
+      it("no-ops gracefully when no manifest exists", async () => {
+        const dir = createTempDir();
+        const result = await adapter.cleanSession(dir);
+        expect(result.manifestExisted).toBe(false);
+        expect(result.manifestRemoved).toBe(false);
+        expect(result.removedSkills).toEqual([]);
+        expect(result.removedHooks).toEqual([]);
+        expect(result.removedMcpServers).toEqual([]);
+      });
+
+      it("removes every tracked skill, hook, MCP server, and the manifest", async () => {
+        const dir = createTempDir();
+        await seedTarget(dir);
+
+        // Sanity-check the artifacts are on disk.
+        expect(existsSync(join(dir, ".claude", "skills", "skill-a"))).toBe(true);
+        expect(existsSync(join(dir, ".claude", "hooks", "hook-a"))).toBe(true);
+        const mcpPath = join(dir, ".mcp.json");
+        expect(existsSync(mcpPath)).toBe(true);
+        const settingsPath = join(dir, ".claude", "settings.json");
+        expect(existsSync(settingsPath)).toBe(true);
+
+        const result = await adapter.cleanSession(dir);
+
+        expect(result.removedSkills).toEqual(["skill-a"]);
+        expect(result.removedHooks).toEqual(["hook-a"]);
+        expect(result.removedMcpServers).toEqual(["mcp-a"]);
+        expect(result.manifestExisted).toBe(true);
+        expect(result.manifestRemoved).toBe(true);
+
+        expect(existsSync(join(dir, ".claude", "skills", "skill-a"))).toBe(false);
+        expect(existsSync(join(dir, ".claude", "hooks", "hook-a"))).toBe(false);
+        // .mcp.json had only AIR-managed entries → file is deleted.
+        expect(existsSync(mcpPath)).toBe(false);
+        // settings.json keeps existing (now empty) keys; no hook entries remain.
+        const settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
+        expect(settings.hooks).toBeUndefined();
+        expect(existsSync(result.manifestPath)).toBe(false);
+      });
+
+      it("records the adapter name in the persisted manifest so `air clean` can infer it later", async () => {
+        const dir = createTempDir();
+        await seedTarget(dir);
+
+        const manifest = loadManifest(dir);
+        expect(manifest).not.toBeNull();
+        expect(manifest!.adapter).toBe("claude");
+      });
+
+      it("preserves the manifest's adapter field across a partial clean (--keep-*)", async () => {
+        const dir = createTempDir();
+        await seedTarget(dir);
+
+        await adapter.cleanSession(dir, { keepSkills: true });
+
+        const manifest = loadManifest(dir);
+        expect(manifest).not.toBeNull();
+        expect(manifest!.adapter).toBe("claude");
+      });
+
+      it("preserves user-authored MCP server keys when cleaning", async () => {
+        const dir = createTempDir();
+        await seedTarget(dir);
+
+        const mcpPath = join(dir, ".mcp.json");
+        const mcp = JSON.parse(readFileSync(mcpPath, "utf-8"));
+        mcp.mcpServers["user-mcp"] = { command: "user-cmd" };
+        writeFileSync(mcpPath, JSON.stringify(mcp, null, 2) + "\n");
+
+        const result = await adapter.cleanSession(dir);
+        expect(result.removedMcpServers).toEqual(["mcp-a"]);
+        expect(result.mcpConfigPath).toBe(mcpPath);
+
+        const after = JSON.parse(readFileSync(mcpPath, "utf-8"));
+        expect(after.mcpServers["mcp-a"]).toBeUndefined();
+        expect(after.mcpServers["user-mcp"]).toEqual({ command: "user-cmd" });
+      });
+
+      it("preserves user-authored settings.json hook entries", async () => {
+        const dir = createTempDir();
+        await seedTarget(dir);
+
+        const settingsPath = join(dir, ".claude", "settings.json");
+        const settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
+        settings.hooks.SessionStart.push({
+          matcher: "",
+          hooks: [{ type: "command", command: "user-only" }],
+        });
+        writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+
+        await adapter.cleanSession(dir);
+
+        const after = JSON.parse(readFileSync(settingsPath, "utf-8"));
+        const userEntries = after.hooks.SessionStart.flatMap(
+          (g: { hooks?: Array<{ command: string }> }) => g.hooks ?? []
+        );
+        expect(userEntries).toEqual([
+          { type: "command", command: "user-only" },
+        ]);
+      });
+
+      it("dry-run reports what would be removed without touching disk", async () => {
+        const dir = createTempDir();
+        await seedTarget(dir);
+
+        const result = await adapter.cleanSession(dir, { dryRun: true });
+
+        expect(result.removedSkills).toEqual(["skill-a"]);
+        expect(result.removedHooks).toEqual(["hook-a"]);
+        expect(result.removedMcpServers).toEqual(["mcp-a"]);
+        // Full clean projects manifestRemoved=true so scripted callers can
+        // tell the difference between "dry-run, full wipe coming" and
+        // "dry-run, partial keep".
+        expect(result.manifestRemoved).toBe(true);
+
+        // Nothing was actually deleted.
+        expect(existsSync(join(dir, ".claude", "skills", "skill-a"))).toBe(true);
+        expect(existsSync(join(dir, ".claude", "hooks", "hook-a"))).toBe(true);
+        const mcp = JSON.parse(readFileSync(join(dir, ".mcp.json"), "utf-8"));
+        expect(mcp.mcpServers["mcp-a"]).toBeDefined();
+        expect(existsSync(result.manifestPath)).toBe(true);
+      });
+
+      it("dry-run with --keep-* projects manifestRemoved=false", async () => {
+        const dir = createTempDir();
+        await seedTarget(dir);
+
+        const result = await adapter.cleanSession(dir, {
+          dryRun: true,
+          keepSkills: true,
+        });
+
+        expect(result.manifestRemoved).toBe(false);
+        // Manifest still on disk; nothing rewritten.
+        expect(existsSync(result.manifestPath)).toBe(true);
+      });
+
+      it("keepSkills preserves skills and updates the manifest", async () => {
+        const dir = createTempDir();
+        await seedTarget(dir);
+
+        const result = await adapter.cleanSession(dir, { keepSkills: true });
+
+        expect(result.removedSkills).toEqual([]);
+        expect(result.removedHooks).toEqual(["hook-a"]);
+        expect(result.removedMcpServers).toEqual(["mcp-a"]);
+        expect(result.manifestRemoved).toBe(false);
+
+        expect(existsSync(join(dir, ".claude", "skills", "skill-a"))).toBe(true);
+        expect(existsSync(join(dir, ".claude", "hooks", "hook-a"))).toBe(false);
+
+        const manifest = JSON.parse(
+          readFileSync(result.manifestPath, "utf-8")
+        );
+        expect(manifest.skills).toEqual(["skill-a"]);
+        expect(manifest.hooks).toEqual([]);
+        expect(manifest.mcpServers).toEqual([]);
+      });
+
+      it("keepMcpServers preserves the .mcp.json keys and manifest entry", async () => {
+        const dir = createTempDir();
+        await seedTarget(dir);
+
+        const result = await adapter.cleanSession(dir, { keepMcpServers: true });
+
+        expect(result.removedMcpServers).toEqual([]);
+        const mcp = JSON.parse(readFileSync(join(dir, ".mcp.json"), "utf-8"));
+        expect(mcp.mcpServers["mcp-a"]).toBeDefined();
+
+        const manifest = JSON.parse(
+          readFileSync(result.manifestPath, "utf-8")
+        );
+        expect(manifest.mcpServers).toEqual(["mcp-a"]);
+        expect(manifest.skills).toEqual([]);
+      });
+
+      it("skips manifest entries whose files were already deleted", async () => {
+        const dir = createTempDir();
+        await seedTarget(dir);
+
+        rmSync(join(dir, ".claude", "skills", "skill-a"), {
+          recursive: true,
+          force: true,
+        });
+
+        const result = await adapter.cleanSession(dir);
+        // skill-a was already gone — not reported as removed by us.
+        expect(result.removedSkills).toEqual([]);
+        // Other artifacts still get cleaned and the manifest is removed.
+        expect(result.removedHooks).toEqual(["hook-a"]);
+        expect(result.removedMcpServers).toEqual(["mcp-a"]);
+        expect(result.manifestRemoved).toBe(true);
+      });
+
+      it("keepHooks preserves hook directories, settings.json, and manifest entry", async () => {
+        const dir = createTempDir();
+        await seedTarget(dir);
+
+        // Add a user-authored top-level key to settings.json so we can
+        // verify cleanSession does not rewrite the file at all.
+        const settingsPath = join(dir, ".claude", "settings.json");
+        const settingsBefore = JSON.parse(readFileSync(settingsPath, "utf-8"));
+        settingsBefore.permissions = { allow: ["Bash"] };
+        writeFileSync(
+          settingsPath,
+          JSON.stringify(settingsBefore, null, 2) + "\n"
+        );
+        const exactSettingsContent = readFileSync(settingsPath, "utf-8");
+
+        const result = await adapter.cleanSession(dir, { keepHooks: true });
+
+        expect(result.removedHooks).toEqual([]);
+        expect(result.removedSkills).toEqual(["skill-a"]);
+        expect(result.removedMcpServers).toEqual(["mcp-a"]);
+        expect(result.settingsPath).toBeNull();
+        expect(result.manifestRemoved).toBe(false);
+
+        // Hook directory and settings.json untouched byte-for-byte.
+        expect(existsSync(join(dir, ".claude", "hooks", "hook-a"))).toBe(true);
+        expect(readFileSync(settingsPath, "utf-8")).toBe(exactSettingsContent);
+
+        // Manifest still tracks the hook so a future clean can pick it up.
+        const manifest = JSON.parse(
+          readFileSync(result.manifestPath, "utf-8")
+        );
+        expect(manifest.hooks).toEqual(["hook-a"]);
+        expect(manifest.skills).toEqual([]);
+        expect(manifest.mcpServers).toEqual([]);
+      });
+
+      it("does not report MCP server IDs that are no longer in .mcp.json", async () => {
+        const dir = createTempDir();
+        await seedTarget(dir);
+
+        // Simulate drift: user manually removed the AIR-managed key.
+        const mcpPath = join(dir, ".mcp.json");
+        const mcp = JSON.parse(readFileSync(mcpPath, "utf-8"));
+        delete mcp.mcpServers["mcp-a"];
+        mcp.mcpServers["user-mcp"] = { command: "user-cmd" };
+        writeFileSync(mcpPath, JSON.stringify(mcp, null, 2) + "\n");
+
+        const result = await adapter.cleanSession(dir);
+        // mcp-a was already gone — don't claim we removed it.
+        expect(result.removedMcpServers).toEqual([]);
+        // .mcp.json wasn't rewritten (no AIR-owned keys to prune).
+        expect(result.mcpConfigPath).toBeNull();
+        // User key untouched.
+        const after = JSON.parse(readFileSync(mcpPath, "utf-8"));
+        expect(after.mcpServers["user-mcp"]).toEqual({ command: "user-cmd" });
+      });
+
+      it("refuses to rewrite settings.json when its content is unparseable", async () => {
+        const dir = createTempDir();
+        await seedTarget(dir);
+
+        // Corrupt the file: looks like an unfinished hand-edit.
+        const settingsPath = join(dir, ".claude", "settings.json");
+        const corrupt = '{ "permissions": { "allow": ["Bash"] }, "hooks":';
+        writeFileSync(settingsPath, corrupt);
+
+        const result = await adapter.cleanSession(dir);
+        // We declined to touch settings.json.
+        expect(result.settingsPath).toBeNull();
+        // Bytes unchanged — user content preserved.
+        expect(readFileSync(settingsPath, "utf-8")).toBe(corrupt);
+        // Other categories still cleaned normally.
+        expect(result.removedSkills).toEqual(["skill-a"]);
+        expect(result.removedHooks).toEqual(["hook-a"]);
+        expect(result.removedMcpServers).toEqual(["mcp-a"]);
+      });
+
+      it("removes a corrupt manifest file on a full clean", async () => {
+        const dir = createTempDir();
+        await seedTarget(dir);
+
+        // Capture the manifest path via a dry-run, then corrupt it.
+        const manifestPath = (
+          await adapter.cleanSession(dir, { dryRun: true })
+        ).manifestPath;
+        writeFileSync(manifestPath, "{not json");
+
+        const result = await adapter.cleanSession(dir);
+        // We can't act on tracked artifacts (we don't know what they are),
+        // but we report honestly that the manifest existed and we removed it.
+        expect(result.manifestExisted).toBe(true);
+        expect(result.manifestRemoved).toBe(true);
+        expect(result.removedSkills).toEqual([]);
+        expect(result.removedHooks).toEqual([]);
+        expect(result.removedMcpServers).toEqual([]);
+        expect(existsSync(manifestPath)).toBe(false);
+      });
+
+      it("preserves a corrupt manifest under a partial clean (any --keep-*)", async () => {
+        const dir = createTempDir();
+        await seedTarget(dir);
+        const manifestPath = (
+          await adapter.cleanSession(dir, { dryRun: true })
+        ).manifestPath;
+        writeFileSync(manifestPath, "{not json");
+
+        const result = await adapter.cleanSession(dir, { keepSkills: true });
+        expect(result.manifestExisted).toBe(true);
+        // Partial cleans preserve the manifest. The corrupt file stays so
+        // the user can fix it manually rather than losing the record.
+        expect(result.manifestRemoved).toBe(false);
+        expect(existsSync(manifestPath)).toBe(true);
       });
     });
   });

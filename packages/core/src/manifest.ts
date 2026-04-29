@@ -3,6 +3,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  rmSync,
   writeFileSync,
 } from "fs";
 import { dirname, resolve } from "path";
@@ -22,6 +23,13 @@ export interface Manifest {
   version: number;
   /** Absolute target directory this manifest describes. */
   target: string;
+  /**
+   * Adapter name (`AgentAdapter.name`) that wrote this manifest. Recorded so
+   * `air clean` can infer which adapter to use without the user re-typing it.
+   * Optional in the type for back-compat with manifests written before the
+   * field existed; new writes always include it.
+   */
+  adapter?: string;
   /** Skill IDs whose `.claude/skills/<id>/` (or adapter equivalent) AIR owns. */
   skills: string[];
   /** Hook IDs whose `.claude/hooks/<id>/` (or adapter equivalent) AIR owns. */
@@ -34,8 +42,15 @@ export interface Manifest {
  * The current selection of artifacts for a target directory — what should
  * exist on disk after this run. Any ID present in a previous manifest but
  * absent here is stale and should be cleaned up.
+ *
+ * `adapter` is optional in this shape because not every call site supplies
+ * it (e.g. `diffManifest` only reads the ID lists). Writers — adapters
+ * persisting via `buildManifest` — should set it so `air clean` can later
+ * infer which adapter wrote the manifest.
  */
 export interface ManifestSelection {
+  /** Adapter name (`AgentAdapter.name`); persisted into the manifest when set. */
+  adapter?: string;
   skills?: string[];
   hooks?: string[];
   mcpServers?: string[];
@@ -128,6 +143,7 @@ function isManifestShape(value: unknown): value is Manifest {
   const m = value as Record<string, unknown>;
   if (typeof m.version !== "number") return false;
   if (typeof m.target !== "string") return false;
+  if (m.adapter !== undefined && typeof m.adapter !== "string") return false;
   if (!isSafeIdArray(m.skills)) return false;
   if (!isSafeIdArray(m.hooks)) return false;
   if (!isSafeIdArray(m.mcpServers)) return false;
@@ -179,10 +195,25 @@ export function buildManifest(
   return {
     version: MANIFEST_VERSION,
     target: resolve(targetDir),
+    adapter: selection.adapter,
     skills: [...(selection.skills ?? [])],
     hooks: [...(selection.hooks ?? [])],
     mcpServers: [...(selection.mcpServers ?? [])],
   };
+}
+
+/**
+ * Delete the manifest file for `targetDir`. Returns true when a file was
+ * removed, false when no manifest existed. Safe to call repeatedly.
+ */
+export function deleteManifest(
+  targetDir: string,
+  options?: { airHome?: string }
+): boolean {
+  const path = getManifestPath(targetDir, options);
+  if (!existsSync(path)) return false;
+  rmSync(path, { force: true });
+  return true;
 }
 
 /**

@@ -258,6 +258,80 @@ Artifacts AIR didn't write are never touched. If you manually place a `.claude/s
 
 If the manifest is missing or unreadable, the current run is treated as "no prior state" — nothing is cleaned up, and a fresh manifest is written at the end. You can point AIR at a different state directory for testing by setting `AIR_HOME` (defaults to `~/.air`).
 
+## air clean — removing AIR-managed artifacts
+
+`air clean` is the explicit teardown counterpart to `air prepare`. It reads the prior-run manifest for a target directory and asks the adapter to remove every artifact AIR has previously written — without touching anything user-authored.
+
+```bash
+air clean
+```
+
+The adapter argument is optional. AIR records which adapter wrote the manifest during `prepare` / `start`, and `air clean` reads that field to decide what to clean. Pass an explicit adapter only to override the inferred value (or for manifests that predate the recorded-adapter field):
+
+```bash
+air clean claude   # explicit override — only needed in rare cases
+```
+
+Use it when you're done with a session and want to scrub everything AIR added — for example, before deleting a worktree, before committing the directory, or when migrating a repo away from AIR.
+
+### What it does
+
+1. Loads the AIR manifest at `~/.air/manifests/<sha>.json` for the target directory
+2. Asks the adapter to remove the tracked artifacts:
+   - **Skills** — deletes `.claude/skills/<id>/` directories listed in the manifest
+   - **Hooks** — deletes `.claude/hooks/<id>/` directories and removes their entries from `.claude/settings.json` (identified by the `_airHookId` marker)
+   - **MCP servers** — deletes the corresponding keys from `.mcp.json`; user-added keys are preserved. If `.mcp.json` would be left empty (no other top-level keys), the file is deleted entirely.
+3. Deletes the manifest on a full clean. If any `--keep-*` flag is set, the manifest is rewritten with the kept entries preserved so future `prepare` / `clean` cycles still track them.
+
+Items listed in the manifest that no longer exist on disk are silently skipped (handles drift where files were removed manually). If no manifest exists for the target, `air clean` is a no-op and exits successfully.
+
+### Options
+
+Optional argument: `[adapter]` — the agent adapter that wrote the artifacts (e.g., `claude`). When omitted, AIR reads the adapter name from the manifest. When the manifest is missing or written by an older AIR version that didn't record the adapter, the command errors with a hint to pass the adapter explicitly.
+
+| Flag | Description |
+|------|-------------|
+| `--target <dir>` | Directory to clean (default: current directory) |
+| `--dry-run` | Print what would be removed without modifying disk |
+| `--keep-skills` | Don't remove skill directories — preserve them in the manifest |
+| `--keep-hooks` | Don't remove hook directories or AIR-managed entries from `.claude/settings.json` |
+| `--keep-mcp` | Don't remove AIR-managed MCP server keys from `.mcp.json` |
+| `--config <path>` | Path to `air.json`. Used only to locate adapter packages installed via `air install`. (default: `AIR_CONFIG` env or `~/.air/air.json`) |
+
+### Output
+
+A human-readable summary is printed to stderr; structured JSON is printed to stdout (suitable for `jq` or scripting):
+
+```json
+{
+  "removedSkills": ["deploy-staging", "initial-pr-review"],
+  "removedHooks": ["lint-pre-commit"],
+  "removedMcpServers": ["github"],
+  "mcpConfigPath": "/workspace/.mcp.json",
+  "settingsPath": "/workspace/.claude/settings.json",
+  "manifestPath": "/home/user/.air/manifests/<sha>.json",
+  "manifestExisted": true,
+  "manifestRemoved": true,
+  "adapterDisplayName": "Claude Code"
+}
+```
+
+### Examples
+
+```bash
+# Preview what would be removed (adapter inferred from manifest)
+air clean --dry-run
+
+# Clean a specific directory (e.g., a worktree you're about to delete)
+air clean --target ~/agents/web-app-bugfix
+
+# Drop hooks and MCP servers but keep the skill directories on disk
+air clean --keep-skills
+
+# Used by orchestrators that want only MCP servers torn down between runs
+air clean --keep-skills --keep-hooks
+```
+
 ## air resolve — inspecting the merged artifact tree
 
 `air resolve --json` loads `air.json`, runs the configured catalog providers, and prints the full merged `ResolvedArtifacts` object to stdout as JSON. It's the read-only companion to `air prepare` for orchestrators, dashboards, and non-Node consumers that need to know *what* artifacts AIR would make available without actually preparing a session.

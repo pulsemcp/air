@@ -33,6 +33,8 @@ export type {
   StartCommand,
   PrepareSessionOptions,
   PreparedSession,
+  CleanSessionOptions,
+  CleanSessionResult,
 } from "./types.js";
 
 // Config resolution
@@ -91,6 +93,7 @@ export {
   writeManifest,
   buildManifest,
   diffManifest,
+  deleteManifest,
 } from "./manifest.js";
 export type {
   Manifest,

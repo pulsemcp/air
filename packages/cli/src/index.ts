@@ -12,6 +12,7 @@ import { updateCommand } from "./commands/update.js";
 import { upgradeCommand } from "./commands/upgrade.js";
 import { exportCommand } from "./commands/export.js";
 import { resolveCommand } from "./commands/resolve.js";
+import { cleanCommand } from "./commands/clean.js";
 
 const require = createRequire(import.meta.url);
 const { version } = require("../package.json");
@@ -33,5 +34,6 @@ program.addCommand(updateCommand());
 program.addCommand(upgradeCommand());
 program.addCommand(exportCommand());
 program.addCommand(resolveCommand());
+program.addCommand(cleanCommand());
 
 program.parseAsync();

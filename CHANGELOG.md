@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-04-28
+
+### Added
+- **`air clean [adapter]` command** for explicit teardown of AIR-managed artifacts in a target directory. Reads the prior-run manifest at `~/.air/manifests/<sha>.json` and asks the adapter to remove every tracked skill directory (`.claude/skills/<id>/`), hook directory (`.claude/hooks/<id>/`), AIR-written entries in `.claude/settings.json` (identified by the `_airHookId` marker), and AIR-managed MCP server keys in `.mcp.json`. User-authored entries are preserved — keys AIR did not write to `.mcp.json` and hook entries without the `_airHookId` marker pass through untouched. If `.mcp.json` would be left empty after the prune, the file is deleted entirely. The manifest itself is deleted on a full clean; partial cleans (any `--keep-*` flag set) rewrite the manifest with the kept entries preserved so future `prepare`/`clean` cycles still track them. Items listed in the manifest that no longer exist on disk are silently skipped (handles drift where files were removed manually). Supports `--target <dir>`, `--dry-run`, `--keep-skills`, `--keep-hooks`, `--keep-mcp`, and `--config <path>`. Resolves [#121](https://github.com/pulsemcp/air/issues/121).
+- **The adapter argument to `air clean` is optional.** AIR records the writing adapter's name (`AgentAdapter.name`, e.g. `"claude"`) in the manifest during `prepare` / `start`. `air clean` reads that field to decide which adapter to use, so users no longer have to retype it (`air clean` instead of `air clean claude`). Pass an explicit adapter only to override the inferred value or to clean a manifest written by an older AIR version that predates the recorded-adapter field.
+- **Optional `cleanSession?(targetDir, options)` method on the `AgentAdapter` interface.** Existing adapters that don't implement it raise a clear "does not support clean" error from the SDK; the Claude adapter (`@pulsemcp/air-adapter-claude`) implements it. Adding a new optional method is non-breaking for third-party adapters compiled against the prior `AgentAdapter` interface.
+- **New SDK exports** (re-exported from both `@pulsemcp/air-core` and `@pulsemcp/air-sdk` where appropriate): `cleanSession()`, `CleanSessionOptions` (SDK-flavored shape with optional `adapter` and `config`), `CleanSessionSdkResult`, `CoreCleanSessionOptions` (the adapter-facing shape), `CleanSessionResult`, and `deleteManifest()`.
+- **Optional `adapter` field on the on-disk manifest** (`Manifest.adapter`). Adapters that persist the manifest via `buildManifest({ adapter, ... })` get the field written automatically. The field is back-compat: manifests written by older AIR versions still load (with `adapter: undefined`), they just can't drive the new `air clean` inference path.
+
+### Fixed
+- **`.claude/settings.json` is no longer rewritten when its content is unparseable.** During cleanup the previous behavior would silently substitute `{}` for a corrupt-or-truncated settings file and overwrite, clobbering user-authored top-level keys (`permissions`, `env`, `model`, …). The clean path now leaves the file byte-for-byte intact when it can't be parsed and reports `settingsPath: null` so callers can see we declined to act.
+- **Corrupt manifests no longer make `air clean` silently no-op.** Previously a manifest that failed JSON validation was treated as "no manifest" and the file was left on disk; the result reported `manifestExisted: false` even though a file was sitting there. Now the result honestly reports `manifestExisted: true`, and a full clean removes the corrupt manifest itself (under any `--keep-*` flag the corrupt manifest is preserved so the user can recover it).
+
 ## [0.2.2] - 2026-04-29
 
 ### Changed

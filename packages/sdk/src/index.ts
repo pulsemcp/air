@@ -38,6 +38,7 @@ export {
   writeManifest,
   buildManifest,
   diffManifest,
+  deleteManifest,
 } from "@pulsemcp/air-core";
 
 // Re-export core types
@@ -71,6 +72,8 @@ export type {
   StartCommand,
   PrepareSessionOptions as CorePrepareSessionOptions,
   PreparedSession,
+  CleanSessionOptions as CoreCleanSessionOptions,
+  CleanSessionResult,
   LocalArtifacts,
   LocalSkillEntry,
   // Validation types
@@ -136,6 +139,12 @@ export type {
   PrepareSessionResult,
   MergedArtifactDefaults,
 } from "./prepare.js";
+
+export { cleanSession } from "./clean.js";
+export type {
+  CleanSessionOptions,
+  CleanSessionSdkResult,
+} from "./clean.js";
 
 export { exportMarketplace } from "./export-marketplace.js";
 export type {
