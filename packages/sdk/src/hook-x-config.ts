@@ -46,18 +46,31 @@ export function materializeHookXConfig(
  * subsequent transforms (e.g. `${VAR}` interpolation) operate on the fully
  * composed config.
  *
- * Each `hookPath` is a directory; its basename is the short ID. The matching
- * resolved hook is found by parsing qualified IDs in `artifacts.hooks` and
- * matching on the short component. Hooks without an `x-config` on either
- * side are skipped — the verbatim copy made by the adapter is correct.
+ * Each `hookPath` is a directory; its basename is the short ID. When
+ * `activations` is provided (a short→qualified mapping the adapter emits),
+ * the qualified ID is used to look up the exact resolved hook entry —
+ * disambiguating cross-scope shortname collisions. Without `activations`,
+ * falls back to a short-id lookup that picks the first matching entry.
+ *
+ * Hooks without an `x-config` on either side are skipped — the verbatim copy
+ * made by the adapter is correct.
  */
 export function writeMergedHookXConfigs(
   hookPaths: string[],
-  artifacts: ResolvedArtifacts
+  artifacts: ResolvedArtifacts,
+  activations?: Array<{ short: string; qualified: string }>
 ): void {
+  const qualifiedByShort = new Map<string, string>();
+  if (activations) {
+    for (const a of activations) qualifiedByShort.set(a.short, a.qualified);
+  }
+
   for (const hookPath of hookPaths) {
     const shortId = basename(hookPath);
-    const entry = findHookByShortId(artifacts, shortId);
+    const qualified = qualifiedByShort.get(shortId);
+    const entry = qualified
+      ? artifacts.hooks[qualified]
+      : findHookByShortId(artifacts, shortId);
     if (!entry) continue;
 
     const consumerXConfig = entry["x-config"];

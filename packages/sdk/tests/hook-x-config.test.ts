@@ -10,6 +10,8 @@ import {
 import { tmpdir } from "os";
 import { prepareSession } from "../src/prepare.js";
 import { resolveFullArtifacts } from "../src/resolve.js";
+import { writeMergedHookXConfigs } from "../src/hook-x-config.js";
+import type { ResolvedArtifacts } from "@pulsemcp/air-core";
 
 const tempDirs: string[] = [];
 
@@ -352,6 +354,99 @@ describe("hook x-config materialization", () => {
           process.env.SDK_TEST_XCONFIG_SECRET = savedVal;
         }
       }
+    });
+  });
+
+  describe("writeMergedHookXConfigs (cross-scope shortname collision)", () => {
+    it("uses activations to pick the correct entry when two scopes ship the same shortname", () => {
+      const target = createTemp({
+        // The adapter would have copied this from @local/notify's source
+        ".claude/hooks/notify/HOOK.json": JSON.stringify({
+          event: "Stop",
+          "x-config": { from: "source", greeting: "hello" },
+        }),
+      });
+
+      // Two distinct hooks with the same shortname under different scopes —
+      // exactly the cross-scope collision case warnCrossScopeShortnames warns
+      // about. The adapter activates one of them; the SDK must use the
+      // activation's qualified ID to pick the right consumer x-config.
+      const artifacts: ResolvedArtifacts = {
+        skills: {},
+        references: {},
+        mcp: {},
+        plugins: {},
+        roots: {},
+        hooks: {
+          "@local/notify": {
+            description: "local",
+            path: "ignored",
+            "x-config": { greeting: "from-local-consumer" },
+          },
+          "@acme/repo/notify": {
+            description: "acme",
+            path: "ignored",
+            "x-config": { greeting: "from-acme-consumer" },
+          },
+        },
+      };
+
+      writeMergedHookXConfigs(
+        [resolve(target, ".claude/hooks/notify")],
+        artifacts,
+        [{ short: "notify", qualified: "@acme/repo/notify" }]
+      );
+
+      const hookJson = JSON.parse(
+        readFileSync(
+          resolve(target, ".claude/hooks/notify/HOOK.json"),
+          "utf-8"
+        )
+      );
+      expect(hookJson["x-config"]).toEqual({
+        from: "source",
+        greeting: "from-acme-consumer",
+      });
+    });
+
+    it("falls back to short-id lookup when activations are not provided", () => {
+      const target = createTemp({
+        ".claude/hooks/notify/HOOK.json": JSON.stringify({
+          event: "Stop",
+          "x-config": { from: "source" },
+        }),
+      });
+
+      const artifacts: ResolvedArtifacts = {
+        skills: {},
+        references: {},
+        mcp: {},
+        plugins: {},
+        roots: {},
+        hooks: {
+          "@local/notify": {
+            description: "local",
+            path: "ignored",
+            "x-config": { extra: "from-consumer" },
+          },
+        },
+      };
+
+      writeMergedHookXConfigs(
+        [resolve(target, ".claude/hooks/notify")],
+        artifacts
+      );
+
+      const hookJson = JSON.parse(
+        readFileSync(
+          resolve(target, ".claude/hooks/notify/HOOK.json"),
+          "utf-8"
+        )
+      );
+      expect(hookJson["x-config"]).toEqual({
+        from: "source",
+        extra: "from-consumer",
+      });
     });
   });
 });

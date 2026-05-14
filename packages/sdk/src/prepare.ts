@@ -256,7 +256,11 @@ export async function prepareSession(
   // the merged x-config back into each materialized HOOK.json so transforms
   // (e.g. ${VAR} interpolation) operate on the fully composed config.
   if (session.hookPaths.length > 0) {
-    writeMergedHookXConfigs(session.hookPaths, artifacts);
+    writeMergedHookXConfigs(
+      session.hookPaths,
+      artifacts,
+      session.hookActivations
+    );
   }
 
   // Run transforms in extension-list order on all config files (e.g., .mcp.json, settings.json)

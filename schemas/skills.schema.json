@@ -36,7 +36,7 @@
         },
         "path": {
           "type": "string",
-          "description": "Relative path to the skill directory containing SKILL.md."
+          "description": "Path to the skill directory containing SKILL.md. Either a relative path within the same catalog, or a remote URI handled by an installed catalog provider (e.g. github://owner/repo[@ref]/path/within/repo)."
         },
         "references": {
           "type": "array",

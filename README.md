@@ -328,6 +328,8 @@ Hooks are shell commands that fire at agent lifecycle events. Use them for notif
 }
 ```
 
+A hook entry can also point its `path` at a remote directory (e.g. `"path": "github://acme/air-org@v1.2.0/hooks/notify-session-start"`) and carry an `x-config` overlay that AIR deep-merges into the materialized `HOOK.json`'s `x-config` at resolve time — so consumers can override defaults without forking the hook. See the [hooks guide](docs/guides/hooks.md) for details.
+
 ## Scope
 
 AIR is a **single-session configuration layer** — it resolves, validates, and translates agent configs for one session at a time. It is not an orchestration platform.

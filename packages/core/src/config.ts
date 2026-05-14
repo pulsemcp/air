@@ -128,7 +128,8 @@ interface ArtifactContribution<T> {
 async function loadContributions<T>(
   paths: { path: string; scope: string }[],
   baseDir: string,
-  providers: CatalogProvider[]
+  providers: CatalogProvider[],
+  artifactType: string
 ): Promise<ArtifactContribution<T>[]> {
   const contributions: ArtifactContribution<T>[] = [];
 
@@ -159,7 +160,7 @@ async function loadContributions<T>(
       entries,
       sourceDir,
       providers,
-      "artifact"
+      artifactType
     );
     contributions.push({ scope, source: p, entries: resolved });
   }
@@ -1094,7 +1095,7 @@ export async function resolveArtifacts(
 
   async function load<T>(type: ArtifactType): Promise<Record<string, T>> {
     const paths = pathsFor(type);
-    const contributions = await loadContributions<T>(paths, baseDir, providers);
+    const contributions = await loadContributions<T>(paths, baseDir, providers, type);
     const { merged, sources } = mergeContributions<T>(contributions, type);
     sourcesByType[type] = sources;
     return merged;

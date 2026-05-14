@@ -346,6 +346,15 @@ export interface PreparedSession {
   skillPaths: string[];
   /** Paths to hook directories created */
   hookPaths: string[];
+  /**
+   * Optional: short-id → qualified-id mapping for the hooks the adapter
+   * activated. When present, lets the SDK look up the exact resolved hook
+   * entry that was materialized at the corresponding `hookPaths` directory.
+   * Required to disambiguate cross-scope shortname collisions in the
+   * resolved set; when absent, the SDK falls back to a short-id lookup that
+   * picks the first match.
+   */
+  hookActivations?: Array<{ short: string; qualified: string }>;
   /** The command to start the agent in the prepared directory */
   startCommand: StartCommand;
   /**

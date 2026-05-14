@@ -176,7 +176,7 @@ The `path` field accepts catalog provider URIs in addition to relative paths. Wi
 }
 ```
 
-The provider shallow-clones the referenced ref into `~/.air/cache/github/{owner}/{repo}/{ref}/` and AIR reads the hook directory from there, just like a local path. Refs that look like a 40-character SHA are treated as immutable and content-addressed (the cache directory will not be re-fetched). Branch names and tags are mutable from AIR's point of view and are refreshed on `air update`.
+The provider shallow-clones the referenced ref into `~/.air/cache/github/{owner}/{repo}/{ref}/` (where `{ref}` is the literal ref string — the branch name, tag name, or full 40-character SHA) and AIR reads the hook directory from there, just like a local path. Refs that look like a 40-character SHA are treated as immutable and content-addressed (the cache directory will not be re-fetched). Branch names and tags are mutable from AIR's point of view and are refreshed on `air update`. Note that AIR does not deduplicate a SHA-pinned ref against a branch that resolves to the same commit — they live in separate cache directories.
 
 The same `AIR_GITHUB_TOKEN` and `gitProtocol` settings used for `catalogs` apply to `path` URIs — the provider is reused, not re-instantiated.
 
