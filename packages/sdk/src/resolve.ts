@@ -6,6 +6,7 @@ import {
   type ResolvedArtifacts,
 } from "@pulsemcp/air-core";
 import { loadExtensions } from "./extension-loader.js";
+import { materializeHookXConfig } from "./hook-x-config.js";
 
 export interface ResolveFullArtifactsOptions {
   /** Path to air.json. Uses AIR_CONFIG env or ~/.air/air.json if not set. */
@@ -48,5 +49,9 @@ export async function resolveFullArtifacts(
     providerOptions.gitProtocol = options.gitProtocol;
   }
 
-  return resolveArtifacts(airJsonPath, { providers, providerOptions });
+  const artifacts = await resolveArtifacts(airJsonPath, {
+    providers,
+    providerOptions,
+  });
+  return materializeHookXConfig(artifacts);
 }

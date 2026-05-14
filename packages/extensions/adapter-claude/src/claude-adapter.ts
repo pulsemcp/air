@@ -270,6 +270,7 @@ export class ClaudeAdapter implements AgentAdapter {
     // 6. Validate and inject path-based hooks into .claude/hooks/<short>/.
     const prevHookIds = new Set(prevManifest?.hooks ?? []);
     const registeredHookShortIds: string[] = [];
+    const registeredHookActivations: Array<{ short: string; qualified: string }> = [];
     for (const a of hookActs) {
       const hook = artifacts.hooks[a.qualified];
 
@@ -291,6 +292,7 @@ export class ClaudeAdapter implements AgentAdapter {
 
       hookPaths.push(hookTargetDir);
       registeredHookShortIds.push(a.short);
+      registeredHookActivations.push({ short: a.short, qualified: a.qualified });
     }
 
     // 7. Register AIR-owned hooks in .claude/settings.json.
@@ -333,7 +335,14 @@ export class ClaudeAdapter implements AgentAdapter {
       startCommand.args.push("--append-system-prompt", subagentContext);
     }
 
-    return { configFiles, skillPaths, hookPaths, startCommand, subagentContext };
+    return {
+      configFiles,
+      skillPaths,
+      hookPaths,
+      hookActivations: registeredHookActivations,
+      startCommand,
+      subagentContext,
+    };
   }
 
   /**
