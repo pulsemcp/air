@@ -45,8 +45,9 @@ Hooks are registered in `hooks.json`:
 |-------|----------|-------------|
 | `title` | No | Human-readable display name. |
 | `description` | Yes | What this hook does. |
-| `path` | Yes | Relative path to the hook directory containing `HOOK.json`. |
+| `path` | Yes | Path to the hook directory containing `HOOK.json`. Either a relative path inside the catalog, or a remote URI handled by an installed catalog provider (e.g. `github://owner/repo[@ref]/path/to/hook-dir`). |
 | `references` | No | IDs of reference documents this hook depends on. |
+| `x-config` | No | Consumer-supplied configuration overlay; deep-merged into the materialized `HOOK.json`'s `x-config` at resolve time (consumer wins on conflicts). Values support `${VAR}` interpolation. See the [hooks guide](guides/hooks.md#consumer-config-overlay-x-config) for details. |
 
 ## Hook Directory
 
@@ -86,6 +87,7 @@ The `HOOK.json` file defines how the hook executes:
 | `env` | No | Environment variables. Values support `${VAR}` interpolation. |
 | `timeout_seconds` | No | Maximum execution time before the hook is killed. |
 | `matcher` | No | Regex pattern to filter events. Hook only fires when matched. |
+| `x-config` | No | Hook-defined configuration block. Consumers can layer overrides via `x-config` in the index entry; AIR deep-merges them at resolve time. See the [hooks guide](guides/hooks.md#consumer-config-overlay-x-config). |
 
 ## Lifecycle Events
 

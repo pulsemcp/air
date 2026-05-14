@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-05-14
+
+### Added
+- **`x-config` overlay on hook index entries.** `hooks.json` entries can now carry an optional `x-config` object that AIR deep-merges into the materialized `HOOK.json`'s own `x-config` at resolve time. Consumer values win on conflicts; objects merge recursively, arrays replace wholesale, and scalars replace. The merged value flows through `air resolve --json`, gets written into the materialized `HOOK.json` during `air prepare` / `air start`, and runs through the existing transform pipeline (so `${VAR}` interpolation via `@pulsemcp/air-secrets-env` / `-secrets-file` works inside `x-config` values too). The shape is intentionally permissive (`additionalProperties: true` in the schema) — hook authors define and document their own `x-config` schema. New core export `mergeXConfig(base, overlay)` for consumers who want the same deep-merge semantics. Resolves [#127](https://github.com/pulsemcp/air/issues/127).
+- **`github://` scheme on the hook `path` field.** A `hooks.json` entry's `path` can now point at a remote hook directory living in another GitHub repo, e.g. `"path": "github://acme/air-org@v1.2.0/hooks/notify-session-start"`. The same `@pulsemcp/air-provider-github` extension that resolves `catalogs` and per-type index URIs handles this lookup; the same `AIR_GITHUB_TOKEN` and `gitProtocol` settings apply. Refs that look like a 40-character SHA are treated as immutable and content-addressed in the cache (`~/.air/cache/github/{owner}/{repo}/{ref}/`); branch and tag refs are mutable and refresh on `air update`. Path-style URIs work for every artifact type with a `path` field, not only hooks (skills can use this too). Resolves [#127](https://github.com/pulsemcp/air/issues/127).
+
+### Changed
+- **`@pulsemcp/air-provider-github` now supports SHA-pinned refs.** Previously, the provider always shelled out to `git clone --depth 1 --branch <ref>`, which fails for full 40-character SHAs (Git refuses `--branch <SHA>`). The provider now detects immutable refs and switches to `git init` + `git remote add origin` + `git fetch --depth 1 origin <sha>` + `git checkout FETCH_HEAD`, which works for any ref shape that the remote will resolve. Branch and tag refs continue to use the existing `git clone --branch` path.
+
 ## [0.3.0] - 2026-04-28
 
 ### Added

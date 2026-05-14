@@ -158,10 +158,27 @@ export interface RootEntry {
 export interface HookEntry {
   title?: string;
   description: string;
-  /** Relative path to the hook directory containing HOOK.json and associated scripts. */
+  /**
+   * Path to the hook directory containing HOOK.json and associated scripts.
+   * Either an absolute filesystem path, or — at index-authoring time — a
+   * relative path within the same catalog or a provider URI (e.g.
+   * `github://owner/repo[@ref]/path`). `resolveArtifacts` converts both forms
+   * to absolute local paths in the returned `ResolvedArtifacts`.
+   */
   path: string;
   /** IDs of reference documents this hook depends on. */
   references?: string[];
+  /**
+   * Consumer-supplied configuration overrides that get deep-merged into the
+   * materialized HOOK.json's `x-config` at resolve time. Objects merge
+   * recursively (consumer wins on conflict), arrays replace, scalars replace.
+   * AIR does not validate the shape — hook-specific validation is the hook
+   * author's responsibility.
+   *
+   * The TypeScript field name is intentionally quoted to match the JSON
+   * Schema property name (`x-config`).
+   */
+  "x-config"?: Record<string, unknown>;
 }
 
 // ============================================================

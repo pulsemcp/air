@@ -562,14 +562,39 @@ export class GitHubCatalogProvider implements CatalogProvider {
       const tmpDir = mkdtempSync(`${cloneDir}.tmp-`);
 
       try {
-        // git clone refuses a non-empty target; mkdtempSync gave us an
-        // empty directory which git accepts.
-        const args =
-          ref === "HEAD"
-            ? ["clone", "--depth", "1", repoUrl, tmpDir]
-            : ["clone", "--depth", "1", "--branch", ref, repoUrl, tmpDir];
+        if (isImmutableRef(ref)) {
+          // `git clone --branch <sha>` does not work — git treats --branch as
+          // a ref name lookup. For commit SHAs we init + fetch + checkout so
+          // the SHA-pinned cache is content-addressed and immutable.
+          execFileSync("git", ["init", "--quiet", tmpDir], {
+            stdio: "pipe",
+            timeout: 30_000,
+          });
+          execFileSync("git", ["remote", "add", "origin", repoUrl], {
+            cwd: tmpDir,
+            stdio: "pipe",
+            timeout: 10_000,
+          });
+          execFileSync(
+            "git",
+            ["fetch", "--depth", "1", "origin", ref],
+            { cwd: tmpDir, stdio: "pipe", timeout: 60_000 }
+          );
+          execFileSync("git", ["checkout", "--quiet", "FETCH_HEAD"], {
+            cwd: tmpDir,
+            stdio: "pipe",
+            timeout: 10_000,
+          });
+        } else {
+          // git clone refuses a non-empty target; mkdtempSync gave us an
+          // empty directory which git accepts.
+          const args =
+            ref === "HEAD"
+              ? ["clone", "--depth", "1", repoUrl, tmpDir]
+              : ["clone", "--depth", "1", "--branch", ref, repoUrl, tmpDir];
 
-        execFileSync("git", args, { stdio: "pipe", timeout: 60_000 });
+          execFileSync("git", args, { stdio: "pipe", timeout: 60_000 });
+        }
 
         // Atomic publish: readers only ever see a complete clone at
         // cloneDir, never a half-populated one.

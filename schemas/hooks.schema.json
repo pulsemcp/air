@@ -36,7 +36,7 @@
         },
         "path": {
           "type": "string",
-          "description": "Relative path to the hook directory containing HOOK.json and any associated scripts."
+          "description": "Path to the hook directory containing HOOK.json and any associated scripts. Either a relative path within the same catalog, or a remote URI handled by an installed catalog provider (e.g. github://owner/repo[@ref]/path/within/repo)."
         },
         "references": {
           "type": "array",
@@ -44,6 +44,11 @@
             "type": "string"
           },
           "description": "IDs of reference documents this hook depends on."
+        },
+        "x-config": {
+          "type": "object",
+          "description": "Consumer-supplied configuration overrides that AIR deep-merges into the materialized HOOK.json's own x-config at resolve time. Objects merge recursively (consumer wins on conflict), arrays replace, scalars replace. Values support ${VAR} interpolation via secrets transforms (e.g. @pulsemcp/air-secrets-env). The shape is intentionally permissive — hook-specific validation is the hook author's responsibility.",
+          "additionalProperties": true
         }
       },
       "required": ["description", "path"],

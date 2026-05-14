@@ -14,6 +14,10 @@ import { detectRoot } from "./root-detection.js";
 import { loadExtensions, type LoadedExtensions } from "./extension-loader.js";
 import { runTransforms } from "./transform-runner.js";
 import { checkProviderFreshness } from "./cache-freshness.js";
+import {
+  materializeHookXConfig,
+  writeMergedHookXConfigs,
+} from "./hook-x-config.js";
 import { existsSync, readFileSync } from "fs";
 import {
   findUnresolvedVars,
@@ -161,10 +165,11 @@ export async function prepareSession(
   if (options.gitProtocol !== undefined) {
     providerOptions.gitProtocol = options.gitProtocol;
   }
-  const artifacts = await resolveArtifacts(airJsonPath, {
+  const rawArtifacts = await resolveArtifacts(airJsonPath, {
     providers,
     providerOptions,
   });
+  const artifacts = materializeHookXConfig(rawArtifacts);
 
   // Check freshness of provider caches (non-blocking — warnings only)
   const warnings = await checkProviderFreshness(airConfig, providers);
@@ -246,6 +251,13 @@ export async function prepareSession(
       skipSubagentMerge: options.skipSubagentMerge,
     }
   );
+
+  // After the adapter copies hook directories into the target tree, write
+  // the merged x-config back into each materialized HOOK.json so transforms
+  // (e.g. ${VAR} interpolation) operate on the fully composed config.
+  if (session.hookPaths.length > 0) {
+    writeMergedHookXConfigs(session.hookPaths, artifacts);
+  }
 
   // Run transforms in extension-list order on all config files (e.g., .mcp.json, settings.json)
   if (loaded.transforms.length > 0 && session.configFiles.length > 0) {

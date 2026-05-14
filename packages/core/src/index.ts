@@ -68,6 +68,9 @@ export type { QualifiedId, ReferenceResolution } from "./scope.js";
 export { stripScopes, ShortnameCollisionError } from "./strip-scopes.js";
 export type { ShortnameCollision } from "./strip-scopes.js";
 
+// x-config deep-merge (used by hook materialization)
+export { mergeXConfig } from "./x-config.js";
+
 // Validation
 export { validateJson } from "./validator.js";
 export type { ValidationResult, ValidationError } from "./validator.js";

@@ -52,8 +52,9 @@ Add entries to `~/.air/hooks/hooks.json`:
 | `id` | Yes | Unique identifier. Must match the key. |
 | `description` | Yes | What this hook does. Max 500 characters. |
 | `title` | No | Human-readable name. Max 100 characters. |
-| `path` | Yes | Relative path to the hook directory containing `HOOK.json`. |
+| `path` | Yes | Path to the hook directory containing `HOOK.json`. Either a relative path inside the same catalog, or a remote URI handled by an installed catalog provider (e.g. `github://owner/repo[@ref]/path/to/hook-dir`). |
 | `references` | No | IDs of reference documents this hook depends on. |
+| `x-config` | No | Consumer-supplied config overlay that AIR deep-merges into the materialized `HOOK.json`'s `x-config` at resolve time. See [Consumer config overlay (`x-config`)](#consumer-config-overlay-x-config). |
 
 ### Step 2: Create the hook directory with HOOK.json
 
@@ -80,6 +81,104 @@ Each hook directory contains a `HOOK.json` file with the runtime definition, plu
 | `env` | No | Environment variables for the hook process. Values support `${VAR}` interpolation. |
 | `timeout_seconds` | No | Maximum execution time before the hook is killed (minimum: 1). |
 | `matcher` | No | Regex pattern — hook only fires when matched against event data. |
+| `x-config` | No | Hook-defined configuration block. Consumers can layer overrides via `x-config` in the index entry; AIR deep-merges them at resolve time. See [Consumer config overlay (`x-config`)](#consumer-config-overlay-x-config). |
+
+## Consumer config overlay (`x-config`)
+
+Hook authors can publish defaults inside `HOOK.json`, and consumers can override those defaults from their own `hooks.json` index entry — without forking the hook directory. AIR deep-merges the two `x-config` blocks at `air resolve` (and at `air prepare` / `air start`) time.
+
+The shape of `x-config` is intentionally permissive: AIR does not validate the inner keys. Each hook author defines and documents their own schema. AIR treats it as an opaque blob that flows through resolution and materialization.
+
+### Merge rules
+
+- **Objects** merge recursively (consumer wins on key conflicts).
+- **Arrays** are replaced wholesale — consumer arrays do not concatenate with source arrays.
+- **Scalars** (strings, numbers, booleans, `null`) are replaced.
+- **Missing on either side** — whichever side is present wins. If neither side has `x-config`, the field is omitted from the output.
+
+### Example
+
+Hook author publishes `hooks/notify-session-start/HOOK.json`:
+
+```json
+{
+  "event": "session_start",
+  "command": "./notify.sh",
+  "x-config": {
+    "channel": "#general",
+    "tags": ["info", "default"],
+    "thresholds": { "warn_minutes": 30 }
+  }
+}
+```
+
+Consumer overlays in their own `hooks.json`:
+
+```json
+{
+  "notify-session-start": {
+    "description": "Slack notify on session start",
+    "path": "github://acme/air-org@v1.2.0/hooks/notify-session-start",
+    "x-config": {
+      "channel": "#agent-events",
+      "tags": ["consumer-a"],
+      "thresholds": { "warn_minutes": 5 }
+    }
+  }
+}
+```
+
+Resolved (and materialized to `.claude/hooks/notify-session-start/HOOK.json`):
+
+```json
+{
+  "event": "session_start",
+  "command": "./notify.sh",
+  "x-config": {
+    "channel": "#agent-events",
+    "tags": ["consumer-a"],
+    "thresholds": { "warn_minutes": 5 }
+  }
+}
+```
+
+### Interpolation
+
+`${VAR}` references inside `x-config` values are resolved by the same secrets transforms that handle the rest of the config (e.g. `@pulsemcp/air-secrets-env`, `@pulsemcp/air-secrets-file`). This means consumers can reference environment variables or secret-file values without the hook author needing to wire anything special:
+
+```json
+{
+  "notify-session-start": {
+    "description": "Slack notify on session start",
+    "path": "hooks/notify-session-start",
+    "x-config": {
+      "credentials": { "token": "${SLACK_BOT_TOKEN}" }
+    }
+  }
+}
+```
+
+### Where the merged value shows up
+
+- `air resolve --json` — the merged `x-config` appears under the resolved hook entry.
+- `air prepare --target <dir>` and `air start` — the merged `x-config` is written into the materialized `HOOK.json` inside the agent's working directory (e.g. `.claude/hooks/{id}/HOOK.json`), then run through the transform pipeline (which resolves `${VAR}` interpolation).
+
+## Remote hook directories (`github://`)
+
+The `path` field accepts catalog provider URIs in addition to relative paths. With `@pulsemcp/air-provider-github` installed, a hook directory can live in a separate GitHub repo:
+
+```json
+{
+  "remote-hook": {
+    "description": "Hook from a shared catalog",
+    "path": "github://acme/air-org@v1.2.0/hooks/notify-session-start"
+  }
+}
+```
+
+The provider shallow-clones the referenced ref into `~/.air/cache/github/{owner}/{repo}/{ref}/` and AIR reads the hook directory from there, just like a local path. Refs that look like a 40-character SHA are treated as immutable and content-addressed (the cache directory will not be re-fetched). Branch names and tags are mutable from AIR's point of view and are refreshed on `air update`.
+
+The same `AIR_GITHUB_TOKEN` and `gitProtocol` settings used for `catalogs` apply to `path` URIs — the provider is reused, not re-instantiated.
 
 ## Lifecycle events
 
@@ -193,7 +292,7 @@ Without a root, all hooks are available.
 
 ## Secret resolution in hooks
 
-Hook fields (`command`, `args`, `env`) support `${VAR}` interpolation, and these patterns are resolved by the same secrets transforms that handle MCP server configs. During `air prepare`, the transform pipeline processes all config files returned by the adapter — including `.mcp.json`, `.claude/settings.json`, and all injected `HOOK.json` files:
+Hook fields (`command`, `args`, `env`, and any `x-config` values) support `${VAR}` interpolation, and these patterns are resolved by the same secrets transforms that handle MCP server configs. During `air prepare`, the transform pipeline processes all config files returned by the adapter — including `.mcp.json`, `.claude/settings.json`, and all injected `HOOK.json` files:
 
 - **`@pulsemcp/air-secrets-env`** resolves `${VAR}` and `${VAR:-default}` from process environment variables
 - **`@pulsemcp/air-secrets-file`** resolves `${VAR}` from a JSON secrets file (via `--secrets-file`)

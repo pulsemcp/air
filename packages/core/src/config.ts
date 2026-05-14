@@ -56,20 +56,51 @@ function getScheme(path: string): string | null {
 }
 
 /**
- * Resolve relative `path` fields in artifact entries to absolute paths.
- * sourceDir is the directory containing the index file (local or remote clone).
+ * Resolve `path` fields in artifact entries to absolute local paths.
+ *
+ * Three cases:
+ *   1. Absolute filesystem path — left as-is.
+ *   2. Provider URI (e.g. `github://owner/repo[@ref]/dir`) — delegated to a
+ *      registered provider's `resolveCatalogDir`, which fetches the source
+ *      to a local cache and returns the directory within it. The same
+ *      provider used for catalog roots is reused, so authentication, SHA
+ *      caching, and refresh semantics are unchanged.
+ *   3. Relative path — joined against `sourceDir` (the index file's
+ *      directory, local or in a provider's local cache).
  */
-function resolveEntryPaths<T>(
+async function resolveEntryPaths<T>(
   entries: Record<string, T>,
-  sourceDir: string
-): Record<string, T> {
+  sourceDir: string,
+  providers: CatalogProvider[],
+  artifactType: string
+): Promise<Record<string, T>> {
   const resolved: Record<string, T> = {};
   for (const [key, entry] of Object.entries(entries)) {
     const e = entry as Record<string, unknown>;
     const updated = { ...e };
 
-    if (typeof e.path === "string" && !e.path.startsWith("/")) {
-      updated.path = resolve(sourceDir, e.path as string);
+    if (typeof e.path === "string") {
+      const scheme = getScheme(e.path);
+      if (scheme) {
+        const provider = providers.find((prov) => prov.scheme === scheme);
+        if (!provider) {
+          throw new Error(
+            `No catalog provider registered for scheme "${scheme}://" ` +
+              `referenced by ${artifactType} "${key}" path "${e.path}". ` +
+              `Install an extension that handles this scheme.`
+          );
+        }
+        if (!provider.resolveCatalogDir) {
+          throw new Error(
+            `Provider for "${scheme}://" cannot resolve directory paths — ` +
+              `it lacks resolveCatalogDir(). Upgrade the provider extension ` +
+              `or replace the URI with a vendored relative path.`
+          );
+        }
+        updated.path = await provider.resolveCatalogDir(e.path);
+      } else if (!e.path.startsWith("/")) {
+        updated.path = resolve(sourceDir, e.path as string);
+      }
     }
     resolved[key] = updated as T;
   }
@@ -124,7 +155,12 @@ async function loadContributions<T>(
     }
 
     const entries = stripSchema(data) as Record<string, T>;
-    const resolved = resolveEntryPaths(entries, sourceDir);
+    const resolved = await resolveEntryPaths(
+      entries,
+      sourceDir,
+      providers,
+      "artifact"
+    );
     contributions.push({ scope, source: p, entries: resolved });
   }
 

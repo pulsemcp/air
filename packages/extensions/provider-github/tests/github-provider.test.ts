@@ -1,4 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
+import { execFileSync } from "child_process";
 import { existsSync, rmSync } from "fs";
 import { resolve } from "path";
 import {
@@ -380,6 +381,47 @@ describe("GitHubCatalogProvider", () => {
       )
     ).rejects.toThrow(/Catalog path not found/);
   }, 30000);
+
+  it("resolveCatalogDir resolves a hook directory path at the default branch", async () => {
+    // Same call shape used by core when a hook entry's `path` is a github:// URI.
+    const catalogDir = await provider.resolveCatalogDir(
+      "github://pulsemcp/air/examples/hooks/hooks/notify-session-start"
+    );
+    expect(existsSync(catalogDir)).toBe(true);
+    expect(catalogDir).toContain("examples/hooks/hooks/notify-session-start");
+  }, 30000);
+
+  it("resolveCatalogDir caches by branch ref — repeat calls share a clone", async () => {
+    const dirA = await provider.resolveCatalogDir(
+      "github://pulsemcp/air@main/examples/hooks"
+    );
+    const dirB = await provider.resolveCatalogDir(
+      "github://pulsemcp/air@main/examples/hooks/hooks/lint-pre-commit"
+    );
+    const cloneRoot = getClonePath("pulsemcp", "air", "main");
+    expect(dirA.startsWith(cloneRoot)).toBe(true);
+    expect(dirB.startsWith(cloneRoot)).toBe(true);
+    expect(existsSync(resolve(cloneRoot, ".git"))).toBe(true);
+  }, 60000);
+
+  it("resolveCatalogDir caches a SHA-pinned ref under the SHA", async () => {
+    // Resolve `main` first to land a clone we can read the HEAD SHA from. The
+    // SHA-keyed clone is then content-addressed and never re-resolves.
+    await provider.resolveCatalogDir("github://pulsemcp/air@main/examples");
+    const sha = execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: getClonePath("pulsemcp", "air", "main"),
+      encoding: "utf-8",
+    }).trim();
+    expect(sha).toMatch(/^[0-9a-f]{40}$/);
+
+    const dir = await provider.resolveCatalogDir(
+      `github://pulsemcp/air@${sha}/examples/hooks`
+    );
+    expect(dir).toBe(
+      resolve(getClonePath("pulsemcp", "air", sha), "examples/hooks")
+    );
+    expect(existsSync(dir)).toBe(true);
+  }, 60000);
 
   it("throws when file not found in clone", async () => {
     const cloneDir = getClonePath("pulsemcp", "air", "HEAD");
