@@ -53,16 +53,38 @@ export class ClaudeAdapter implements AgentAdapter {
 
   /**
    * Map AIR lifecycle event names to Claude Code settings.json hook event names.
-   * Events without a direct Claude Code equivalent (e.g. pre_commit, post_commit)
-   * are omitted — the adapter skips unknown events rather than mapping them to
-   * lossy alternatives. Users should use pre_tool_call with a matcher instead.
+   *
+   * Accepts both snake_case AIR names and PascalCase Claude lifecycle names as
+   * identity mappings, so hook authors targeting the Claude runtime can write
+   * Claude-native event names directly without translating to snake_case.
+   *
+   * Events without a direct Claude Code equivalent (e.g. pre_commit,
+   * post_commit) are intentionally absent — `reconcileSettingsHooks` warns and
+   * skips registration when it encounters an unrecognized event. For commit
+   * hooks specifically, use pre_tool_call with a matcher instead.
    */
   private static readonly AIR_TO_CLAUDE_EVENT: Record<string, string> = {
+    // snake_case AIR names
     session_start: "SessionStart",
     session_end: "SessionEnd",
     pre_tool_call: "PreToolUse",
     post_tool_call: "PostToolUse",
     notification: "Notification",
+    stop: "Stop",
+    subagent_stop: "SubagentStop",
+    pre_compact: "PreCompact",
+    user_prompt_submit: "UserPromptSubmit",
+    // PascalCase Claude event names (identity — hook authors targeting Claude
+    // often write these directly).
+    SessionStart: "SessionStart",
+    SessionEnd: "SessionEnd",
+    PreToolUse: "PreToolUse",
+    PostToolUse: "PostToolUse",
+    Notification: "Notification",
+    Stop: "Stop",
+    SubagentStop: "SubagentStop",
+    PreCompact: "PreCompact",
+    UserPromptSubmit: "UserPromptSubmit",
   };
 
   async isAvailable(): Promise<boolean> {
@@ -832,17 +854,32 @@ export class ClaudeAdapter implements AgentAdapter {
       } catch {
         continue;
       }
-      const claudeEvent = ClaudeAdapter.AIR_TO_CLAUDE_EVENT[hookJson.event as string];
-      if (!claudeEvent || !hookJson.command) continue;
+      const hookId = hookPath.split(/[\\/]/).filter(Boolean).pop() || "";
+      const rawEvent = hookJson.event;
+      const claudeEvent =
+        typeof rawEvent === "string"
+          ? ClaudeAdapter.AIR_TO_CLAUDE_EVENT[rawEvent]
+          : undefined;
+      if (!claudeEvent) {
+        if (rawEvent !== undefined) {
+          console.warn(
+            `warning: hook "${hookId}" declares unrecognized event "${String(
+              rawEvent
+            )}" — skipping registration in .claude/settings.json. ` +
+              `Supported events: ${this.supportedEventList()}.`
+          );
+        }
+        continue;
+      }
+      if (!hookJson.command) continue;
 
       const hookRelDir = relative(targetDir, hookPath);
       const command = this.buildHookCommand(
         hookRelDir,
+        hookPath,
         hookJson.command as string,
         hookJson.args as string[] | undefined
       );
-
-      const hookId = hookPath.split(/[\\/]/).filter(Boolean).pop() || "";
 
       const hookEntry: Record<string, unknown> = {
         type: "command",
@@ -957,22 +994,77 @@ export class ClaudeAdapter implements AgentAdapter {
 
   /**
    * Build a shell command string from HOOK.json's command and args fields.
-   * Resolves relative paths (starting with ./) to be relative to the project root
-   * via the hook's installed directory path. Args containing shell metacharacters
-   * are single-quoted for safety.
+   *
+   * Claude Code invokes hook commands from the project root, but hook authors
+   * naturally write paths relative to their own hook directory. This method
+   * rewrites those hook-relative paths to project-root-relative form:
+   *
+   *   - `command` rewrites if it starts with `./` (explicit hook-relative).
+   *   - Each `args` entry rewrites if it looks like a path AND the file exists
+   *     under the hook's installed directory. We require a path-like form
+   *     (a `/` separator or an explicit `./` prefix) so command names like
+   *     `lint-staged` are not accidentally rewritten when a same-named file
+   *     happens to live in the hook directory.
+   *
+   * Args containing shell metacharacters are single-quoted for safety.
    */
-  private buildHookCommand(hookRelDir: string, command: string, args?: string[]): string {
+  private buildHookCommand(
+    hookRelDir: string,
+    hookAbsDir: string,
+    command: string,
+    args?: string[]
+  ): string {
     let cmd = command;
     if (cmd.startsWith("./")) {
       cmd = join(hookRelDir, cmd.slice(2));
     }
     if (args && args.length > 0) {
-      const escaped = args.map((a) =>
+      const rewritten = args.map((a) =>
+        this.rewriteHookArgPath(a, hookRelDir, hookAbsDir)
+      );
+      const escaped = rewritten.map((a) =>
         /[\s;&|`$"'\\]/.test(a) ? `'${a.replace(/'/g, "'\\''")}'` : a
       );
       cmd += " " + escaped.join(" ");
     }
     return cmd;
+  }
+
+  /**
+   * If `arg` is a hook-relative path that points at a real file under the
+   * hook's installed directory, rewrite it to a project-root-relative form
+   * (`.claude/hooks/<id>/<path>`). Otherwise return `arg` unchanged.
+   */
+  private rewriteHookArgPath(
+    arg: string,
+    hookRelDir: string,
+    hookAbsDir: string
+  ): string {
+    if (!arg) return arg;
+    // Flags, absolute paths, and home-relative paths are not hook-relative.
+    if (arg.startsWith("-") || arg.startsWith("/") || arg.startsWith("~")) {
+      return arg;
+    }
+    // Require a path-like form so bare command/package names (e.g. "lint-staged")
+    // are not accidentally rewritten when a same-named file exists in the hook dir.
+    const hasExplicitPrefix = arg.startsWith("./");
+    const candidate = hasExplicitPrefix ? arg.slice(2) : arg;
+    if (!hasExplicitPrefix && !candidate.includes("/")) return arg;
+    if (!existsSync(join(hookAbsDir, candidate))) return arg;
+    return join(hookRelDir, candidate);
+  }
+
+  /** Human-readable list of the supported AIR hook event names (snake_case only). */
+  private supportedEventList(): string {
+    const seen = new Set<string>();
+    const names: string[] = [];
+    for (const [key, value] of Object.entries(ClaudeAdapter.AIR_TO_CLAUDE_EVENT)) {
+      if (key === value) continue; // skip PascalCase identity entries
+      if (seen.has(key)) continue;
+      seen.add(key);
+      names.push(key);
+    }
+    return names.join(", ");
   }
 
   private copyDirRecursive(src: string, dest: string): void {

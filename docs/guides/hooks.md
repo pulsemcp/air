@@ -191,6 +191,12 @@ The same `AIR_GITHUB_TOKEN` and `gitProtocol` settings used for `catalogs` apply
 | `pre_commit` | Before a git commit is created |
 | `post_commit` | After a git commit is created |
 | `notification` | Agent sends a notification or message (behavior is agent-specific) |
+| `stop` | Agent finishes responding (Claude Code: `Stop`) |
+| `subagent_stop` | A subagent finishes (Claude Code: `SubagentStop`) |
+| `pre_compact` | Before context compaction (Claude Code: `PreCompact`) |
+| `user_prompt_submit` | User submits a prompt (Claude Code: `UserPromptSubmit`) |
+
+Hook authors targeting Claude Code may write the PascalCase Claude lifecycle event names (`SessionStart`, `Stop`, `PreCompact`, etc.) directly in `HOOK.json`'s `event` field — the Claude adapter accepts them as identity mappings, so no snake_case translation is required.
 
 ## Examples
 
@@ -316,10 +322,21 @@ For Claude Code, the adapter registers hooks in `.claude/settings.json` under th
 | `pre_tool_call` | `PreToolUse` | |
 | `post_tool_call` | `PostToolUse` | |
 | `notification` | `Notification` | |
+| `stop` | `Stop` | |
+| `subagent_stop` | `SubagentStop` | |
+| `pre_compact` | `PreCompact` | |
+| `user_prompt_submit` | `UserPromptSubmit` | |
 | `pre_commit` | — | No direct equivalent; use `pre_tool_call` with a `matcher` |
 | `post_commit` | — | No direct equivalent; use `post_tool_call` with a `matcher` |
 
-The `command` and `args` from `HOOK.json` are combined into a single command string. Relative paths (starting with `./`) are resolved relative to the hook's installed location. The `matcher` and `timeout_seconds` fields are carried through when present.
+The adapter also accepts the PascalCase Claude event names (`SessionStart`, `Stop`, `PreCompact`, …) as identity mappings — hook authors targeting Claude can write either form. Unknown `event` values are logged as a warning during `air prepare` / `air start` and the hook is left unregistered (the hook directory is still materialized).
+
+The `command` and `args` from `HOOK.json` are combined into a single command string. Path rewriting happens at two levels:
+
+- `command` rewrites if it starts with `./` (e.g. `./notify.sh` → `.claude/hooks/<id>/notify.sh`).
+- Each `args` entry rewrites when it looks like a path (contains a `/` separator, or starts with `./`) **and** points at a real file under the hook's installed directory. Bare command names like `lint-staged` and flags like `--quiet` pass through unchanged.
+
+The `matcher` and `timeout_seconds` fields are carried through when present.
 
 Example: a hook with this `HOOK.json`:
 
@@ -361,7 +378,7 @@ On re-runs, AIR uses the `_airHookId` marker plus the per-target manifest to pru
 
 **Limitations:**
 - The `env` field from `HOOK.json` is not forwarded to Claude Code hooks. Environment variables must be set in the shell environment before starting the session.
-- `pre_commit` and `post_commit` events have no direct Claude Code equivalent and are skipped during registration. Use `pre_tool_call` with a `matcher` to target specific tool calls instead.
+- `pre_commit` and `post_commit` events have no direct Claude Code equivalent. They are skipped during registration with a warning. Use `pre_tool_call` with a `matcher` to target specific tool calls instead.
 
 ## Listing hooks
 
