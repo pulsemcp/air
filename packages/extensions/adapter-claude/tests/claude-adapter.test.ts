@@ -2205,6 +2205,45 @@ describe("ClaudeAdapter", () => {
           "npx lint-staged --quiet /etc/hosts missing/file.js"
         );
       });
+
+      it("does not rewrite bare command names even when a same-named file exists in the hook dir", async () => {
+        const dir = createTempDir();
+
+        const hookSrcDir = join(dir, "..", "hooks", "bare-collision");
+        mkdirSync(hookSrcDir, { recursive: true });
+        // Create a file named "lint-staged" in the hook dir to prove the
+        // path-like guard (not just existsSync) is what prevents rewriting.
+        writeFileSync(join(hookSrcDir, "lint-staged"), "#!/bin/sh\n");
+        writeFileSync(
+          join(hookSrcDir, "HOOK.json"),
+          JSON.stringify({
+            event: "pre_tool_call",
+            command: "npx",
+            args: ["lint-staged"],
+          })
+        );
+
+        const artifacts = emptyArtifacts();
+        artifacts.hooks["@local/bare-collision"] = {
+          description: "Bare collision",
+          path: resolve(hookSrcDir),
+        };
+
+        const root: RootEntry = {
+          description: "Test",
+          default_hooks: ["bare-collision"],
+        };
+
+        await adapter.prepareSession(artifacts, dir, { root });
+
+        const settings = JSON.parse(
+          readFileSync(join(dir, ".claude", "settings.json"), "utf-8")
+        );
+        // "lint-staged" has no `/` and no `./` prefix, so it must pass
+        // through as a bare command name even though a file with the same
+        // name happens to exist in the hook dir.
+        expect(settings.hooks.PreToolUse[0].hooks[0].command).toBe("npx lint-staged");
+      });
     });
 
     describe("plugin artifact resolution", () => {
