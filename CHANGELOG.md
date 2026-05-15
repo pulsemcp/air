@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-05-15
+
+### Fixed
+- **`@pulsemcp/air-adapter-claude` no longer silently drops hooks targeting Claude lifecycle events outside the original 5-event map.** The `AIR_TO_CLAUDE_EVENT` table was missing `Stop`, `SubagentStop`, `PreCompact`, and `UserPromptSubmit`, so any `HOOK.json` declaring one of those events was materialized into `.claude/hooks/<id>/` but never registered in `.claude/settings.json` — the hook would never fire. The table now covers all 9 Claude lifecycle events (`SessionStart`, `SessionEnd`, `PreToolUse`, `PostToolUse`, `Notification`, `Stop`, `SubagentStop`, `PreCompact`, `UserPromptSubmit`) via both snake_case AIR names and PascalCase Claude names (identity mappings), so hook authors targeting Claude can write either form in `HOOK.json`'s `event` field. Resolves [#129](https://github.com/pulsemcp/air/issues/129).
+- **`@pulsemcp/air-adapter-claude` warns instead of silently skipping when `HOOK.json` declares an unrecognized event.** Previously `reconcileSettingsHooks` would silently `continue` past any unmapped `event` value, leaving callers (and downstream users) with `{"hooks": {}}` and no indication that anything went wrong. The adapter now logs a `warn`-level message naming the hook id, the unrecognized event, and the list of supported events. `pre_commit` and `post_commit` still have no Claude Code equivalent and continue to be skipped — they now warn loudly rather than silently.
+- **`@pulsemcp/air-adapter-claude` rewrites hook-relative `args` paths to project-root form when materializing into `.claude/settings.json`.** Claude Code invokes hook commands from the project root, but hook authors naturally write paths relative to their own hook directory. Previously, only `command` strings starting with `./` were rewritten; `args` entries like `"dist/capture.js"` were left as-is, causing `node dist/capture.js` to fail at runtime because the project-root cwd has no `dist/capture.js`. The adapter now rewrites each `args` entry that looks like a path (contains a `/` or starts with `./`) **and** points at a real file inside the hook directory — bare command names like `lint-staged` and flags like `--quiet` pass through unchanged. The materialized command for the issue's example now becomes `node .claude/hooks/<hook-id>/dist/capture.js`.
+
 ## [0.4.0] - 2026-05-14
 
 ### Added

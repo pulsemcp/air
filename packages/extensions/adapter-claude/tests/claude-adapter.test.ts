@@ -1905,6 +1905,306 @@ describe("ClaudeAdapter", () => {
         const settings = JSON.parse(readFileSync(join(dir, ".claude", "settings.json"), "utf-8"));
         expect(Object.keys(settings.hooks)).toHaveLength(0);
       });
+
+      it("registers hooks for all 9 Claude lifecycle events via snake_case", async () => {
+        const dir = createTempDir();
+
+        const eventMappings: [string, string][] = [
+          ["session_start", "SessionStart"],
+          ["session_end", "SessionEnd"],
+          ["pre_tool_call", "PreToolUse"],
+          ["post_tool_call", "PostToolUse"],
+          ["notification", "Notification"],
+          ["stop", "Stop"],
+          ["subagent_stop", "SubagentStop"],
+          ["pre_compact", "PreCompact"],
+          ["user_prompt_submit", "UserPromptSubmit"],
+        ];
+
+        const artifacts = emptyArtifacts();
+        for (const [i, [airEvent]] of eventMappings.entries()) {
+          const hookId = `snake-${i}`;
+          const hookSrcDir = join(dir, "..", "hooks", hookId);
+          mkdirSync(hookSrcDir, { recursive: true });
+          writeFileSync(
+            join(hookSrcDir, "HOOK.json"),
+            JSON.stringify({ event: airEvent, command: `cmd-${i}` })
+          );
+          artifacts.hooks[`@local/${hookId}`] = {
+            description: `Hook ${i}`,
+            path: resolve(hookSrcDir),
+          };
+        }
+
+        const root: RootEntry = {
+          description: "Test",
+          default_hooks: eventMappings.map((_, i) => `snake-${i}`),
+        };
+
+        await adapter.prepareSession(artifacts, dir, { root });
+
+        const settings = JSON.parse(
+          readFileSync(join(dir, ".claude", "settings.json"), "utf-8")
+        );
+        for (const [i, [, claudeEvent]] of eventMappings.entries()) {
+          const eventHooks = settings.hooks[claudeEvent] as unknown[];
+          expect(eventHooks, `event ${claudeEvent} should be registered`).toBeDefined();
+          const entry = eventHooks.find(
+            (g: any) => g.hooks[0].command === `cmd-${i}`
+          );
+          expect(entry).toBeDefined();
+        }
+      });
+
+      it("accepts PascalCase Claude event names as identity mappings", async () => {
+        const dir = createTempDir();
+
+        const events = [
+          "SessionStart",
+          "SessionEnd",
+          "PreToolUse",
+          "PostToolUse",
+          "Notification",
+          "Stop",
+          "SubagentStop",
+          "PreCompact",
+          "UserPromptSubmit",
+        ];
+
+        const artifacts = emptyArtifacts();
+        for (const [i, event] of events.entries()) {
+          const hookId = `pascal-${i}`;
+          const hookSrcDir = join(dir, "..", "hooks", hookId);
+          mkdirSync(hookSrcDir, { recursive: true });
+          writeFileSync(
+            join(hookSrcDir, "HOOK.json"),
+            JSON.stringify({ event, command: `cmd-${i}` })
+          );
+          artifacts.hooks[`@local/${hookId}`] = {
+            description: `Hook ${i}`,
+            path: resolve(hookSrcDir),
+          };
+        }
+
+        const root: RootEntry = {
+          description: "Test",
+          default_hooks: events.map((_, i) => `pascal-${i}`),
+        };
+
+        await adapter.prepareSession(artifacts, dir, { root });
+
+        const settings = JSON.parse(
+          readFileSync(join(dir, ".claude", "settings.json"), "utf-8")
+        );
+        for (const [i, event] of events.entries()) {
+          const eventHooks = settings.hooks[event] as unknown[];
+          expect(eventHooks, `event ${event} should be registered`).toBeDefined();
+          const entry = eventHooks.find(
+            (g: any) => g.hooks[0].command === `cmd-${i}`
+          );
+          expect(entry).toBeDefined();
+        }
+      });
+
+      it("registers a Stop hook (regression: agent-transcript-capture)", async () => {
+        // Regression test for issue #129 — HOOK.json with event "Stop" was
+        // silently dropped before the AIR_TO_CLAUDE_EVENT map was expanded.
+        const dir = createTempDir();
+
+        const hookSrcDir = join(dir, "..", "hooks", "agent-transcript-capture");
+        mkdirSync(join(hookSrcDir, "dist"), { recursive: true });
+        writeFileSync(
+          join(hookSrcDir, "HOOK.json"),
+          JSON.stringify({
+            event: "Stop",
+            command: "node",
+            args: ["dist/capture.js"],
+          })
+        );
+        writeFileSync(join(hookSrcDir, "dist", "capture.js"), "// noop");
+
+        const artifacts = emptyArtifacts();
+        artifacts.hooks["@local/agent-transcript-capture"] = {
+          description: "Transcript capture",
+          path: resolve(hookSrcDir),
+        };
+
+        const root: RootEntry = {
+          description: "Test",
+          default_hooks: ["agent-transcript-capture"],
+        };
+
+        await adapter.prepareSession(artifacts, dir, { root });
+
+        const settings = JSON.parse(
+          readFileSync(join(dir, ".claude", "settings.json"), "utf-8")
+        );
+        expect(settings.hooks.Stop).toBeDefined();
+        expect(settings.hooks.Stop).toHaveLength(1);
+        expect(settings.hooks.Stop[0].hooks[0].command).toBe(
+          `node ${join(".claude", "hooks", "agent-transcript-capture", "dist", "capture.js")}`
+        );
+      });
+
+      it("warns when HOOK.json declares an unrecognized event", async () => {
+        const dir = createTempDir();
+
+        const hookSrcDir = join(dir, "..", "hooks", "weird-hook");
+        mkdirSync(hookSrcDir, { recursive: true });
+        writeFileSync(
+          join(hookSrcDir, "HOOK.json"),
+          JSON.stringify({ event: "made_up_event", command: "noop" })
+        );
+
+        const artifacts = emptyArtifacts();
+        artifacts.hooks["@local/weird-hook"] = {
+          description: "Weird event",
+          path: resolve(hookSrcDir),
+        };
+
+        const root: RootEntry = {
+          description: "Test",
+          default_hooks: ["weird-hook"],
+        };
+
+        const warnings: string[] = [];
+        const origWarn = console.warn;
+        console.warn = (msg: string) => warnings.push(msg);
+        try {
+          await adapter.prepareSession(artifacts, dir, { root });
+        } finally {
+          console.warn = origWarn;
+        }
+
+        expect(warnings.length).toBeGreaterThan(0);
+        const matched = warnings.find(
+          (w) =>
+            w.includes("weird-hook") &&
+            w.includes("made_up_event") &&
+            w.toLowerCase().includes("unrecognized")
+        );
+        expect(matched, `warning text was: ${JSON.stringify(warnings)}`).toBeDefined();
+      });
+
+      it("rewrites hook-relative args paths to project-root form", async () => {
+        const dir = createTempDir();
+
+        const hookSrcDir = join(dir, "..", "hooks", "capture");
+        mkdirSync(join(hookSrcDir, "dist"), { recursive: true });
+        writeFileSync(
+          join(hookSrcDir, "HOOK.json"),
+          JSON.stringify({
+            event: "Stop",
+            command: "node",
+            args: ["dist/capture.js", "--mode", "json"],
+          })
+        );
+        writeFileSync(join(hookSrcDir, "dist", "capture.js"), "// noop");
+
+        const artifacts = emptyArtifacts();
+        artifacts.hooks["@local/capture"] = {
+          description: "Capture",
+          path: resolve(hookSrcDir),
+        };
+
+        const root: RootEntry = {
+          description: "Test",
+          default_hooks: ["capture"],
+        };
+
+        await adapter.prepareSession(artifacts, dir, { root });
+
+        const settings = JSON.parse(
+          readFileSync(join(dir, ".claude", "settings.json"), "utf-8")
+        );
+        // dist/capture.js exists in the hook dir → rewritten.
+        // --mode and json don't match a file in the hook dir → unchanged.
+        const expected = `node ${join(
+          ".claude",
+          "hooks",
+          "capture",
+          "dist",
+          "capture.js"
+        )} --mode json`;
+        expect(settings.hooks.Stop[0].hooks[0].command).toBe(expected);
+      });
+
+      it("rewrites explicit ./ args even without a path separator", async () => {
+        const dir = createTempDir();
+
+        const hookSrcDir = join(dir, "..", "hooks", "explicit-arg");
+        mkdirSync(hookSrcDir, { recursive: true });
+        writeFileSync(
+          join(hookSrcDir, "HOOK.json"),
+          JSON.stringify({
+            event: "session_start",
+            command: "bash",
+            args: ["./entry.sh"],
+          })
+        );
+        writeFileSync(join(hookSrcDir, "entry.sh"), "#!/bin/bash\n");
+
+        const artifacts = emptyArtifacts();
+        artifacts.hooks["@local/explicit-arg"] = {
+          description: "Explicit",
+          path: resolve(hookSrcDir),
+        };
+
+        const root: RootEntry = {
+          description: "Test",
+          default_hooks: ["explicit-arg"],
+        };
+
+        await adapter.prepareSession(artifacts, dir, { root });
+
+        const settings = JSON.parse(
+          readFileSync(join(dir, ".claude", "settings.json"), "utf-8")
+        );
+        const expected = `bash ${join(".claude", "hooks", "explicit-arg", "entry.sh")}`;
+        expect(settings.hooks.SessionStart[0].hooks[0].command).toBe(expected);
+      });
+
+      it("does not rewrite args that are not hook-relative paths", async () => {
+        const dir = createTempDir();
+
+        const hookSrcDir = join(dir, "..", "hooks", "no-rewrite");
+        mkdirSync(hookSrcDir, { recursive: true });
+        writeFileSync(
+          join(hookSrcDir, "HOOK.json"),
+          JSON.stringify({
+            event: "pre_tool_call",
+            command: "npx",
+            // None of these should be rewritten:
+            //   "lint-staged" — bare command name (no `/`), and lint-staged is
+            //     not a file in the hook dir
+            //   "--quiet" — flag
+            //   "/etc/hosts" — absolute path
+            //   "missing/file.js" — has a slash but the file doesn't exist
+            args: ["lint-staged", "--quiet", "/etc/hosts", "missing/file.js"],
+          })
+        );
+
+        const artifacts = emptyArtifacts();
+        artifacts.hooks["@local/no-rewrite"] = {
+          description: "No rewrite",
+          path: resolve(hookSrcDir),
+        };
+
+        const root: RootEntry = {
+          description: "Test",
+          default_hooks: ["no-rewrite"],
+        };
+
+        await adapter.prepareSession(artifacts, dir, { root });
+
+        const settings = JSON.parse(
+          readFileSync(join(dir, ".claude", "settings.json"), "utf-8")
+        );
+        // "/etc/hosts" contains no shell metacharacters so passes through unquoted.
+        expect(settings.hooks.PreToolUse[0].hooks[0].command).toBe(
+          "npx lint-staged --quiet /etc/hosts missing/file.js"
+        );
+      });
     });
 
     describe("plugin artifact resolution", () => {

@@ -100,6 +100,12 @@ The `HOOK.json` file defines how the hook executes:
 | `pre_commit` | Before a git commit is created |
 | `post_commit` | After a git commit is created |
 | `notification` | When the agent produces a user-facing notification |
+| `stop` | When the agent finishes responding (Claude Code: `Stop`) |
+| `subagent_stop` | When a subagent (Task tool call) finishes (Claude Code: `SubagentStop`) |
+| `pre_compact` | Before Claude Code compacts conversation context (Claude Code: `PreCompact`) |
+| `user_prompt_submit` | When the user submits a prompt (Claude Code: `UserPromptSubmit`) |
+
+Hook authors targeting Claude Code may write the PascalCase Claude lifecycle event names (`SessionStart`, `Stop`, `PreCompact`, etc.) directly in `HOOK.json`'s `event` field — the Claude adapter accepts them as identity mappings.
 
 ## Matchers
 
