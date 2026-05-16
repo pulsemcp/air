@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] - 2026-05-16
+
+### Fixed
+- **`@pulsemcp/air-adapter-claude` anchors hook command paths with `$CLAUDE_PROJECT_DIR` so hooks survive mid-session `cd` calls.** v0.4.1 rewrote hook-relative `args` and `./`-prefixed `command` paths to project-root form (e.g. `.claude/hooks/<id>/dist/capture.js`), which works only as long as the agent's current working directory at hook-firing time is still the project root. Once the agent `cd`s into a subdirectory (e.g. `.agent-containers/`), Claude Code invokes the hook with that cwd and Node errors out with `MODULE_NOT_FOUND` because the cwd-relative path now points one level too deep. The adapter now wraps rewritten paths as `"$CLAUDE_PROJECT_DIR/.claude/hooks/<id>/<file>"` — Claude Code sets `CLAUDE_PROJECT_DIR` in the hook environment, the double quotes keep paths with spaces safe, and the env var expands at invocation time so the absolute path is correct regardless of cwd. Applies uniformly to every Claude lifecycle event AIR emits (`SessionStart`, `Stop`, `PreToolUse`, etc.). Bare command names (`node`, `lint-staged`), flags, absolute paths, and home-relative paths still pass through unchanged.
+
 ## [0.4.1] - 2026-05-15
 
 ### Fixed
