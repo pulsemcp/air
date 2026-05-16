@@ -2304,6 +2304,62 @@ describe("ClaudeAdapter", () => {
         expect(command).toMatch(/\.js"/);
       });
 
+      it("escapes shell-special chars in anchored hook paths so they can't break out of the double quotes", async () => {
+        // Hook filenames inside the materialized hook directory shouldn't
+        // normally contain $, `, ", or \, but if they did, those characters
+        // are special inside double quotes and could allow command injection
+        // or path corruption. anchorHookPath() escapes them with a leading
+        // backslash. This test plants such a file and proves the emitted
+        // command stays inside the double quotes.
+        const dir = createTempDir();
+
+        const hookSrcDir = join(dir, "..", "hooks", "weird-paths");
+        // A filename containing $ and ` — characters that bash would
+        // otherwise interpret inside double quotes (variable expansion and
+        // command substitution).
+        const weirdFile = "weird$name`x.js";
+        mkdirSync(hookSrcDir, { recursive: true });
+        writeFileSync(
+          join(hookSrcDir, "HOOK.json"),
+          JSON.stringify({
+            event: "Stop",
+            command: "node",
+            args: [`./${weirdFile}`],
+          })
+        );
+        writeFileSync(join(hookSrcDir, weirdFile), "// noop");
+
+        const artifacts = emptyArtifacts();
+        artifacts.hooks["@local/weird-paths"] = {
+          description: "Weird paths",
+          path: resolve(hookSrcDir),
+        };
+
+        const root: RootEntry = {
+          description: "Test",
+          default_hooks: ["weird-paths"],
+        };
+
+        await adapter.prepareSession(artifacts, dir, { root });
+
+        const settings = JSON.parse(
+          readFileSync(join(dir, ".claude", "settings.json"), "utf-8")
+        );
+        const command = settings.hooks.Stop[0].hooks[0].command as string;
+        // The $ and ` chars in the filename must be backslash-escaped so the
+        // shell treats them as literal characters, not as variable expansion
+        // or command substitution.
+        expect(command).toContain("\\$name");
+        expect(command).toContain("\\`x.js");
+        // $CLAUDE_PROJECT_DIR must still expand — i.e. its $ must NOT be
+        // escaped.
+        expect(command).toContain('"$CLAUDE_PROJECT_DIR/');
+        // The whole anchored path must remain wrapped in a single pair of
+        // double quotes (no stray quoting from injection).
+        const matches = command.match(/"/g) ?? [];
+        expect(matches.length).toBe(2);
+      });
+
       it("anchors a './'-prefixed command path with $CLAUDE_PROJECT_DIR", async () => {
         // The command field can also be a hook-relative path (e.g. "./run.sh")
         // and must be anchored the same way as args paths.
