@@ -333,8 +333,10 @@ The adapter also accepts the PascalCase Claude event names (`SessionStart`, `Sto
 
 The `command` and `args` from `HOOK.json` are combined into a single command string. Path rewriting happens at two levels:
 
-- `command` rewrites if it starts with `./` (e.g. `./notify.sh` → `.claude/hooks/<id>/notify.sh`).
+- `command` rewrites if it starts with `./` (e.g. `./notify.sh` → `"$CLAUDE_PROJECT_DIR/.claude/hooks/<id>/notify.sh"`).
 - Each `args` entry rewrites when it looks like a path (contains a `/` separator, or starts with `./`) **and** points at a real file under the hook's installed directory. Bare command names like `lint-staged` and flags like `--quiet` pass through unchanged.
+
+Rewritten paths are anchored with Claude Code's `$CLAUDE_PROJECT_DIR` environment variable and wrapped in double quotes (e.g. `"$CLAUDE_PROJECT_DIR/.claude/hooks/<id>/dist/capture.js"`). This makes hooks resilient to mid-session `cd` calls — if the agent changes its working directory before a hook fires, a plain cwd-relative path would fail to resolve, but the `$CLAUDE_PROJECT_DIR`-anchored path always resolves to the project root regardless of cwd.
 
 The `matcher` and `timeout_seconds` fields are carried through when present.
 
@@ -364,6 +366,27 @@ Produces this entry in `.claude/settings.json`:
             "command": "npx lint-staged",
             "timeout": 30,
             "_airHookId": "lint-staged"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+A hook whose args reference a script inside its own directory (e.g. `args: ["dist/capture.js"]`) emits a path-rewritten command anchored to the project root:
+
+```json
+{
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/agent-transcript-capture/dist/capture.js\"",
+            "_airHookId": "agent-transcript-capture"
           }
         ]
       }

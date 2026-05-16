@@ -1680,7 +1680,7 @@ describe("ClaudeAdapter", () => {
         expect(settings.hooks.PreToolUse[0].hooks[0].command).toBe("npx lint-staged --quiet");
       });
 
-      it("resolves relative command paths to hook install directory", async () => {
+      it("resolves relative command paths to hook install directory anchored with $CLAUDE_PROJECT_DIR", async () => {
         const dir = createTempDir();
 
         const hookSrcDir = join(dir, "..", "hooks", "notify");
@@ -1703,7 +1703,7 @@ describe("ClaudeAdapter", () => {
 
         const settings = JSON.parse(readFileSync(join(dir, ".claude", "settings.json"), "utf-8"));
         expect(settings.hooks.SessionStart[0].hooks[0].command).toBe(
-          join(".claude", "hooks", "notify", "notify.sh")
+          `"$CLAUDE_PROJECT_DIR/${join(".claude", "hooks", "notify", "notify.sh")}"`
         );
       });
 
@@ -2042,7 +2042,13 @@ describe("ClaudeAdapter", () => {
         expect(settings.hooks.Stop).toBeDefined();
         expect(settings.hooks.Stop).toHaveLength(1);
         expect(settings.hooks.Stop[0].hooks[0].command).toBe(
-          `node ${join(".claude", "hooks", "agent-transcript-capture", "dist", "capture.js")}`
+          `node "$CLAUDE_PROJECT_DIR/${join(
+            ".claude",
+            "hooks",
+            "agent-transcript-capture",
+            "dist",
+            "capture.js"
+          )}"`
         );
       });
 
@@ -2117,15 +2123,15 @@ describe("ClaudeAdapter", () => {
         const settings = JSON.parse(
           readFileSync(join(dir, ".claude", "settings.json"), "utf-8")
         );
-        // dist/capture.js exists in the hook dir → rewritten.
+        // dist/capture.js exists in the hook dir → rewritten and anchored.
         // --mode and json don't match a file in the hook dir → unchanged.
-        const expected = `node ${join(
+        const expected = `node "$CLAUDE_PROJECT_DIR/${join(
           ".claude",
           "hooks",
           "capture",
           "dist",
           "capture.js"
-        )} --mode json`;
+        )}" --mode json`;
         expect(settings.hooks.Stop[0].hooks[0].command).toBe(expected);
       });
 
@@ -2160,7 +2166,12 @@ describe("ClaudeAdapter", () => {
         const settings = JSON.parse(
           readFileSync(join(dir, ".claude", "settings.json"), "utf-8")
         );
-        const expected = `bash ${join(".claude", "hooks", "explicit-arg", "entry.sh")}`;
+        const expected = `bash "$CLAUDE_PROJECT_DIR/${join(
+          ".claude",
+          "hooks",
+          "explicit-arg",
+          "entry.sh"
+        )}"`;
         expect(settings.hooks.SessionStart[0].hooks[0].command).toBe(expected);
       });
 
@@ -2243,6 +2254,97 @@ describe("ClaudeAdapter", () => {
         // through as a bare command name even though a file with the same
         // name happens to exist in the hook dir.
         expect(settings.hooks.PreToolUse[0].hooks[0].command).toBe("npx lint-staged");
+      });
+
+      it("anchors rewritten hook arg paths with $CLAUDE_PROJECT_DIR so cwd changes don't break Stop hooks", async () => {
+        // Regression: when the agent `cd`s into a subdirectory mid-session
+        // (e.g. .agent-containers/), Claude Code invokes the Stop hook with
+        // that cwd. A cwd-relative path like ".claude/hooks/<id>/dist/capture.js"
+        // resolves one level too deep and Node errors with MODULE_NOT_FOUND.
+        // Anchoring with $CLAUDE_PROJECT_DIR makes the path absolute at
+        // invocation time regardless of cwd.
+        const dir = createTempDir();
+
+        const hookSrcDir = join(dir, "..", "hooks", "agent-transcript-capture");
+        mkdirSync(join(hookSrcDir, "dist"), { recursive: true });
+        writeFileSync(
+          join(hookSrcDir, "HOOK.json"),
+          JSON.stringify({
+            event: "Stop",
+            command: "node",
+            args: ["dist/capture.js"],
+          })
+        );
+        writeFileSync(join(hookSrcDir, "dist", "capture.js"), "// noop");
+
+        const artifacts = emptyArtifacts();
+        artifacts.hooks["@local/agent-transcript-capture"] = {
+          description: "Transcript capture",
+          path: resolve(hookSrcDir),
+        };
+
+        const root: RootEntry = {
+          description: "Test",
+          default_hooks: ["agent-transcript-capture"],
+        };
+
+        await adapter.prepareSession(artifacts, dir, { root });
+
+        const settings = JSON.parse(
+          readFileSync(join(dir, ".claude", "settings.json"), "utf-8")
+        );
+        const command = settings.hooks.Stop[0].hooks[0].command as string;
+        expect(command).toContain("$CLAUDE_PROJECT_DIR/");
+        expect(command).toContain(
+          join(".claude", "hooks", "agent-transcript-capture", "dist", "capture.js")
+        );
+        // The path expansion lives inside double quotes so paths containing
+        // spaces (e.g. on macOS "/Users/foo bar/...") still work.
+        expect(command).toMatch(/"\$CLAUDE_PROJECT_DIR\//);
+        expect(command).toMatch(/\.js"/);
+      });
+
+      it("anchors a './'-prefixed command path with $CLAUDE_PROJECT_DIR", async () => {
+        // The command field can also be a hook-relative path (e.g. "./run.sh")
+        // and must be anchored the same way as args paths.
+        const dir = createTempDir();
+
+        const hookSrcDir = join(dir, "..", "hooks", "explicit-cmd");
+        mkdirSync(hookSrcDir, { recursive: true });
+        writeFileSync(
+          join(hookSrcDir, "HOOK.json"),
+          JSON.stringify({
+            event: "session_start",
+            command: "./run.sh",
+          })
+        );
+        writeFileSync(join(hookSrcDir, "run.sh"), "#!/bin/bash\n");
+
+        const artifacts = emptyArtifacts();
+        artifacts.hooks["@local/explicit-cmd"] = {
+          description: "Explicit cmd",
+          path: resolve(hookSrcDir),
+        };
+
+        const root: RootEntry = {
+          description: "Test",
+          default_hooks: ["explicit-cmd"],
+        };
+
+        await adapter.prepareSession(artifacts, dir, { root });
+
+        const settings = JSON.parse(
+          readFileSync(join(dir, ".claude", "settings.json"), "utf-8")
+        );
+        const command = settings.hooks.SessionStart[0].hooks[0].command as string;
+        expect(command).toBe(
+          `"$CLAUDE_PROJECT_DIR/${join(
+            ".claude",
+            "hooks",
+            "explicit-cmd",
+            "run.sh"
+          )}"`
+        );
       });
     });
 

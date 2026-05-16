@@ -995,18 +995,26 @@ export class ClaudeAdapter implements AgentAdapter {
   /**
    * Build a shell command string from HOOK.json's command and args fields.
    *
-   * Claude Code invokes hook commands from the project root, but hook authors
-   * naturally write paths relative to their own hook directory. This method
-   * rewrites those hook-relative paths to project-root-relative form:
+   * Hook authors write paths relative to their own hook directory. Claude
+   * Code invokes hooks with the agent's *current* cwd, which is often the
+   * project root but is NOT guaranteed — if the agent `cd`s into a
+   * subdirectory mid-session, a cwd-relative `.claude/hooks/<id>/...` path
+   * fails to resolve and Node throws MODULE_NOT_FOUND. To anchor the path
+   * regardless of cwd, hook-relative paths are rewritten to
+   * `"$CLAUDE_PROJECT_DIR/.claude/hooks/<id>/<path>"` — Claude Code sets
+   * `CLAUDE_PROJECT_DIR` in the hook environment, the double quotes keep
+   * the path safe for project directories with spaces, and the variable
+   * expands at hook-invocation time.
    *
-   *   - `command` rewrites if it starts with `./` (explicit hook-relative).
-   *   - Each `args` entry rewrites if it looks like a path AND the file exists
-   *     under the hook's installed directory. We require a path-like form
-   *     (a `/` separator or an explicit `./` prefix) so command names like
-   *     `lint-staged` are not accidentally rewritten when a same-named file
-   *     happens to live in the hook directory.
+   *   - `command` is anchored if it starts with `./` (explicit hook-relative).
+   *   - Each `args` entry is anchored if it looks like a path AND the file
+   *     exists under the hook's installed directory. We require a path-like
+   *     form (a `/` separator or an explicit `./` prefix) so command names
+   *     like `lint-staged` are not accidentally rewritten when a same-named
+   *     file happens to live in the hook directory.
    *
-   * Args containing shell metacharacters are single-quoted for safety.
+   * Args that are not rewritten and contain shell metacharacters are
+   * single-quoted for safety.
    */
   private buildHookCommand(
     hookRelDir: string,
@@ -1014,16 +1022,22 @@ export class ClaudeAdapter implements AgentAdapter {
     command: string,
     args?: string[]
   ): string {
-    let cmd = command;
-    if (cmd.startsWith("./")) {
-      cmd = join(hookRelDir, cmd.slice(2));
+    let cmd: string;
+    if (command.startsWith("./")) {
+      cmd = this.anchorHookPath(join(hookRelDir, command.slice(2)));
+    } else {
+      cmd = command;
     }
     if (args && args.length > 0) {
       const rewritten = args.map((a) =>
         this.rewriteHookArgPath(a, hookRelDir, hookAbsDir)
       );
-      const escaped = rewritten.map((a) =>
-        /[\s;&|`$"'\\]/.test(a) ? `'${a.replace(/'/g, "'\\''")}'` : a
+      const escaped = rewritten.map((r) =>
+        r.anchored
+          ? this.anchorHookPath(r.value)
+          : /[\s;&|`$"'\\]/.test(r.value)
+            ? `'${r.value.replace(/'/g, "'\\''")}'`
+            : r.value
       );
       cmd += " " + escaped.join(" ");
     }
@@ -1031,27 +1045,46 @@ export class ClaudeAdapter implements AgentAdapter {
   }
 
   /**
+   * Wrap a project-root-relative path in `"$CLAUDE_PROJECT_DIR/..."` so the
+   * resolved path is independent of the cwd at hook invocation. Double
+   * quotes are required so the env var expands; characters that are
+   * special inside double quotes (`$`, ``` ` ```, `"`, `\`) are escaped in
+   * the path component so an unusual hook ID or filename can't break out
+   * of the quoting.
+   */
+  private anchorHookPath(projectRelPath: string): string {
+    const safe = projectRelPath.replace(/[\\"$`]/g, "\\$&");
+    return `"$CLAUDE_PROJECT_DIR/${safe}"`;
+  }
+
+  /**
    * If `arg` is a hook-relative path that points at a real file under the
-   * hook's installed directory, rewrite it to a project-root-relative form
-   * (`.claude/hooks/<id>/<path>`). Otherwise return `arg` unchanged.
+   * hook's installed directory, return its project-root-relative form
+   * (`.claude/hooks/<id>/<path>`) flagged as anchored so the caller can
+   * wrap it in `$CLAUDE_PROJECT_DIR/`. Otherwise return `arg` unchanged
+   * with `anchored: false`.
    */
   private rewriteHookArgPath(
     arg: string,
     hookRelDir: string,
     hookAbsDir: string
-  ): string {
-    if (!arg) return arg;
+  ): { value: string; anchored: boolean } {
+    if (!arg) return { value: arg, anchored: false };
     // Flags, absolute paths, and home-relative paths are not hook-relative.
     if (arg.startsWith("-") || arg.startsWith("/") || arg.startsWith("~")) {
-      return arg;
+      return { value: arg, anchored: false };
     }
     // Require a path-like form so bare command/package names (e.g. "lint-staged")
     // are not accidentally rewritten when a same-named file exists in the hook dir.
     const hasExplicitPrefix = arg.startsWith("./");
     const candidate = hasExplicitPrefix ? arg.slice(2) : arg;
-    if (!hasExplicitPrefix && !candidate.includes("/")) return arg;
-    if (!existsSync(join(hookAbsDir, candidate))) return arg;
-    return join(hookRelDir, candidate);
+    if (!hasExplicitPrefix && !candidate.includes("/")) {
+      return { value: arg, anchored: false };
+    }
+    if (!existsSync(join(hookAbsDir, candidate))) {
+      return { value: arg, anchored: false };
+    }
+    return { value: join(hookRelDir, candidate), anchored: true };
   }
 
   /** Human-readable list of the supported AIR hook event names (snake_case only). */
