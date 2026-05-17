@@ -586,7 +586,8 @@ async function expandAllCatalogs(
 function canonicalizeReferences(
   artifacts: ResolvedArtifacts,
   excluded: Map<ArtifactType, Set<QualifiedId>>,
-  errors: string[]
+  errors: string[],
+  warnings: string[]
 ): ResolvedArtifacts {
   type RefField =
     | { kind: "skill"; entry: SkillEntry }
@@ -648,11 +649,13 @@ function canonicalizeReferences(
       } else if (res.status === "missing") {
         const matches = excludedMatches(ref, artifactType);
         if (matches.length > 0) {
-          errors.push(
+          // Warn instead of erroring: exclude and artifact authors are often
+          // different humans, and forcing every consumer to be rewritten
+          // makes `exclude` unusable against dense upstream catalogs.
+          warnings.push(
             `${ownerLabel}.${field} references ${poolType} "${ref}", ` +
               `which is removed by air.json#exclude (${matches.join(", ")}). ` +
-              `Drop the exclude entry or also remove every artifact that ` +
-              `references it.`
+              `Dropping the reference.`
           );
         } else {
           errors.push(
@@ -1123,7 +1126,12 @@ export async function resolveArtifacts(
   warnCrossScopeShortnames(filtered, sourcesByType, warnings);
 
   const refErrors: string[] = [];
-  const canonical = canonicalizeReferences(filtered, excluded, refErrors);
+  const canonical = canonicalizeReferences(
+    filtered,
+    excluded,
+    refErrors,
+    warnings
+  );
   if (refErrors.length > 0) {
     throw new Error(
       `Reference resolution failed:\n  - ${refErrors.join("\n  - ")}`

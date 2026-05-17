@@ -536,7 +536,8 @@ describe("composition", () => {
     );
   });
 
-  it("reference to an excluded artifact emits a tailored error", async () => {
+  it("reference to an excluded artifact warns and drops the reference", async () => {
+    const warnings: string[] = [];
     const { dir, cleanup: c } = createTempAirDir({
       "air.json": {
         name: "test",
@@ -545,17 +546,159 @@ describe("composition", () => {
         exclude: { references: ["@local/git-workflow"] },
       },
       "skills.json": {
-        deploy: exampleSkill("deploy", { references: ["git-workflow"] }),
+        deploy: exampleSkill("deploy", {
+          references: ["git-workflow", "code-style"],
+        }),
       },
       "refs.json": {
         "git-workflow": exampleReference("git-workflow"),
+        "code-style": exampleReference("code-style"),
       },
     });
     cleanup = c;
 
-    await expect(resolveArtifacts(join(dir, "air.json"))).rejects.toThrow(
-      /removed by air\.json#exclude.*@local\/git-workflow/s,
+    const artifacts = await resolveArtifacts(join(dir, "air.json"), {
+      onWarning: (m) => warnings.push(m),
+    });
+
+    expect(artifacts.skills["@local/deploy"]).toBeDefined();
+    // Surviving reference is kept and canonicalized; excluded one is dropped.
+    expect(artifacts.skills["@local/deploy"].references).toEqual([
+      "@local/code-style",
+    ]);
+    expect(artifacts.references["@local/git-workflow"]).toBeUndefined();
+
+    const dropWarns = warnings.filter((w) =>
+      w.includes("removed by air.json#exclude"),
     );
+    expect(dropWarns).toHaveLength(1);
+    expect(dropWarns[0]).toMatch(
+      /@local\/deploy\.references references reference "git-workflow"/,
+    );
+    expect(dropWarns[0]).toMatch(/@local\/git-workflow/);
+    expect(dropWarns[0]).toMatch(/Dropping the reference/);
+  });
+
+  it("excluded MCP server referenced by a root's default_mcp_servers warns and is dropped", async () => {
+    const warnings: string[] = [];
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        mcp: ["./mcp.json"],
+        roots: ["./roots.json"],
+        exclude: { mcp: ["@local/github"] },
+      },
+      "mcp.json": {
+        github: exampleMcpStdio({ title: "GitHub MCP" }),
+        jira: exampleMcpStdio({ title: "Jira MCP" }),
+      },
+      "roots.json": {
+        web: exampleRoot("web", {
+          default_mcp_servers: ["github", "jira"],
+        }),
+      },
+    });
+    cleanup = c;
+
+    const artifacts = await resolveArtifacts(join(dir, "air.json"), {
+      onWarning: (m) => warnings.push(m),
+    });
+
+    expect(artifacts.roots["@local/web"].default_mcp_servers).toEqual([
+      "@local/jira",
+    ]);
+    expect(artifacts.mcp["@local/github"]).toBeUndefined();
+
+    const dropWarns = warnings.filter((w) =>
+      w.includes("removed by air.json#exclude"),
+    );
+    expect(dropWarns).toHaveLength(1);
+    expect(dropWarns[0]).toMatch(/default_mcp_servers/);
+    expect(dropWarns[0]).toMatch(/@local\/github/);
+  });
+
+  it("excluded child plugin referenced by another plugin's plugins[] warns and is dropped before expandPlugins runs", async () => {
+    const warnings: string[] = [];
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        skills: ["./skills.json"],
+        plugins: ["./plugins.json"],
+        exclude: { plugins: ["@local/child"] },
+      },
+      "skills.json": {
+        deploy: exampleSkill("deploy"),
+        lint: exampleSkill("lint"),
+      },
+      "plugins.json": {
+        child: {
+          description: "Child plugin (will be excluded)",
+          skills: ["lint"],
+        },
+        parent: {
+          description: "Parent plugin that references the excluded child",
+          plugins: ["child"],
+          skills: ["deploy"],
+        },
+      },
+    });
+    cleanup = c;
+
+    const artifacts = await resolveArtifacts(join(dir, "air.json"), {
+      onWarning: (m) => warnings.push(m),
+    });
+
+    expect(artifacts.plugins["@local/child"]).toBeUndefined();
+    // expandPlugins must not have thrown — and parent's own skills survive,
+    // without the excluded child's `lint` contribution being merged in.
+    expect(artifacts.plugins["@local/parent"]).toBeDefined();
+    expect(artifacts.plugins["@local/parent"].plugins).toEqual([]);
+    expect(artifacts.plugins["@local/parent"].skills).toEqual(["@local/deploy"]);
+
+    const dropWarns = warnings.filter((w) =>
+      w.includes("removed by air.json#exclude"),
+    );
+    expect(dropWarns).toHaveLength(1);
+    expect(dropWarns[0]).toMatch(/@local\/parent\.plugins references plugin "child"/);
+    expect(dropWarns[0]).toMatch(/@local\/child/);
+  });
+
+  it("wildcard exclude that drops a whole scope still demotes consumer references to warnings", async () => {
+    const warnings: string[] = [];
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        references: ["./refs.json"],
+        skills: ["./skills.json"],
+        exclude: { references: ["@local/*"] },
+      },
+      "refs.json": {
+        "git-workflow": exampleReference("git-workflow"),
+        "code-style": exampleReference("code-style"),
+      },
+      "skills.json": {
+        deploy: exampleSkill("deploy", {
+          references: ["git-workflow", "code-style"],
+        }),
+      },
+    });
+    cleanup = c;
+
+    const artifacts = await resolveArtifacts(join(dir, "air.json"), {
+      onWarning: (m) => warnings.push(m),
+    });
+
+    // Both refs were dropped by the wildcard, so deploy's references list is empty.
+    expect(artifacts.references).toEqual({});
+    expect(artifacts.skills["@local/deploy"].references).toEqual([]);
+
+    const dropWarns = warnings.filter((w) =>
+      w.includes("removed by air.json#exclude"),
+    );
+    // One warning per dangling reference, naming the wildcard-expanded ID.
+    expect(dropWarns).toHaveLength(2);
+    expect(dropWarns.some((w) => w.includes("@local/git-workflow"))).toBe(true);
+    expect(dropWarns.some((w) => w.includes("@local/code-style"))).toBe(true);
   });
 
   it("cross-scope shortname collision warns once when both scopes survive exclude", async () => {

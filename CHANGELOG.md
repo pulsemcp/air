@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.3] - 2026-05-17
+
+### Changed
+- **`@pulsemcp/air-core` no longer hard-fails resolution when a surviving artifact references an excluded one.** Previously, if `air.json#exclude` dropped an artifact that was still referenced from another artifact's body (a plugin's `mcp_servers`, a root's `default_mcp_servers`, a skill's `references`, etc.), `resolveArtifacts` threw with `Reference resolution failed: … which is removed by air.json#exclude … Drop the exclude entry or also remove every artifact that references it.` That made `exclude` impractical against catalogs whose plugins and default-loaded roots reference one another — adding a single exclude could fan out into rewriting every consumer. The resolver now emits a warning naming the consumer and the dropped reference, drops the reference from the consumer's resolved list, and continues. Downstream behavior follows: a root's `default_mcp_servers` simply omits the excluded server, so adapters like `@pulsemcp/air-adapter-claude` no longer write it into `.mcp.json`. Truly-missing references (not matched by any `exclude` entry of the same type) still hard-fail with the existing unknown-reference error.
+
 ## [0.4.2] - 2026-05-16
 
 ### Fixed
