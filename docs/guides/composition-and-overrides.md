@@ -129,6 +129,7 @@ Notes:
 - Each entry must be a qualified ID (`@scope/id`) or a wildcard pattern of the same shape — bare shortnames are rejected with a hard error.
 - An entry — exact or wildcard — that does not match any resolved artifact of its type emits a warning that names both the type and the offending pattern (typo guard, not an error).
 - `exclude` runs after composition, so a catalog you depend on cannot bypass it.
+- If a surviving artifact still references something you excluded (e.g. a plugin's `mcp_servers` or a root's `default_mcp_servers` points at the dropped MCP server), AIR emits a warning naming the consumer and the dropped reference, then resolves the consumer without it. Excluding an artifact never forces you to also rewrite every plugin or root that referenced it.
 - Omitting a key means "don't exclude anything of that type."
 
 There is no field-level patch, no "override this one field" knob. If you want a different behavior for a skill, ship a new skill under your own scope.
@@ -435,6 +436,7 @@ There is no "disabled" flag, no override-with-empty-entry trick. If you want a t
 | `exclude.<type>` matches a qualified ID | Artifact of that type removed from the resolved set; identically-named artifacts of other types untouched |
 | `exclude.<type>` matches a wildcard pattern | Every qualified ID of that type matching the pattern is removed |
 | `exclude.<type>` entry matches nothing | Per-type/per-pattern warning logged; resolution continues |
+| Surviving artifact references something `exclude` removed | Warning logged naming the consumer and dropped reference; the reference is dropped from the consumer and resolution continues |
 | `exclude.<type>` entry is not a qualified ID or wildcard | Hard-fail with the offending entry |
 | `exclude` is an array (legacy shape) | Hard-fail with a migration error pointing at the per-type object form |
 | `exclude` key is not a valid artifact type | Hard-fail naming the unknown key and listing valid keys |
