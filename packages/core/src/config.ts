@@ -649,15 +649,13 @@ function canonicalizeReferences(
       } else if (res.status === "missing") {
         const matches = excludedMatches(ref, artifactType);
         if (matches.length > 0) {
-          // Demote to a warning and drop the reference: an artifact author
-          // and an exclude author may be different humans, and forcing the
-          // exclude author to also rewrite every consumer would make
-          // `exclude` unusable against catalogs that ship dense plugins or
-          // default-loaded roots.
+          // Warn instead of erroring: exclude and artifact authors are often
+          // different humans, and forcing every consumer to be rewritten
+          // makes `exclude` unusable against dense upstream catalogs.
           warnings.push(
             `${ownerLabel}.${field} references ${poolType} "${ref}", ` +
               `which is removed by air.json#exclude (${matches.join(", ")}). ` +
-              `Dropping the reference; ${ownerLabel} will resolve without it.`
+              `Dropping the reference.`
           );
         } else {
           errors.push(
