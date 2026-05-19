@@ -965,6 +965,47 @@ describe("ClaudeAdapter", () => {
           existsSync(join(dir, ".claude", "hooks", "missing-hook"))
         ).toBe(false);
       });
+
+      it("preserves a previously materialized skill when its source dir disappears between runs", async () => {
+        // Run 1: source dir exists, AIR materializes the skill normally.
+        const dir = createTempDir();
+
+        const skillSrcDir = join(dir, "..", "skills", "ephemeral-skill");
+        mkdirSync(skillSrcDir, { recursive: true });
+        writeFileSync(join(skillSrcDir, "SKILL.md"), "# Ephemeral");
+
+        const artifacts = emptyArtifacts();
+        artifacts.skills["@local/ephemeral-skill"] = {
+          description: "Skill whose source dir vanishes between runs",
+          path: resolve(skillSrcDir),
+        };
+
+        const root: RootEntry = {
+          description: "Test",
+          default_skills: ["@local/ephemeral-skill"],
+        };
+
+        const firstRun = await adapter.prepareSession(artifacts, dir, { root });
+        expect(warnSpy).not.toHaveBeenCalled();
+        expect(firstRun.skillPaths).toHaveLength(1);
+
+        // Run 2: source dir disappears, but the previously copied target dir
+        // remains. The session is still functional from the cached copy, so
+        // the adapter leaves it alone — no warning, no removal, the manifest
+        // still records the skill as one AIR materialized.
+        rmSync(skillSrcDir, { recursive: true, force: true });
+
+        const secondRun = await adapter.prepareSession(artifacts, dir, { root });
+        expect(warnSpy).not.toHaveBeenCalled();
+        // The target dir is reused (not re-copied), so `skillPaths` for this
+        // run is empty — but the on-disk copy is still present.
+        expect(
+          existsSync(join(dir, ".claude", "skills", "ephemeral-skill", "SKILL.md"))
+        ).toBe(true);
+        const manifest = loadManifest(dir);
+        expect(manifest?.skills ?? []).toContain("ephemeral-skill");
+        expect(secondRun.skillPaths).toHaveLength(0);
+      });
     });
 
     describe("subagent root merging", () => {
