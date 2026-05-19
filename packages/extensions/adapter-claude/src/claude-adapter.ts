@@ -279,10 +279,11 @@ export class ClaudeAdapter implements AgentAdapter {
       if (existsSync(skillTargetDir)) continue;
 
       const skillSourceDir = skill.path;
-      if (existsSync(skillSourceDir)) {
-        this.copyDirRecursive(skillSourceDir, skillTargetDir);
-        skillPaths.push(skillTargetDir);
+      if (!existsSync(skillSourceDir)) {
+        throw new Error(this.missingSourceDirMessage("skill", a.qualified, skillSourceDir));
       }
+      this.copyDirRecursive(skillSourceDir, skillTargetDir);
+      skillPaths.push(skillTargetDir);
 
       if (skill.references && skill.references.length > 0) {
         this.copyReferences(skill.references, skillTargetDir, artifacts);
@@ -305,7 +306,9 @@ export class ClaudeAdapter implements AgentAdapter {
 
       if (!alreadyExists) {
         const hookSourceDir = hook.path;
-        if (!existsSync(hookSourceDir)) continue;
+        if (!existsSync(hookSourceDir)) {
+          throw new Error(this.missingSourceDirMessage("hook", a.qualified, hookSourceDir));
+        }
         this.copyDirRecursive(hookSourceDir, hookTargetDir);
         if (hook.references && hook.references.length > 0) {
           this.copyReferences(hook.references, hookTargetDir, artifacts);
@@ -752,6 +755,25 @@ export class ClaudeAdapter implements AgentAdapter {
       );
     }
     return acts;
+  }
+
+  /**
+   * Build the error thrown when a registered artifact's `path` does not
+   * exist on disk at materialization time. The qualified ID encodes the
+   * declaring catalog's scope, so a reviewer can trace the offending entry
+   * back to its index file (e.g. `@reframe-systems/agentic-engineering/foo`
+   * → the `reframe-systems/agentic-engineering` catalog).
+   */
+  private missingSourceDirMessage(
+    artifactType: "skill" | "hook",
+    qualified: string,
+    resolvedPath: string
+  ): string {
+    return (
+      `${artifactType} "${qualified}" declares path "${resolvedPath}" but that directory does not exist. ` +
+      `The catalog that contributed "${qualified}" registered a path AIR cannot materialize — ` +
+      `fix the \`path\` field in the catalog's index file (or exclude the artifact in air.json).`
+    );
   }
 
   private formatPoolKeys<T>(pool: Record<string, T>): string {

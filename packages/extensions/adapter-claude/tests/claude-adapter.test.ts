@@ -727,6 +727,155 @@ describe("ClaudeAdapter", () => {
       });
     });
 
+    describe("missing source directory diagnostics", () => {
+      it("throws when a registered skill's path does not exist on disk", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+
+        const bogusSkillPath = join(dir, "..", "this-skill-dir-does-not-exist");
+        artifacts.skills["@reframe/missing-skill"] = {
+          description: "Skill with bogus path",
+          path: resolve(bogusSkillPath),
+        };
+
+        const root: RootEntry = {
+          description: "Test",
+          default_skills: ["@reframe/missing-skill"],
+        };
+
+        const expected = new RegExp(
+          `skill "@reframe/missing-skill" declares path "[^"]*this-skill-dir-does-not-exist" ` +
+            `but that directory does not exist`
+        );
+        await expect(
+          adapter.prepareSession(artifacts, dir, { root })
+        ).rejects.toThrow(expected);
+      });
+
+      it("includes guidance pointing back to the catalog index file (skill)", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+
+        artifacts.skills["@reframe/missing-skill"] = {
+          description: "Skill with bogus path",
+          path: resolve(dir, "..", "no-such-skill"),
+        };
+
+        const root: RootEntry = {
+          description: "Test",
+          default_skills: ["@reframe/missing-skill"],
+        };
+
+        await expect(
+          adapter.prepareSession(artifacts, dir, { root })
+        ).rejects.toThrow(
+          /fix the `path` field in the catalog's index file/
+        );
+      });
+
+      it("throws when a registered hook's path does not exist on disk", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+
+        const bogusHookPath = join(dir, "..", "this-hook-dir-does-not-exist");
+        artifacts.hooks["@reframe/missing-hook"] = {
+          description: "Hook with bogus path",
+          path: resolve(bogusHookPath),
+        };
+
+        const root: RootEntry = {
+          description: "Test",
+          default_hooks: ["@reframe/missing-hook"],
+        };
+
+        const expected = new RegExp(
+          `hook "@reframe/missing-hook" declares path "[^"]*this-hook-dir-does-not-exist" ` +
+            `but that directory does not exist`
+        );
+        await expect(
+          adapter.prepareSession(artifacts, dir, { root })
+        ).rejects.toThrow(expected);
+      });
+
+      it("includes guidance pointing back to the catalog index file (hook)", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+
+        artifacts.hooks["@reframe/missing-hook"] = {
+          description: "Hook with bogus path",
+          path: resolve(dir, "..", "no-such-hook"),
+        };
+
+        const root: RootEntry = {
+          description: "Test",
+          default_hooks: ["@reframe/missing-hook"],
+        };
+
+        await expect(
+          adapter.prepareSession(artifacts, dir, { root })
+        ).rejects.toThrow(
+          /fix the `path` field in the catalog's index file/
+        );
+      });
+
+      it("still materializes a skill whose path is valid (no regression)", async () => {
+        const dir = createTempDir();
+
+        const skillSrcDir = join(dir, "..", "skills", "good-skill");
+        mkdirSync(skillSrcDir, { recursive: true });
+        writeFileSync(join(skillSrcDir, "SKILL.md"), "# Good");
+
+        const artifacts = emptyArtifacts();
+        artifacts.skills["@local/good-skill"] = {
+          description: "Valid skill",
+          path: resolve(skillSrcDir),
+        };
+
+        const root: RootEntry = {
+          description: "Test",
+          default_skills: ["good-skill"],
+        };
+
+        const result = await adapter.prepareSession(artifacts, dir, { root });
+        expect(result.skillPaths).toHaveLength(1);
+        expect(
+          existsSync(join(dir, ".claude", "skills", "good-skill", "SKILL.md"))
+        ).toBe(true);
+      });
+
+      it("still materializes a hook whose path is valid (no regression)", async () => {
+        const dir = createTempDir();
+
+        const hookSrcDir = join(dir, "..", "hooks", "good-hook");
+        mkdirSync(hookSrcDir, { recursive: true });
+        writeFileSync(
+          join(hookSrcDir, "HOOK.json"),
+          JSON.stringify({
+            event: "stop",
+            command: "echo",
+            args: ["ok"],
+          })
+        );
+
+        const artifacts = emptyArtifacts();
+        artifacts.hooks["@local/good-hook"] = {
+          description: "Valid hook",
+          path: resolve(hookSrcDir),
+        };
+
+        const root: RootEntry = {
+          description: "Test",
+          default_hooks: ["good-hook"],
+        };
+
+        const result = await adapter.prepareSession(artifacts, dir, { root });
+        expect(result.hookPaths).toHaveLength(1);
+        expect(
+          existsSync(join(dir, ".claude", "hooks", "good-hook", "HOOK.json"))
+        ).toBe(true);
+      });
+    });
+
     describe("subagent root merging", () => {
       it("merges subagent roots' MCP servers and skills into parent session", async () => {
         const dir = createTempDir();
@@ -788,12 +937,18 @@ describe("ClaudeAdapter", () => {
         const dir = createTempDir();
         const artifacts = emptyArtifacts();
 
+        // Materialize a real on-disk skill so prepareSession doesn't reject a
+        // bogus path — this test only cares about the subagent context output.
+        const findSourceDir = join(dir, "..", "skills", "find-source");
+        mkdirSync(findSourceDir, { recursive: true });
+        writeFileSync(join(findSourceDir, "SKILL.md"), "# Find source");
+
         // Add the MCP server and skill referenced by the subagent root
         artifacts.mcp["@local/web-search"] = { type: "stdio", command: "search" };
         artifacts.skills["@local/find-source"] = {
           id: "find-source",
           description: "Find source",
-          path: join(dir, "..", "skills", "find-source"),
+          path: resolve(findSourceDir),
         };
 
         artifacts.roots["@local/research"] = {

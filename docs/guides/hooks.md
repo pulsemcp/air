@@ -311,6 +311,8 @@ After transforms run, AIR validates that no unresolved `${VAR}` patterns remain 
 
 At session start, AIR copies hook directories into the agent's working directory (e.g., `.claude/hooks/{id}/`). The adapter reads each `HOOK.json` to translate hooks into the agent's native format. Local hooks take priority — if a hook directory already exists in the target, the catalog version is not copied.
 
+If a selected hook's `path` resolves to a directory that does not exist on disk, `air prepare` / `air start` fails with an error naming the qualified ID and the unreachable path. The catalog declared the hook but AIR cannot materialize it — fix the `path` in the catalog's index file, or drop the hook via `air.json#exclude`.
+
 ### Claude Code
 
 For Claude Code, the adapter registers hooks in `.claude/settings.json` under the `hooks` key. Each AIR lifecycle event maps to a Claude Code hook event:
