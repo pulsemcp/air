@@ -239,7 +239,7 @@ Each artifact's key in its index file should match the `id` (or `name` for roots
   "my-skill": {
     "id": "my-skill",
     "description": "...",
-    "path": "skills/my-skill"
+    "path": "my-skill"
   }
 }
 ```

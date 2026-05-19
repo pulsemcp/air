@@ -2,19 +2,19 @@
   "deploy-staging": {
     "title": "Deploy to Staging",
     "description": "Deploy the current PR branch to the staging environment for testing",
-    "path": "skills/deploy-staging",
+    "path": "deploy-staging",
     "references": ["git-workflow", "staging-env"]
   },
   "initial-pr-review": {
     "title": "Initial PR Review",
     "description": "Perform a structured first-pass code review on a pull request",
-    "path": "skills/initial-pr-review",
+    "path": "initial-pr-review",
     "references": ["git-workflow", "code-standards"]
   },
   "create-mcp-json": {
     "title": "Create MCP Config",
     "description": "Generate an mcp.json configuration file for a project based on its MCP server needs",
-    "path": "skills/create-mcp-json",
+    "path": "create-mcp-json",
     "references": ["mcp-json-spec"]
   }
 }

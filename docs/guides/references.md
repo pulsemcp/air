@@ -84,7 +84,7 @@ Skills declare their reference dependencies in the skills index:
     "id": "initial-pr-review",
     "title": "Initial PR Review",
     "description": "Perform a structured first-pass code review on a pull request",
-    "path": "skills/initial-pr-review",
+    "path": "initial-pr-review",
     "references": ["git-workflow", "code-standards"]
   }
 }
