@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, beforeEach } from "vitest";
+import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "fs";
 import { resolve, join, dirname } from "path";
 import { tmpdir } from "os";
@@ -728,7 +728,17 @@ describe("ClaudeAdapter", () => {
     });
 
     describe("missing source directory diagnostics", () => {
-      it("throws when a registered skill's path does not exist on disk", async () => {
+      let warnSpy: ReturnType<typeof vi.spyOn>;
+
+      beforeEach(() => {
+        warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      });
+
+      afterEach(() => {
+        warnSpy.mockRestore();
+      });
+
+      it("warns and skips when a registered skill's path does not exist on disk", async () => {
         const dir = createTempDir();
         const artifacts = emptyArtifacts();
 
@@ -743,13 +753,21 @@ describe("ClaudeAdapter", () => {
           default_skills: ["@reframe/missing-skill"],
         };
 
-        const expected = new RegExp(
-          `skill "@reframe/missing-skill" declares path "[^"]*this-skill-dir-does-not-exist" ` +
-            `but that directory does not exist`
-        );
-        await expect(
-          adapter.prepareSession(artifacts, dir, { root })
-        ).rejects.toThrow(expected);
+        const result = await adapter.prepareSession(artifacts, dir, { root });
+
+        expect(warnSpy).toHaveBeenCalledTimes(1);
+        const msg = warnSpy.mock.calls[0][0] as string;
+        expect(msg).toMatch(/skill "@reframe\/missing-skill"/);
+        expect(msg).toMatch(/this-skill-dir-does-not-exist/);
+        expect(msg).toMatch(/does not exist/);
+
+        // Skipped artifact is not materialized and not tracked in the manifest.
+        expect(result.skillPaths).toHaveLength(0);
+        expect(
+          existsSync(join(dir, ".claude", "skills", "missing-skill"))
+        ).toBe(false);
+        const manifest = loadManifest(dir);
+        expect(manifest?.skills ?? []).not.toContain("missing-skill");
       });
 
       it("includes guidance pointing back to the catalog index file (skill)", async () => {
@@ -766,14 +784,15 @@ describe("ClaudeAdapter", () => {
           default_skills: ["@reframe/missing-skill"],
         };
 
-        await expect(
-          adapter.prepareSession(artifacts, dir, { root })
-        ).rejects.toThrow(
-          /fix the `path` field in the catalog's index file/
+        await adapter.prepareSession(artifacts, dir, { root });
+
+        expect(warnSpy).toHaveBeenCalledTimes(1);
+        expect(warnSpy.mock.calls[0][0]).toMatch(
+          /Fix the `path` field in the catalog's index file/
         );
       });
 
-      it("throws when a registered hook's path does not exist on disk", async () => {
+      it("warns and skips when a registered hook's path does not exist on disk", async () => {
         const dir = createTempDir();
         const artifacts = emptyArtifacts();
 
@@ -788,13 +807,21 @@ describe("ClaudeAdapter", () => {
           default_hooks: ["@reframe/missing-hook"],
         };
 
-        const expected = new RegExp(
-          `hook "@reframe/missing-hook" declares path "[^"]*this-hook-dir-does-not-exist" ` +
-            `but that directory does not exist`
-        );
-        await expect(
-          adapter.prepareSession(artifacts, dir, { root })
-        ).rejects.toThrow(expected);
+        const result = await adapter.prepareSession(artifacts, dir, { root });
+
+        expect(warnSpy).toHaveBeenCalledTimes(1);
+        const msg = warnSpy.mock.calls[0][0] as string;
+        expect(msg).toMatch(/hook "@reframe\/missing-hook"/);
+        expect(msg).toMatch(/this-hook-dir-does-not-exist/);
+        expect(msg).toMatch(/does not exist/);
+
+        expect(result.hookPaths).toHaveLength(0);
+        expect(result.hookActivations).toHaveLength(0);
+        expect(
+          existsSync(join(dir, ".claude", "hooks", "missing-hook"))
+        ).toBe(false);
+        const manifest = loadManifest(dir);
+        expect(manifest?.hooks ?? []).not.toContain("missing-hook");
       });
 
       it("includes guidance pointing back to the catalog index file (hook)", async () => {
@@ -811,10 +838,11 @@ describe("ClaudeAdapter", () => {
           default_hooks: ["@reframe/missing-hook"],
         };
 
-        await expect(
-          adapter.prepareSession(artifacts, dir, { root })
-        ).rejects.toThrow(
-          /fix the `path` field in the catalog's index file/
+        await adapter.prepareSession(artifacts, dir, { root });
+
+        expect(warnSpy).toHaveBeenCalledTimes(1);
+        expect(warnSpy.mock.calls[0][0]).toMatch(
+          /Fix the `path` field in the catalog's index file/
         );
       });
 
@@ -837,6 +865,7 @@ describe("ClaudeAdapter", () => {
         };
 
         const result = await adapter.prepareSession(artifacts, dir, { root });
+        expect(warnSpy).not.toHaveBeenCalled();
         expect(result.skillPaths).toHaveLength(1);
         expect(
           existsSync(join(dir, ".claude", "skills", "good-skill", "SKILL.md"))
@@ -869,10 +898,72 @@ describe("ClaudeAdapter", () => {
         };
 
         const result = await adapter.prepareSession(artifacts, dir, { root });
+        expect(warnSpy).not.toHaveBeenCalled();
         expect(result.hookPaths).toHaveLength(1);
         expect(
           existsSync(join(dir, ".claude", "hooks", "good-hook", "HOOK.json"))
         ).toBe(true);
+      });
+
+      it("still materializes valid artifacts when a sibling has a missing source dir", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+
+        // Valid skill alongside a missing one.
+        const goodSkillDir = join(dir, "..", "skills", "good-skill");
+        mkdirSync(goodSkillDir, { recursive: true });
+        writeFileSync(join(goodSkillDir, "SKILL.md"), "# Good");
+        artifacts.skills["@local/good-skill"] = {
+          description: "Valid skill",
+          path: resolve(goodSkillDir),
+        };
+        artifacts.skills["@reframe/missing-skill"] = {
+          description: "Skill with bogus path",
+          path: resolve(dir, "..", "no-such-skill"),
+        };
+
+        // Valid hook alongside a missing one.
+        const goodHookDir = join(dir, "..", "hooks", "good-hook");
+        mkdirSync(goodHookDir, { recursive: true });
+        writeFileSync(
+          join(goodHookDir, "HOOK.json"),
+          JSON.stringify({ event: "stop", command: "echo", args: ["ok"] })
+        );
+        artifacts.hooks["@local/good-hook"] = {
+          description: "Valid hook",
+          path: resolve(goodHookDir),
+        };
+        artifacts.hooks["@reframe/missing-hook"] = {
+          description: "Hook with bogus path",
+          path: resolve(dir, "..", "no-such-hook"),
+        };
+
+        const root: RootEntry = {
+          description: "Test",
+          default_skills: ["@local/good-skill", "@reframe/missing-skill"],
+          default_hooks: ["@local/good-hook", "@reframe/missing-hook"],
+        };
+
+        const result = await adapter.prepareSession(artifacts, dir, { root });
+
+        // Both the skill and the hook produced a warning, but the session continued.
+        expect(warnSpy).toHaveBeenCalledTimes(2);
+        expect(result.skillPaths).toHaveLength(1);
+        expect(result.hookPaths).toHaveLength(1);
+        expect(result.hookActivations.map((a) => a.short)).toEqual(["good-hook"]);
+        expect(
+          existsSync(join(dir, ".claude", "skills", "good-skill", "SKILL.md"))
+        ).toBe(true);
+        expect(
+          existsSync(join(dir, ".claude", "hooks", "good-hook", "HOOK.json"))
+        ).toBe(true);
+        // Skipped artifacts left no directory behind.
+        expect(
+          existsSync(join(dir, ".claude", "skills", "missing-skill"))
+        ).toBe(false);
+        expect(
+          existsSync(join(dir, ".claude", "hooks", "missing-hook"))
+        ).toBe(false);
       });
     });
 

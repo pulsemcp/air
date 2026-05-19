@@ -175,7 +175,7 @@ When you run `air start` or `air prepare`, the adapter:
 4. Skills already present in the workspace are not overwritten (local takes priority)
 5. Skills that AIR wrote on a prior run but are no longer in the selection are removed (the adapter tracks them in a per-target manifest). User-authored skills under `.claude/skills/` are never touched. See [Cleanup between runs](running-sessions.md#cleanup-between-runs) for details.
 
-If a selected skill's `path` resolves to a directory that does not exist on disk, `air prepare` / `air start` fails with an error naming the qualified ID and the unreachable path. The catalog declared the skill but AIR cannot materialize it — fix the `path` in the catalog's index file, or drop the skill via `air.json#exclude`.
+If a selected skill's `path` resolves to a directory that does not exist on disk, `air prepare` / `air start` logs a warning naming the qualified ID and the unreachable path, then skips that skill (it is not materialized and not recorded in the manifest). The rest of the session continues so other artifacts still load. Fix the `path` in the catalog's index file, or drop the skill via `air.json#exclude`, to restore it.
 
 ### Local skills tracked in the repo
 
