@@ -385,10 +385,10 @@ describe("GitHubCatalogProvider", () => {
   it("resolveCatalogDir resolves a hook directory path at the default branch", async () => {
     // Same call shape used by core when a hook entry's `path` is a github:// URI.
     const catalogDir = await provider.resolveCatalogDir(
-      "github://pulsemcp/air/examples/hooks/hooks/notify-session-start"
+      "github://pulsemcp/air/examples/hooks/notify-session-start"
     );
     expect(existsSync(catalogDir)).toBe(true);
-    expect(catalogDir).toContain("examples/hooks/hooks/notify-session-start");
+    expect(catalogDir).toContain("examples/hooks/notify-session-start");
   }, 30000);
 
   it("resolveCatalogDir caches by branch ref — repeat calls share a clone", async () => {
@@ -396,7 +396,7 @@ describe("GitHubCatalogProvider", () => {
       "github://pulsemcp/air@main/examples/hooks"
     );
     const dirB = await provider.resolveCatalogDir(
-      "github://pulsemcp/air@main/examples/hooks/hooks/lint-pre-commit"
+      "github://pulsemcp/air@main/examples/hooks/lint-pre-commit"
     );
     const cloneRoot = getClonePath("pulsemcp", "air", "main");
     expect(dirA.startsWith(cloneRoot)).toBe(true);

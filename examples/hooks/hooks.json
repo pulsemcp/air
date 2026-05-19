@@ -1,12 +1,12 @@
 {
   "notify-session-start": {
-"title": "Session Start Notification",
+    "title": "Session Start Notification",
     "description": "Send a Slack notification when an agent session starts",
-    "path": "hooks/notify-session-start"
+    "path": "notify-session-start"
   },
   "lint-pre-commit": {
-"title": "Pre-Commit Lint Check",
+    "title": "Pre-Commit Lint Check",
     "description": "Run linting on staged files before allowing a commit",
-    "path": "hooks/lint-pre-commit"
+    "path": "lint-pre-commit"
   }
 }
