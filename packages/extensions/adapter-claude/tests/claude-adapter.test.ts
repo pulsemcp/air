@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, beforeEach } from "vitest";
+import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "fs";
 import { resolve, join, dirname } from "path";
 import { tmpdir } from "os";
@@ -727,6 +727,287 @@ describe("ClaudeAdapter", () => {
       });
     });
 
+    describe("missing source directory diagnostics", () => {
+      let warnSpy: ReturnType<typeof vi.spyOn>;
+
+      beforeEach(() => {
+        warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      });
+
+      afterEach(() => {
+        warnSpy.mockRestore();
+      });
+
+      it("warns and skips when a registered skill's path does not exist on disk", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+
+        const bogusSkillPath = join(dir, "..", "this-skill-dir-does-not-exist");
+        artifacts.skills["@reframe/missing-skill"] = {
+          description: "Skill with bogus path",
+          path: resolve(bogusSkillPath),
+        };
+
+        const root: RootEntry = {
+          description: "Test",
+          default_skills: ["@reframe/missing-skill"],
+        };
+
+        const result = await adapter.prepareSession(artifacts, dir, { root });
+
+        expect(warnSpy).toHaveBeenCalledTimes(1);
+        const msg = warnSpy.mock.calls[0][0] as string;
+        expect(msg).toMatch(/skill "@reframe\/missing-skill"/);
+        expect(msg).toMatch(/this-skill-dir-does-not-exist/);
+        expect(msg).toMatch(/does not exist/);
+
+        // Skipped artifact is not materialized and not tracked in the manifest.
+        expect(result.skillPaths).toHaveLength(0);
+        expect(
+          existsSync(join(dir, ".claude", "skills", "missing-skill"))
+        ).toBe(false);
+        const manifest = loadManifest(dir);
+        expect(manifest?.skills ?? []).not.toContain("missing-skill");
+      });
+
+      it("includes guidance pointing back to the catalog index file (skill)", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+
+        artifacts.skills["@reframe/missing-skill"] = {
+          description: "Skill with bogus path",
+          path: resolve(dir, "..", "no-such-skill"),
+        };
+
+        const root: RootEntry = {
+          description: "Test",
+          default_skills: ["@reframe/missing-skill"],
+        };
+
+        await adapter.prepareSession(artifacts, dir, { root });
+
+        expect(warnSpy).toHaveBeenCalledTimes(1);
+        expect(warnSpy.mock.calls[0][0]).toMatch(
+          /Fix the `path` field in the catalog's index file/
+        );
+      });
+
+      it("warns and skips when a registered hook's path does not exist on disk", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+
+        const bogusHookPath = join(dir, "..", "this-hook-dir-does-not-exist");
+        artifacts.hooks["@reframe/missing-hook"] = {
+          description: "Hook with bogus path",
+          path: resolve(bogusHookPath),
+        };
+
+        const root: RootEntry = {
+          description: "Test",
+          default_hooks: ["@reframe/missing-hook"],
+        };
+
+        const result = await adapter.prepareSession(artifacts, dir, { root });
+
+        expect(warnSpy).toHaveBeenCalledTimes(1);
+        const msg = warnSpy.mock.calls[0][0] as string;
+        expect(msg).toMatch(/hook "@reframe\/missing-hook"/);
+        expect(msg).toMatch(/this-hook-dir-does-not-exist/);
+        expect(msg).toMatch(/does not exist/);
+
+        expect(result.hookPaths).toHaveLength(0);
+        expect(result.hookActivations).toHaveLength(0);
+        expect(
+          existsSync(join(dir, ".claude", "hooks", "missing-hook"))
+        ).toBe(false);
+        const manifest = loadManifest(dir);
+        expect(manifest?.hooks ?? []).not.toContain("missing-hook");
+      });
+
+      it("includes guidance pointing back to the catalog index file (hook)", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+
+        artifacts.hooks["@reframe/missing-hook"] = {
+          description: "Hook with bogus path",
+          path: resolve(dir, "..", "no-such-hook"),
+        };
+
+        const root: RootEntry = {
+          description: "Test",
+          default_hooks: ["@reframe/missing-hook"],
+        };
+
+        await adapter.prepareSession(artifacts, dir, { root });
+
+        expect(warnSpy).toHaveBeenCalledTimes(1);
+        expect(warnSpy.mock.calls[0][0]).toMatch(
+          /Fix the `path` field in the catalog's index file/
+        );
+      });
+
+      it("still materializes a skill whose path is valid (no regression)", async () => {
+        const dir = createTempDir();
+
+        const skillSrcDir = join(dir, "..", "skills", "good-skill");
+        mkdirSync(skillSrcDir, { recursive: true });
+        writeFileSync(join(skillSrcDir, "SKILL.md"), "# Good");
+
+        const artifacts = emptyArtifacts();
+        artifacts.skills["@local/good-skill"] = {
+          description: "Valid skill",
+          path: resolve(skillSrcDir),
+        };
+
+        const root: RootEntry = {
+          description: "Test",
+          default_skills: ["good-skill"],
+        };
+
+        const result = await adapter.prepareSession(artifacts, dir, { root });
+        expect(warnSpy).not.toHaveBeenCalled();
+        expect(result.skillPaths).toHaveLength(1);
+        expect(
+          existsSync(join(dir, ".claude", "skills", "good-skill", "SKILL.md"))
+        ).toBe(true);
+      });
+
+      it("still materializes a hook whose path is valid (no regression)", async () => {
+        const dir = createTempDir();
+
+        const hookSrcDir = join(dir, "..", "hooks", "good-hook");
+        mkdirSync(hookSrcDir, { recursive: true });
+        writeFileSync(
+          join(hookSrcDir, "HOOK.json"),
+          JSON.stringify({
+            event: "stop",
+            command: "echo",
+            args: ["ok"],
+          })
+        );
+
+        const artifacts = emptyArtifacts();
+        artifacts.hooks["@local/good-hook"] = {
+          description: "Valid hook",
+          path: resolve(hookSrcDir),
+        };
+
+        const root: RootEntry = {
+          description: "Test",
+          default_hooks: ["good-hook"],
+        };
+
+        const result = await adapter.prepareSession(artifacts, dir, { root });
+        expect(warnSpy).not.toHaveBeenCalled();
+        expect(result.hookPaths).toHaveLength(1);
+        expect(
+          existsSync(join(dir, ".claude", "hooks", "good-hook", "HOOK.json"))
+        ).toBe(true);
+      });
+
+      it("still materializes valid artifacts when a sibling has a missing source dir", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+
+        // Valid skill alongside a missing one.
+        const goodSkillDir = join(dir, "..", "skills", "good-skill");
+        mkdirSync(goodSkillDir, { recursive: true });
+        writeFileSync(join(goodSkillDir, "SKILL.md"), "# Good");
+        artifacts.skills["@local/good-skill"] = {
+          description: "Valid skill",
+          path: resolve(goodSkillDir),
+        };
+        artifacts.skills["@reframe/missing-skill"] = {
+          description: "Skill with bogus path",
+          path: resolve(dir, "..", "no-such-skill"),
+        };
+
+        // Valid hook alongside a missing one.
+        const goodHookDir = join(dir, "..", "hooks", "good-hook");
+        mkdirSync(goodHookDir, { recursive: true });
+        writeFileSync(
+          join(goodHookDir, "HOOK.json"),
+          JSON.stringify({ event: "stop", command: "echo", args: ["ok"] })
+        );
+        artifacts.hooks["@local/good-hook"] = {
+          description: "Valid hook",
+          path: resolve(goodHookDir),
+        };
+        artifacts.hooks["@reframe/missing-hook"] = {
+          description: "Hook with bogus path",
+          path: resolve(dir, "..", "no-such-hook"),
+        };
+
+        const root: RootEntry = {
+          description: "Test",
+          default_skills: ["@local/good-skill", "@reframe/missing-skill"],
+          default_hooks: ["@local/good-hook", "@reframe/missing-hook"],
+        };
+
+        const result = await adapter.prepareSession(artifacts, dir, { root });
+
+        // Both the skill and the hook produced a warning, but the session continued.
+        expect(warnSpy).toHaveBeenCalledTimes(2);
+        expect(result.skillPaths).toHaveLength(1);
+        expect(result.hookPaths).toHaveLength(1);
+        expect(result.hookActivations.map((a) => a.short)).toEqual(["good-hook"]);
+        expect(
+          existsSync(join(dir, ".claude", "skills", "good-skill", "SKILL.md"))
+        ).toBe(true);
+        expect(
+          existsSync(join(dir, ".claude", "hooks", "good-hook", "HOOK.json"))
+        ).toBe(true);
+        // Skipped artifacts left no directory behind.
+        expect(
+          existsSync(join(dir, ".claude", "skills", "missing-skill"))
+        ).toBe(false);
+        expect(
+          existsSync(join(dir, ".claude", "hooks", "missing-hook"))
+        ).toBe(false);
+      });
+
+      it("preserves a previously materialized skill when its source dir disappears between runs", async () => {
+        // Run 1: source dir exists, AIR materializes the skill normally.
+        const dir = createTempDir();
+
+        const skillSrcDir = join(dir, "..", "skills", "ephemeral-skill");
+        mkdirSync(skillSrcDir, { recursive: true });
+        writeFileSync(join(skillSrcDir, "SKILL.md"), "# Ephemeral");
+
+        const artifacts = emptyArtifacts();
+        artifacts.skills["@local/ephemeral-skill"] = {
+          description: "Skill whose source dir vanishes between runs",
+          path: resolve(skillSrcDir),
+        };
+
+        const root: RootEntry = {
+          description: "Test",
+          default_skills: ["@local/ephemeral-skill"],
+        };
+
+        const firstRun = await adapter.prepareSession(artifacts, dir, { root });
+        expect(warnSpy).not.toHaveBeenCalled();
+        expect(firstRun.skillPaths).toHaveLength(1);
+
+        // Run 2: source dir disappears, but the previously copied target dir
+        // remains. The session is still functional from the cached copy, so
+        // the adapter leaves it alone — no warning, no removal, the manifest
+        // still records the skill as one AIR materialized.
+        rmSync(skillSrcDir, { recursive: true, force: true });
+
+        const secondRun = await adapter.prepareSession(artifacts, dir, { root });
+        expect(warnSpy).not.toHaveBeenCalled();
+        // The target dir is reused (not re-copied), so `skillPaths` for this
+        // run is empty — but the on-disk copy is still present.
+        expect(
+          existsSync(join(dir, ".claude", "skills", "ephemeral-skill", "SKILL.md"))
+        ).toBe(true);
+        const manifest = loadManifest(dir);
+        expect(manifest?.skills ?? []).toContain("ephemeral-skill");
+        expect(secondRun.skillPaths).toHaveLength(0);
+      });
+    });
+
     describe("subagent root merging", () => {
       it("merges subagent roots' MCP servers and skills into parent session", async () => {
         const dir = createTempDir();
@@ -788,12 +1069,18 @@ describe("ClaudeAdapter", () => {
         const dir = createTempDir();
         const artifacts = emptyArtifacts();
 
+        // Materialize a real on-disk skill so prepareSession doesn't reject a
+        // bogus path — this test only cares about the subagent context output.
+        const findSourceDir = join(dir, "..", "skills", "find-source");
+        mkdirSync(findSourceDir, { recursive: true });
+        writeFileSync(join(findSourceDir, "SKILL.md"), "# Find source");
+
         // Add the MCP server and skill referenced by the subagent root
         artifacts.mcp["@local/web-search"] = { type: "stdio", command: "search" };
         artifacts.skills["@local/find-source"] = {
           id: "find-source",
           description: "Find source",
-          path: join(dir, "..", "skills", "find-source"),
+          path: resolve(findSourceDir),
         };
 
         artifacts.roots["@local/research"] = {

@@ -271,18 +271,25 @@ export class ClaudeAdapter implements AgentAdapter {
     configFiles.push(mcpConfigPath);
 
     // 5. Inject skills + references into .claude/skills/<short>/
+    const materializedSkillShortIds: string[] = [];
     for (const a of skillActs) {
       const skill = artifacts.skills[a.qualified];
 
       const skillTargetDir = join(targetDir, ".claude", "skills", a.short);
 
-      if (existsSync(skillTargetDir)) continue;
+      if (existsSync(skillTargetDir)) {
+        materializedSkillShortIds.push(a.short);
+        continue;
+      }
 
       const skillSourceDir = skill.path;
-      if (existsSync(skillSourceDir)) {
-        this.copyDirRecursive(skillSourceDir, skillTargetDir);
-        skillPaths.push(skillTargetDir);
+      if (!existsSync(skillSourceDir)) {
+        console.warn(this.missingSourceDirMessage("skill", a.qualified, skillSourceDir));
+        continue;
       }
+      this.copyDirRecursive(skillSourceDir, skillTargetDir);
+      skillPaths.push(skillTargetDir);
+      materializedSkillShortIds.push(a.short);
 
       if (skill.references && skill.references.length > 0) {
         this.copyReferences(skill.references, skillTargetDir, artifacts);
@@ -305,7 +312,10 @@ export class ClaudeAdapter implements AgentAdapter {
 
       if (!alreadyExists) {
         const hookSourceDir = hook.path;
-        if (!existsSync(hookSourceDir)) continue;
+        if (!existsSync(hookSourceDir)) {
+          console.warn(this.missingSourceDirMessage("hook", a.qualified, hookSourceDir));
+          continue;
+        }
         this.copyDirRecursive(hookSourceDir, hookTargetDir);
         if (hook.references && hook.references.length > 0) {
           this.copyReferences(hook.references, hookTargetDir, artifacts);
@@ -332,10 +342,12 @@ export class ClaudeAdapter implements AgentAdapter {
     }
 
     // 8. Persist the updated manifest (shortnames — keyed by filesystem dir).
+    //    Only record skills/hooks that were actually materialized so the manifest
+    //    does not claim ownership of artifacts AIR skipped (e.g. a missing source dir).
     writeManifest(
       buildManifest(targetDir, {
         adapter: this.name,
-        skills: skillShortIds,
+        skills: materializedSkillShortIds,
         hooks: registeredHookShortIds,
         mcpServers: mcpShortIds,
       })
@@ -752,6 +764,26 @@ export class ClaudeAdapter implements AgentAdapter {
       );
     }
     return acts;
+  }
+
+  /**
+   * Build the warning emitted when a registered artifact's `path` does not
+   * exist on disk at materialization time. The qualified ID encodes the
+   * declaring catalog's scope, so a reviewer can trace the offending entry
+   * back to its index file (e.g. `@reframe-systems/agentic-engineering/foo`
+   * → the `reframe-systems/agentic-engineering` catalog). Materialization
+   * is skipped for this artifact and the rest of the session proceeds.
+   */
+  private missingSourceDirMessage(
+    artifactType: "skill" | "hook",
+    qualified: string,
+    resolvedPath: string
+  ): string {
+    return (
+      `warning: ${artifactType} "${qualified}" declares path "${resolvedPath}" but that directory does not exist — skipping. ` +
+      `The catalog that contributed "${qualified}" registered a path AIR cannot materialize. ` +
+      `Fix the \`path\` field in the catalog's index file (or exclude the artifact in air.json) to restore the ${artifactType}.`
+    );
   }
 
   private formatPoolKeys<T>(pool: Record<string, T>): string {

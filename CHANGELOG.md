@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.4] - 2026-05-19
+
+### Fixed
+- **`@pulsemcp/air-adapter-claude` logs a warning when a registered hook or skill's source directory does not exist on disk, instead of silently skipping it.** Previously, `prepareSession` materialized the hook/skill loops with `if (!existsSync(sourceDir)) continue;` — a registered artifact whose catalog-declared `path` resolved to a non-existent directory was silently dropped from the result. For hooks this was particularly painful: the dropped hook never appeared in `hookPaths` or `hookActivations`, so `.claude/settings.json` was rewritten with no registration for it and the agent booted with the hook missing — no warning, no error, no breadcrumb in any log. The exact failure mode hid a `transcript-capture` Stop hook that produced zero S3 transcripts across an entire fleet of agent sessions, and tracking the cause down required multiple investigation sessions. Both the hook path (`claude-adapter.ts:307`) and the equivalent skill path (`claude-adapter.ts:281`) now emit a `console.warn` naming the artifact type, the qualified ID (which encodes the declaring catalog's scope), and the unreachable path, with a pointer back to the catalog index file or `air.json#exclude`. The artifact is skipped but the session continues so a single misconfigured catalog entry no longer blocks an otherwise-valid session — matching the existing precedent at `reconcileSettingsHooks` (warn-and-skip on unrecognized hook events). The skipped artifact is also omitted from the per-target manifest so the next run does not claim ownership of something AIR never wrote. Resolves [#3724](https://github.com/pulsemcp/pulsemcp/issues/3724).
+
 ## [0.4.3] - 2026-05-17
 
 ### Changed
