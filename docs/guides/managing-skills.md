@@ -19,6 +19,8 @@ During session preparation, the adapter copies skill directories into the agent'
 mkdir -p ~/.air/skills/deploy-staging
 ```
 
+The catalog layout is `~/.air/skills/skills.json` (the index) alongside `~/.air/skills/deploy-staging/` (the skill directory). Each entry's `path` is then a bare directory name relative to the index.
+
 Create `~/.air/skills/deploy-staging/SKILL.md`:
 
 ```markdown
@@ -65,7 +67,7 @@ Edit `~/.air/skills/skills.json`:
     "id": "deploy-staging",
     "title": "Deploy to Staging",
     "description": "Deploy the current branch to the staging environment for testing",
-    "path": "skills/deploy-staging"
+    "path": "deploy-staging"
   }
 }
 ```
@@ -157,7 +159,7 @@ Skills can declare dependencies on [reference documents](references.md) to keep 
     "id": "initial-pr-review",
     "title": "Initial PR Review",
     "description": "Perform a structured first-pass code review on a pull request",
-    "path": "skills/initial-pr-review",
+    "path": "initial-pr-review",
     "references": ["git-workflow", "code-standards"]
   }
 }
