@@ -90,6 +90,7 @@ air start claude --skip-confirmation
 
 **Agents:** `air start <agent>` works for any agent with an installed adapter package. The CLI discovers adapters via `@pulsemcp/air-adapter-<agent>` packages. Currently available:
 - `claude` — via `@pulsemcp/air-adapter-claude` (officially maintained)
+- `codex` — via `@pulsemcp/air-adapter-codex` (officially maintained)
 
 **Options:**
 

@@ -1,0 +1,780 @@
+import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
+import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "fs";
+import { resolve, join } from "path";
+import { tmpdir } from "os";
+import { parse as parseToml } from "smol-toml";
+import { CodexAdapter } from "../src/codex-adapter.js";
+import { loadManifest } from "@pulsemcp/air-core";
+import type {
+  ResolvedArtifacts,
+  McpServerEntry,
+  RootEntry,
+} from "@pulsemcp/air-core";
+
+function emptyArtifacts(): ResolvedArtifacts {
+  return {
+    skills: {},
+    references: {},
+    mcp: {},
+    plugins: {},
+    roots: {},
+    hooks: {},
+  };
+}
+
+function readConfig(dir: string): Record<string, any> {
+  const path = join(dir, ".codex", "config.toml");
+  return parseToml(readFileSync(path, "utf-8")) as Record<string, any>;
+}
+
+describe("CodexAdapter", () => {
+  const adapter = new CodexAdapter();
+
+  describe("metadata", () => {
+    it("has correct name and displayName", () => {
+      expect(adapter.name).toBe("codex");
+      expect(adapter.displayName).toBe("OpenAI Codex");
+    });
+  });
+
+  describe("translateMcpServersByShort", () => {
+    it("translates stdio servers with literal env into an env table", () => {
+      const servers: Record<string, McpServerEntry> = {
+        github: {
+          title: "GitHub",
+          description: "GitHub MCP",
+          type: "stdio",
+          command: "npx",
+          args: ["-y", "@mcp/github@1.0.0"],
+          env: { LOG_LEVEL: "debug" },
+        },
+      };
+
+      const result = adapter.translateMcpServersByShort(servers);
+      expect(result.github).toEqual({
+        command: "npx",
+        args: ["-y", "@mcp/github@1.0.0"],
+        env: { LOG_LEVEL: "debug" },
+      });
+      // No title/description leak into the Codex config.
+      expect(result.github.title).toBeUndefined();
+      expect(result.github.description).toBeUndefined();
+    });
+
+    it("forwards a ${VAR} env reference whose key matches via env_vars", () => {
+      const servers: Record<string, McpServerEntry> = {
+        github: {
+          type: "stdio",
+          command: "npx",
+          env: { GITHUB_TOKEN: "${GITHUB_TOKEN}" },
+        },
+      };
+
+      const result = adapter.translateMcpServersByShort(servers);
+      expect(result.github.env_vars).toEqual(["GITHUB_TOKEN"]);
+      expect(result.github.env).toBeUndefined();
+    });
+
+    it("keeps a ${VAR} env reference with a differing key in the env table", () => {
+      const servers: Record<string, McpServerEntry> = {
+        github: {
+          type: "stdio",
+          command: "npx",
+          env: { TOKEN: "${GITHUB_TOKEN}" },
+        },
+      };
+
+      const result = adapter.translateMcpServersByShort(servers);
+      // Codex's env_vars can only forward same-named host vars, so a rename
+      // must stay in the literal env table for a transform to resolve later.
+      expect(result.github.env).toEqual({ TOKEN: "${GITHUB_TOKEN}" });
+      expect(result.github.env_vars).toBeUndefined();
+    });
+
+    it("splits mixed env into env_vars + env table", () => {
+      const servers: Record<string, McpServerEntry> = {
+        srv: {
+          type: "stdio",
+          command: "run",
+          env: {
+            API_KEY: "${API_KEY}",
+            LOG_LEVEL: "debug",
+            RENAMED: "${OTHER}",
+          },
+        },
+      };
+
+      const result = adapter.translateMcpServersByShort(servers);
+      expect(result.srv.env_vars).toEqual(["API_KEY"]);
+      expect(result.srv.env).toEqual({ LOG_LEVEL: "debug", RENAMED: "${OTHER}" });
+    });
+
+    it("translates remote servers to a url-based entry", () => {
+      const servers: Record<string, McpServerEntry> = {
+        remote: {
+          type: "streamable-http",
+          url: "https://mcp.example.com/api",
+        },
+      };
+
+      const result = adapter.translateMcpServersByShort(servers);
+      expect(result.remote).toEqual({ url: "https://mcp.example.com/api" });
+    });
+
+    it("maps a ${VAR} header to env_http_headers and literal headers to http_headers", () => {
+      const servers: Record<string, McpServerEntry> = {
+        remote: {
+          type: "streamable-http",
+          url: "https://mcp.example.com/api",
+          headers: {
+            Authorization: "${API_TOKEN}",
+            "X-Static": "always",
+          },
+        },
+      };
+
+      const result = adapter.translateMcpServersByShort(servers);
+      expect(result.remote.url).toBe("https://mcp.example.com/api");
+      expect(result.remote.env_http_headers).toEqual({
+        Authorization: "API_TOKEN",
+      });
+      expect(result.remote.http_headers).toEqual({ "X-Static": "always" });
+    });
+
+    it("handles sse servers via the same url-based shape", () => {
+      const servers: Record<string, McpServerEntry> = {
+        events: {
+          type: "sse",
+          url: "https://mcp.example.com/sse",
+        },
+      };
+
+      const result = adapter.translateMcpServersByShort(servers);
+      expect(result.events).toEqual({ url: "https://mcp.example.com/sse" });
+    });
+  });
+
+  describe("translatePlugin", () => {
+    it("returns an informational descriptor with name + description", () => {
+      const result = adapter.translatePlugin("my-plugin", {
+        description: "My plugin",
+        version: "1.2.3",
+      });
+      expect(result).toEqual({
+        name: "my-plugin",
+        description: "My plugin",
+        version: "1.2.3",
+      });
+    });
+
+    it("omits version when absent", () => {
+      const result = adapter.translatePlugin("p", { description: "d" });
+      expect(result).toEqual({ name: "p", description: "d" });
+    });
+  });
+
+  describe("buildStartCommand", () => {
+    it("runs codex with no extra flags, anchored at the work dir", () => {
+      const cmd = adapter.buildStartCommand({
+        agent: "codex",
+        workDir: "/tmp/session",
+        env: { FOO: "bar" },
+      });
+      expect(cmd.command).toBe("codex");
+      expect(cmd.args).toEqual([]);
+      expect(cmd.cwd).toBe("/tmp/session");
+      expect(cmd.env).toEqual({ FOO: "bar" });
+    });
+  });
+
+  describe("prepareSession", () => {
+    let tempDir: string;
+    let airHomeDir: string;
+    let originalAirHome: string | undefined;
+
+    function createTempDir(): string {
+      tempDir = resolve(
+        tmpdir(),
+        `air-codex-test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      );
+      mkdirSync(tempDir, { recursive: true });
+      return tempDir;
+    }
+
+    beforeEach(() => {
+      airHomeDir = resolve(
+        tmpdir(),
+        `air-codex-home-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      );
+      originalAirHome = process.env.AIR_HOME;
+      process.env.AIR_HOME = airHomeDir;
+    });
+
+    afterEach(() => {
+      if (tempDir && existsSync(tempDir)) {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+      if (airHomeDir && existsSync(airHomeDir)) {
+        rmSync(airHomeDir, { recursive: true, force: true });
+      }
+      if (originalAirHome === undefined) {
+        delete process.env.AIR_HOME;
+      } else {
+        process.env.AIR_HOME = originalAirHome;
+      }
+    });
+
+    it("writes .codex/config.toml with translated MCP servers", async () => {
+      const dir = createTempDir();
+      const artifacts = emptyArtifacts();
+      artifacts.mcp["@local/github"] = {
+        type: "stdio",
+        command: "npx",
+        args: ["-y", "@mcp/github"],
+        env: { GITHUB_TOKEN: "${GITHUB_TOKEN}" },
+      };
+
+      const root: RootEntry = {
+        name: "test",
+        description: "Test",
+        default_mcp_servers: ["github"],
+      };
+
+      const result = await adapter.prepareSession(artifacts, dir, { root });
+
+      // configFiles is intentionally empty (TOML is outside AIR's JSON pipeline).
+      expect(result.configFiles).toEqual([]);
+
+      const config = readConfig(dir);
+      expect(config.mcp_servers.github.command).toBe("npx");
+      expect(config.mcp_servers.github.args).toEqual(["-y", "@mcp/github"]);
+      expect(config.mcp_servers.github.env_vars).toEqual(["GITHUB_TOKEN"]);
+    });
+
+    it("never writes an unresolved ${VAR} into the TOML", async () => {
+      const dir = createTempDir();
+      const artifacts = emptyArtifacts();
+      artifacts.mcp["@local/server"] = {
+        type: "stdio",
+        command: "run",
+        env: { API_KEY: "${API_KEY}" },
+      };
+
+      const root: RootEntry = {
+        description: "Test",
+        default_mcp_servers: ["server"],
+      };
+
+      await adapter.prepareSession(artifacts, dir, { root });
+
+      const raw = readFileSync(join(dir, ".codex", "config.toml"), "utf-8");
+      expect(raw).not.toContain("${");
+      expect(raw).toContain("env_vars");
+    });
+
+    it("preserves user-authored MCP servers and top-level keys", async () => {
+      const dir = createTempDir();
+
+      mkdirSync(join(dir, ".codex"), { recursive: true });
+      writeFileSync(
+        join(dir, ".codex", "config.toml"),
+        [
+          'model = "o3"',
+          "",
+          "[mcp_servers.user-mcp]",
+          'command = "user-cmd"',
+          "",
+        ].join("\n")
+      );
+
+      const artifacts = emptyArtifacts();
+      artifacts.mcp["@local/air-mcp"] = { type: "stdio", command: "air-cmd" };
+      const root: RootEntry = {
+        description: "Test",
+        default_mcp_servers: ["air-mcp"],
+      };
+
+      await adapter.prepareSession(artifacts, dir, { root });
+
+      const config = readConfig(dir);
+      expect(config.model).toBe("o3");
+      expect(config.mcp_servers["user-mcp"].command).toBe("user-cmd");
+      expect(config.mcp_servers["air-mcp"].command).toBe("air-cmd");
+    });
+
+    it("injects skills into .agents/skills/", async () => {
+      const dir = createTempDir();
+
+      const skillSrcDir = join(dir, "..", "skills", "deploy");
+      mkdirSync(skillSrcDir, { recursive: true });
+      writeFileSync(
+        join(skillSrcDir, "SKILL.md"),
+        "---\nname: deploy\n---\n# Deploy"
+      );
+
+      const artifacts = emptyArtifacts();
+      artifacts.skills["@local/deploy"] = {
+        id: "deploy",
+        description: "Deploy",
+        path: resolve(skillSrcDir),
+      };
+
+      const root: RootEntry = {
+        description: "Test",
+        default_skills: ["deploy"],
+      };
+
+      const result = await adapter.prepareSession(artifacts, dir, { root });
+
+      const skillMd = join(dir, ".agents", "skills", "deploy", "SKILL.md");
+      expect(existsSync(skillMd)).toBe(true);
+      expect(readFileSync(skillMd, "utf-8")).toContain("# Deploy");
+      expect(result.skillPaths).toHaveLength(1);
+    });
+
+    it("copies skill references into a references/ subdir", async () => {
+      const dir = createTempDir();
+
+      const skillSrcDir = join(dir, "..", "skills", "deploy");
+      mkdirSync(skillSrcDir, { recursive: true });
+      writeFileSync(join(skillSrcDir, "SKILL.md"), "# Deploy");
+
+      const refSrcDir = join(dir, "..", "references");
+      mkdirSync(refSrcDir, { recursive: true });
+      writeFileSync(join(refSrcDir, "RUNBOOK.md"), "# Runbook");
+
+      const artifacts = emptyArtifacts();
+      artifacts.skills["@local/deploy"] = {
+        id: "deploy",
+        description: "Deploy",
+        path: resolve(skillSrcDir),
+        references: ["@local/runbook"],
+      };
+      artifacts.references["@local/runbook"] = {
+        description: "Runbook",
+        path: resolve(refSrcDir, "RUNBOOK.md"),
+      };
+
+      const root: RootEntry = {
+        description: "Test",
+        default_skills: ["deploy"],
+      };
+
+      await adapter.prepareSession(artifacts, dir, { root });
+
+      const refPath = join(
+        dir,
+        ".agents",
+        "skills",
+        "deploy",
+        "references",
+        "RUNBOOK.md"
+      );
+      expect(existsSync(refPath)).toBe(true);
+      expect(readFileSync(refPath, "utf-8")).toContain("# Runbook");
+    });
+
+    it("does not overwrite a skill that already exists locally", async () => {
+      const dir = createTempDir();
+
+      const localSkillDir = join(dir, ".agents", "skills", "deploy");
+      mkdirSync(localSkillDir, { recursive: true });
+      writeFileSync(join(localSkillDir, "SKILL.md"), "# Local Deploy");
+
+      const skillSrcDir = join(dir, "..", "skills", "deploy");
+      mkdirSync(skillSrcDir, { recursive: true });
+      writeFileSync(join(skillSrcDir, "SKILL.md"), "# Catalog Deploy");
+
+      const artifacts = emptyArtifacts();
+      artifacts.skills["@local/deploy"] = {
+        id: "deploy",
+        description: "Deploy",
+        path: resolve(skillSrcDir),
+      };
+
+      const root: RootEntry = {
+        description: "Test",
+        default_skills: ["deploy"],
+      };
+
+      await adapter.prepareSession(artifacts, dir, { root });
+
+      expect(
+        readFileSync(join(localSkillDir, "SKILL.md"), "utf-8")
+      ).toContain("# Local Deploy");
+    });
+
+    it("loads no artifacts when no root is provided", async () => {
+      const dir = createTempDir();
+      const artifacts = emptyArtifacts();
+      artifacts.mcp["@local/github"] = { type: "stdio", command: "gh" };
+
+      const result = await adapter.prepareSession(artifacts, dir);
+
+      expect(existsSync(join(dir, ".codex", "config.toml"))).toBe(false);
+      expect(result.skillPaths).toEqual([]);
+      expect(result.hookPaths).toEqual([]);
+    });
+
+    describe("hooks", () => {
+      it("injects a path-based hook and registers it under the mapped event", async () => {
+        const dir = createTempDir();
+
+        const hookSrcDir = join(dir, "..", "hooks", "guard");
+        mkdirSync(hookSrcDir, { recursive: true });
+        writeFileSync(
+          join(hookSrcDir, "HOOK.json"),
+          JSON.stringify({
+            event: "pre_tool_call",
+            command: "./run.sh",
+            matcher: "Bash",
+          })
+        );
+        writeFileSync(join(hookSrcDir, "run.sh"), "#!/bin/bash\necho guard");
+
+        const artifacts = emptyArtifacts();
+        artifacts.hooks["@local/guard"] = {
+          description: "Guard",
+          path: resolve(hookSrcDir),
+        };
+
+        const root: RootEntry = {
+          description: "Test",
+          default_hooks: ["guard"],
+        };
+
+        const result = await adapter.prepareSession(artifacts, dir, { root });
+
+        expect(
+          existsSync(join(dir, ".codex", "hooks", "guard", "run.sh"))
+        ).toBe(true);
+        expect(result.hookPaths).toHaveLength(1);
+
+        const config = readConfig(dir);
+        const groups = config.hooks.PreToolUse;
+        expect(groups).toHaveLength(1);
+        expect(groups[0].matcher).toBe("Bash");
+        const entry = groups[0].hooks[0];
+        expect(entry.type).toBe("command");
+        expect(entry._air_hook_id).toBe("guard");
+        // hook-relative command is anchored to the repo root.
+        expect(entry.command).toContain("git rev-parse --show-toplevel");
+        expect(entry.command).toContain(".codex/hooks/guard/run.sh");
+      });
+
+      it("maps PascalCase Codex event names as identity", async () => {
+        const dir = createTempDir();
+
+        const hookSrcDir = join(dir, "..", "hooks", "on-start");
+        mkdirSync(hookSrcDir, { recursive: true });
+        writeFileSync(
+          join(hookSrcDir, "HOOK.json"),
+          JSON.stringify({ event: "SessionStart", command: "echo hi" })
+        );
+
+        const artifacts = emptyArtifacts();
+        artifacts.hooks["@local/on-start"] = {
+          description: "On start",
+          path: resolve(hookSrcDir),
+        };
+
+        await adapter.prepareSession(artifacts, dir, {
+          root: { description: "Test", default_hooks: ["on-start"] },
+        });
+
+        const config = readConfig(dir);
+        expect(config.hooks.SessionStart).toHaveLength(1);
+      });
+
+      it("warns and skips a hook with an unrecognized event", async () => {
+        const dir = createTempDir();
+
+        const hookSrcDir = join(dir, "..", "hooks", "weird");
+        mkdirSync(hookSrcDir, { recursive: true });
+        writeFileSync(
+          join(hookSrcDir, "HOOK.json"),
+          JSON.stringify({ event: "pre_compact", command: "echo" })
+        );
+
+        const artifacts = emptyArtifacts();
+        artifacts.hooks["@local/weird"] = {
+          description: "Weird",
+          path: resolve(hookSrcDir),
+        };
+
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+        await adapter.prepareSession(artifacts, dir, {
+          root: { description: "Test", default_hooks: ["weird"] },
+        });
+        warn.mockRestore();
+
+        // The directory is still copied, but no hook entry is registered.
+        expect(existsSync(join(dir, ".codex", "hooks", "weird"))).toBe(true);
+        expect(existsSync(join(dir, ".codex", "config.toml"))).toBe(false);
+      });
+
+      it("passes timeout_seconds through as timeout", async () => {
+        const dir = createTempDir();
+
+        const hookSrcDir = join(dir, "..", "hooks", "slow");
+        mkdirSync(hookSrcDir, { recursive: true });
+        writeFileSync(
+          join(hookSrcDir, "HOOK.json"),
+          JSON.stringify({
+            event: "stop",
+            command: "echo done",
+            timeout_seconds: 30,
+          })
+        );
+
+        const artifacts = emptyArtifacts();
+        artifacts.hooks["@local/slow"] = {
+          description: "Slow",
+          path: resolve(hookSrcDir),
+        };
+
+        await adapter.prepareSession(artifacts, dir, {
+          root: { description: "Test", default_hooks: ["slow"] },
+        });
+
+        const config = readConfig(dir);
+        expect(config.hooks.Stop[0].hooks[0].timeout).toBe(30);
+      });
+    });
+
+    describe("activation validation", () => {
+      it("throws on an unknown MCP server ID", async () => {
+        const dir = createTempDir();
+        await expect(
+          adapter.prepareSession(emptyArtifacts(), dir, {
+            root: { description: "Test", default_mcp_servers: ["nope"] },
+          })
+        ).rejects.toThrow(/Unknown MCP server ID "nope"/);
+      });
+
+      it("throws on a shortname collision across scopes", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+        artifacts.mcp["@a/github"] = { type: "stdio", command: "a" };
+        artifacts.mcp["@b/github"] = { type: "stdio", command: "b" };
+
+        await expect(
+          adapter.prepareSession(artifacts, dir, {
+            root: {
+              description: "Test",
+              default_mcp_servers: ["@a/github", "@b/github"],
+            },
+          })
+        ).rejects.toThrow(/shortname collision/);
+      });
+    });
+
+    describe("manifest reconciliation", () => {
+      function writeSkillSrc(dir: string, id: string): string {
+        const src = join(dir, "..", `src-${id}`, "skills", id);
+        mkdirSync(src, { recursive: true });
+        writeFileSync(join(src, "SKILL.md"), `---\nname: ${id}\n---\n# ${id}`);
+        return resolve(src);
+      }
+
+      function writeHookSrc(dir: string, id: string, command: string): string {
+        const src = join(dir, "..", `src-${id}`, "hooks", id);
+        mkdirSync(src, { recursive: true });
+        writeFileSync(
+          join(src, "HOOK.json"),
+          JSON.stringify({ event: "session_start", command })
+        );
+        return resolve(src);
+      }
+
+      it("records activated artifacts in the manifest", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+        artifacts.skills["@local/skill-a"] = {
+          description: "A",
+          path: writeSkillSrc(dir, "skill-a"),
+        };
+        artifacts.mcp["@local/mcp-a"] = { type: "stdio", command: "cmd-a" };
+
+        await adapter.prepareSession(artifacts, dir, {
+          root: {
+            description: "Test",
+            default_skills: ["skill-a"],
+            default_mcp_servers: ["mcp-a"],
+          },
+        });
+
+        const manifest = loadManifest(dir);
+        expect(manifest?.adapter).toBe("codex");
+        expect(manifest?.skills).toEqual(["skill-a"]);
+        expect(manifest?.mcpServers).toEqual(["mcp-a"]);
+      });
+
+      it("removes stale skills, hooks, and MCP servers on re-run", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+        artifacts.skills["@local/skill-a"] = {
+          description: "A",
+          path: writeSkillSrc(dir, "skill-a"),
+        };
+        artifacts.skills["@local/skill-b"] = {
+          description: "B",
+          path: writeSkillSrc(dir, "skill-b"),
+        };
+        artifacts.hooks["@local/hook-a"] = {
+          description: "A",
+          path: writeHookSrc(dir, "hook-a", "cmd-a"),
+        };
+        artifacts.hooks["@local/hook-b"] = {
+          description: "B",
+          path: writeHookSrc(dir, "hook-b", "cmd-b"),
+        };
+        artifacts.mcp["@local/mcp-a"] = { type: "stdio", command: "cmd-a" };
+        artifacts.mcp["@local/mcp-b"] = { type: "stdio", command: "cmd-b" };
+
+        await adapter.prepareSession(artifacts, dir, {
+          root: {
+            description: "Test",
+            default_skills: ["skill-a", "skill-b"],
+            default_hooks: ["hook-a", "hook-b"],
+            default_mcp_servers: ["mcp-a", "mcp-b"],
+          },
+        });
+
+        expect(existsSync(join(dir, ".agents", "skills", "skill-b"))).toBe(true);
+        expect(existsSync(join(dir, ".codex", "hooks", "hook-b"))).toBe(true);
+        {
+          const config = readConfig(dir);
+          expect(Object.keys(config.mcp_servers).sort()).toEqual([
+            "mcp-a",
+            "mcp-b",
+          ]);
+          expect(config.hooks.SessionStart).toHaveLength(2);
+        }
+
+        // Second run drops the -b variants.
+        await adapter.prepareSession(artifacts, dir, {
+          root: {
+            description: "Test",
+            default_skills: ["skill-a"],
+            default_hooks: ["hook-a"],
+            default_mcp_servers: ["mcp-a"],
+          },
+        });
+
+        expect(existsSync(join(dir, ".agents", "skills", "skill-a"))).toBe(true);
+        expect(existsSync(join(dir, ".agents", "skills", "skill-b"))).toBe(false);
+        expect(existsSync(join(dir, ".codex", "hooks", "hook-a"))).toBe(true);
+        expect(existsSync(join(dir, ".codex", "hooks", "hook-b"))).toBe(false);
+
+        const config = readConfig(dir);
+        expect(Object.keys(config.mcp_servers)).toEqual(["mcp-a"]);
+        expect(config.hooks.SessionStart).toHaveLength(1);
+        expect(config.hooks.SessionStart[0].hooks[0]._air_hook_id).toBe("hook-a");
+      });
+    });
+
+    describe("cleanSession", () => {
+      it("removes all AIR-managed artifacts and deletes the manifest", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+
+        const skillSrc = join(dir, "..", "skills", "deploy");
+        mkdirSync(skillSrc, { recursive: true });
+        writeFileSync(join(skillSrc, "SKILL.md"), "# Deploy");
+
+        const hookSrc = join(dir, "..", "hooks", "guard");
+        mkdirSync(hookSrc, { recursive: true });
+        writeFileSync(
+          join(hookSrc, "HOOK.json"),
+          JSON.stringify({ event: "session_start", command: "echo" })
+        );
+
+        artifacts.skills["@local/deploy"] = {
+          id: "deploy",
+          description: "Deploy",
+          path: resolve(skillSrc),
+        };
+        artifacts.hooks["@local/guard"] = {
+          description: "Guard",
+          path: resolve(hookSrc),
+        };
+        artifacts.mcp["@local/github"] = { type: "stdio", command: "gh" };
+
+        await adapter.prepareSession(artifacts, dir, {
+          root: {
+            description: "Test",
+            default_skills: ["deploy"],
+            default_hooks: ["guard"],
+            default_mcp_servers: ["github"],
+          },
+        });
+
+        const result = await adapter.cleanSession(dir);
+
+        expect(result.removedSkills).toEqual(["deploy"]);
+        expect(result.removedHooks).toEqual(["guard"]);
+        expect(result.removedMcpServers).toEqual(["github"]);
+        expect(result.manifestRemoved).toBe(true);
+        expect(existsSync(join(dir, ".agents", "skills", "deploy"))).toBe(false);
+        expect(existsSync(join(dir, ".codex", "hooks", "guard"))).toBe(false);
+        // config.toml had only AIR-owned content, so it is deleted entirely.
+        expect(existsSync(join(dir, ".codex", "config.toml"))).toBe(false);
+      });
+
+      it("preserves user-authored MCP servers when pruning", async () => {
+        const dir = createTempDir();
+
+        mkdirSync(join(dir, ".codex"), { recursive: true });
+        writeFileSync(
+          join(dir, ".codex", "config.toml"),
+          ['[mcp_servers.user-mcp]', 'command = "user-cmd"', ""].join("\n")
+        );
+
+        const artifacts = emptyArtifacts();
+        artifacts.mcp["@local/github"] = { type: "stdio", command: "gh" };
+        await adapter.prepareSession(artifacts, dir, {
+          root: { description: "Test", default_mcp_servers: ["github"] },
+        });
+
+        await adapter.cleanSession(dir);
+
+        const config = readConfig(dir);
+        expect(config.mcp_servers["user-mcp"].command).toBe("user-cmd");
+        expect(config.mcp_servers.github).toBeUndefined();
+      });
+
+      it("returns an empty result when there is no manifest", async () => {
+        const dir = createTempDir();
+        const result = await adapter.cleanSession(dir);
+        expect(result.removedSkills).toEqual([]);
+        expect(result.removedHooks).toEqual([]);
+        expect(result.removedMcpServers).toEqual([]);
+        expect(result.manifestExisted).toBe(false);
+      });
+    });
+  });
+
+  describe("listLocalArtifacts", () => {
+    it("surfaces skills checked into .agents/skills/", async () => {
+      const dir = resolve(
+        tmpdir(),
+        `air-codex-local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      );
+      mkdirSync(join(dir, ".agents", "skills", "local-skill"), {
+        recursive: true,
+      });
+      writeFileSync(
+        join(dir, ".agents", "skills", "local-skill", "SKILL.md"),
+        "---\ndescription: Local\n---\n"
+      );
+
+      try {
+        const result = await adapter.listLocalArtifacts(dir);
+        expect(result.skills?.map((s) => s.id)).toEqual(["local-skill"]);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+  });
+});
