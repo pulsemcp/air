@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-05-21
+
+### Added
+- **`@pulsemcp/air-adapter-pi` — a skills-only adapter for the [Pi coding agent](https://www.npmjs.com/package/@earendil-works/pi-coding-agent).** A new adapter extension that injects AIR skills into Pi's native project-skill location so `air start pi` / `air prepare pi` launch Pi with catalog skills loaded. Pi auto-discovers project skills from `<cwd>/.pi/skills/<id>/SKILL.md` (any directory containing a `SKILL.md` is a skill root and Pi stops recursing into it), so the adapter copies each activated skill into `.pi/skills/<id>/` and bundles its references in `<id>/references/`. Because Pi discovers skills purely from the filesystem, `prepareSession()` writes no config file and returns empty `configFiles` and `hookPaths` arrays. The adapter is deliberately **skills-only**: Pi ships with no pre-baked MCP server registry or hook lifecycle, so MCP servers, hooks, and standalone references are intentionally not translated — the non-skill categories are stubbed to satisfy the `AgentAdapter` contract (the per-target manifest records `hooks: []` and `mcpServers: []`, and `cleanSession` reports empty `removedHooks` / `removedMcpServers`). Plugins are honored only as composition sugar: a plugin's declared skills are merged into the activation set while its MCP servers and hooks are ignored. Local `.pi/skills/<id>/` directories always win over catalog versions, and the adapter participates in the per-target AIR manifest so re-running `prepare` and `air clean` reconcile cleanly, removing exactly what AIR wrote. Wired into SDK adapter discovery (`@pulsemcp/air-adapter-pi`), the `air init` default extension set, and CLI help for `air start` / `air prepare`. Verified end-to-end against Pi's own production skill-discovery code (`loadSkills`), which discovers the AIR-injected skill as a project skill with zero diagnostics.
+
 ## [0.5.0] - 2026-05-21
 
 ### Added

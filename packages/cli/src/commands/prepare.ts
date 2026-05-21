@@ -44,7 +44,7 @@ export function prepareCommand(): Command {
     .description(
       "Prepare a target directory for an agent session (write .mcp.json, inject skills) without starting the agent"
     )
-    .argument("<adapter>", "Agent adapter to use (e.g., claude, codex)")
+    .argument("<adapter>", "Agent adapter to use (e.g., claude, codex, pi)")
     .option(
       "--config <path>",
       "Path to air.json (defaults to AIR_CONFIG env or ~/.air/air.json)"
