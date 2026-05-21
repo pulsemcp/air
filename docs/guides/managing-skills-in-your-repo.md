@@ -18,6 +18,13 @@ Local skills are never overwritten by AIR. The adapter's "local wins" rule means
 
 This pattern is **not** discovered by AIR's auto-discovery prompt: `.claude/skills/` is adapter-owned, not AIR-managed, and the directory is deliberately skipped when scanning for AIR index files.
 
+> **⚠️ Only works when `.claude/` is committed to your repo.** Some setups deliberately **gitignore `.claude/`** and repopulate it at runtime — the Claude adapter writes it on every `prepareSession()`, and an orchestrator (e.g. Agent Orchestrator) injects skills/hooks there at session start. In those repos this pattern is a footgun:
+>
+> - Committing a `SKILL.md` into a gitignored `.claude/` requires `git add -f` to bypass the ignore rule.
+> - The adapter/orchestrator overwrites `.claude/` at session start, so the committed copy is **shadowed and silently does nothing**.
+>
+> If your repo gitignores `.claude/`, do **not** author skills there. Skills that are injected from a central catalog should be edited at their source; any genuinely repo-local skill belongs in an in-repo AIR catalog ([Pattern 2](#2-in-repo-air-indexes--toggleable-per-type) / [Pattern 3](#3-repo-scoped-airjson--full-composition)) instead. **The AIR repo itself does exactly this:** `.claude/` is gitignored and a CI guard (`scripts/check-no-tracked-claude.sh`) fails the build if any file under `.claude/` is tracked. AIR's own `air-*` development skills are sourced from the central agent catalog and injected at session start, not committed in-repo.
+
 ### 2. In-repo AIR indexes — toggleable, per-type
 
 The repo contains a `skills.json`, `mcp.json`, `hooks.json`, `plugins.json`, `roots.json`, or `references.json` (at the root or nested in a subdirectory like `config/` or `team/`). These files follow the same schema as entries in the central catalog — they're just checked in so a team can version them together with the code they describe.
@@ -113,7 +120,7 @@ You can hand-edit this file to un-dismiss a path (remove the entry) or to pre-po
 
 ## Choosing a pattern
 
-- **Just need a couple of skills everyone gets?** Put them in `.claude/skills/`. Zero `air.json` changes required.
+- **Just need a couple of skills everyone gets?** Put them in `.claude/skills/`. Zero `air.json` changes required. (But only if your repo commits `.claude/` — if it's gitignored and adapter/AO-managed, use an in-repo catalog instead; see the warning under Pattern 1.)
 - **Want teammates to be able to toggle skills on and off per session?** Use an in-repo `skills.json` and accept the auto-discovery prompt.
 - **Have a team config with multiple artifact types that belong together?** Put them under a `team/` directory in the catalog layout and register `./team` in `catalogs[]`.
 

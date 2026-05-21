@@ -7,6 +7,16 @@ on:
     branches: [main]
 
 jobs:
+  no-tracked-claude:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ensure no tracked files under .claude/
+        run: bash scripts/check-no-tracked-claude.sh
+
   test:
     runs-on: ubuntu-latest
 
