@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-05-21
+
+### Added
+- **`@pulsemcp/air-adapter-codex` — first-class OpenAI Codex CLI support, at parity with the Claude adapter.** A new adapter extension that translates AIR artifacts into Codex's native config formats so `air start codex` / `air prepare codex` launch the Codex CLI with skills, MCP servers, references, and hooks loaded. The adapter writes a single `.codex/config.toml` (TOML, via `smol-toml`) and injects skills into `.agents/skills/<id>/`. MCP servers map to `[mcp_servers.<name>]` tables with transport auto-detected from the shape: stdio servers emit `command`/`args` plus secret forwarding (whole-value, same-named `${VAR}` values become Codex-native `env_vars` host-env injection; literal values go in an `env` table), and remote servers emit `url` with literal headers in `http_headers` and whole-value `${VAR}` headers forwarded via `env_http_headers`. Refs that can't be forwarded natively (renamed `KEY = "${OTHER}"` or partial `"Bearer ${TOKEN}"`) fall through to the literal table and emit a `console.warn`, since Codex's TOML never passes through AIR's `${VAR}` transform pipeline. Hooks map to `[[hooks.<Event>]]` matcher groups (AIR snake_case event names and Codex PascalCase names both accepted; unrecognized events warn-and-skip), with command paths anchored to the repo root so they survive mid-session `cd`. The adapter participates in the per-target AIR manifest, so `air clean` removes exactly what it wrote and preserves user-authored entries. Empty configs are not persisted (and a previously-emptied `.codex/config.toml` is removed). Wired into SDK adapter discovery (`@pulsemcp/air-adapter-codex`), the `air init` default extension set, and CLI help for `air start` / `air prepare`. Verified end-to-end against the real Codex CLI (`codex mcp list`, `codex doctor`).
+
 ## [0.4.4] - 2026-05-19
 
 ### Fixed

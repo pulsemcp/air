@@ -340,6 +340,7 @@ export function initFromRepo(
     name: configName,
     extensions: [
       "@pulsemcp/air-adapter-claude",
+      "@pulsemcp/air-adapter-codex",
       "@pulsemcp/air-provider-github",
       "@pulsemcp/air-secrets-env",
       "@pulsemcp/air-secrets-file",
