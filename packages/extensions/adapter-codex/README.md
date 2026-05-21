@@ -70,7 +70,9 @@ Codex's config is TOML, which is outside AIR's JSON-based transform/validation p
 - `env: { GITHUB_TOKEN: "${GITHUB_TOKEN}" }` → `env_vars = ["GITHUB_TOKEN"]` — Codex injects the host's `GITHUB_TOKEN` at launch.
 - `headers: { Authorization: "${API_TOKEN}" }` → `env_http_headers = { Authorization = "API_TOKEN" }`.
 
-As a result, `prepareSession()` returns an **empty `configFiles` array** — there is no JSON config for secret transforms to post-process, and no unresolved `${VAR}` is ever written to the TOML.
+As a result, `prepareSession()` returns an **empty `configFiles` array** — there is no JSON config for secret transforms to post-process.
+
+**Limitation — only whole-value, same-named refs forward.** Codex's `env_vars` forwards a host var to an env key of the *same name*, and `env_http_headers` forwards a host var as a *whole* header value. A renamed ref (`KEY = "${OTHER}"`) or a partial value (`"Bearer ${TOKEN}"`) can't be expressed either way, so it falls through to the literal `env` / `http_headers` table. Because the TOML never passes through AIR's `${VAR}` transform pipeline, Codex would inject the literal `${…}` string at runtime — so the adapter emits a `console.warn` for each such value instead of silently shipping a broken secret. Rewrite these as whole-value, same-named refs (or set the value directly).
 
 ## Known gaps
 

@@ -33,7 +33,9 @@ Codex's config is TOML, which sits outside AIR's JSON-based transform/validation
 - An MCP `env` value that is exactly `${VAR}` and whose key matches `VAR` becomes an `env_vars` entry (Codex injects the host's `VAR` at launch). Any other value (including a renamed `${OTHER}`) stays in the literal `env` table.
 - A remote-server header value of `${VAR}` becomes an `env_http_headers` entry; other header values go into `http_headers`.
 
-Because of this, `prepareSession()` returns an **empty `configFiles` array** — there is no JSON config file for transforms to post-process, and no unresolved `${VAR}` is ever written to the TOML.
+Codex's host-env forwarding only expresses **whole-value, same-named** refs. A renamed (`KEY = "${OTHER}"`) or partial (`"Bearer ${TOKEN}"`) ref can't be forwarded, so it falls through to the literal table — and since the TOML never passes through the `${VAR}` transform pipeline, Codex would inject the literal `${…}` string at runtime. The adapter emits a `console.warn` for each such value (`warnUnforwardableSecret`) rather than silently shipping a broken secret.
+
+Because of this, `prepareSession()` returns an **empty `configFiles` array** — there is no JSON config file for transforms to post-process, and no resolvable `${VAR}` is left for the pipeline.
 
 ## Core Principles
 
@@ -50,5 +52,5 @@ If `.agents/skills/{name}/` or `.codex/hooks/{name}/` already exists in the targ
 
 - Do not deep-merge MCP server configs — full replacement of AIR-owned keys only
 - Do not write files outside the target directory
-- Do not write unresolved `${VAR}` into `config.toml` — map them to `env_vars`/`env_http_headers` at translation time
+- Map whole-value, same-named `${VAR}` refs to `env_vars`/`env_http_headers` at translation time rather than writing placeholders. Renamed/partial refs can't be forwarded — those fall through to the literal table and must `warn` (`warnUnforwardableSecret`), never silently ship
 - Do not surface `.codex/config.toml` via `configFiles` — it is TOML, outside AIR's JSON transform pipeline

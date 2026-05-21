@@ -75,7 +75,7 @@ describe("CodexAdapter", () => {
       expect(result.github.env).toBeUndefined();
     });
 
-    it("keeps a ${VAR} env reference with a differing key in the env table", () => {
+    it("keeps a renamed ${VAR} env reference in the env table and warns", () => {
       const servers: Record<string, McpServerEntry> = {
         github: {
           type: "stdio",
@@ -84,11 +84,66 @@ describe("CodexAdapter", () => {
         },
       };
 
-      const result = adapter.translateMcpServersByShort(servers);
-      // Codex's env_vars can only forward same-named host vars, so a rename
-      // must stay in the literal env table for a transform to resolve later.
-      expect(result.github.env).toEqual({ TOKEN: "${GITHUB_TOKEN}" });
-      expect(result.github.env_vars).toBeUndefined();
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        const result = adapter.translateMcpServersByShort(servers);
+        // Codex's env_vars can only forward same-named host vars, so a rename
+        // stays in the literal env table — and we warn that Codex will inject
+        // the literal "${...}" string rather than resolve it.
+        expect(result.github.env).toEqual({ TOKEN: "${GITHUB_TOKEN}" });
+        expect(result.github.env_vars).toBeUndefined();
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0][0]).toMatch(/cannot forward natively/);
+        expect(warn.mock.calls[0][0]).toContain("github");
+        expect(warn.mock.calls[0][0]).toContain("${GITHUB_TOKEN}");
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it("keeps a partial ${VAR} header in http_headers and warns", () => {
+      const servers: Record<string, McpServerEntry> = {
+        remote: {
+          type: "streamable-http",
+          url: "https://mcp.example.com/api",
+          headers: { Authorization: "Bearer ${API_TOKEN}" },
+        },
+      };
+
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        const result = adapter.translateMcpServersByShort(servers);
+        // A partial value can't be expressed via env_http_headers (whole-value
+        // only), so it lands literally in http_headers — with a warning.
+        expect(result.remote.http_headers).toEqual({
+          Authorization: "Bearer ${API_TOKEN}",
+        });
+        expect(result.remote.env_http_headers).toBeUndefined();
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0][0]).toMatch(/cannot forward natively/);
+        expect(warn.mock.calls[0][0]).toContain("remote");
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it("does not warn for a literal env value without a ${VAR}", () => {
+      const servers: Record<string, McpServerEntry> = {
+        srv: {
+          type: "stdio",
+          command: "run",
+          env: { LOG_LEVEL: "debug" },
+        },
+      };
+
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        const result = adapter.translateMcpServersByShort(servers);
+        expect(result.srv.env).toEqual({ LOG_LEVEL: "debug" });
+        expect(warn).not.toHaveBeenCalled();
+      } finally {
+        warn.mockRestore();
+      }
     });
 
     it("splits mixed env into env_vars + env table", () => {
@@ -104,9 +159,17 @@ describe("CodexAdapter", () => {
         },
       };
 
-      const result = adapter.translateMcpServersByShort(servers);
-      expect(result.srv.env_vars).toEqual(["API_KEY"]);
-      expect(result.srv.env).toEqual({ LOG_LEVEL: "debug", RENAMED: "${OTHER}" });
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        const result = adapter.translateMcpServersByShort(servers);
+        expect(result.srv.env_vars).toEqual(["API_KEY"]);
+        expect(result.srv.env).toEqual({ LOG_LEVEL: "debug", RENAMED: "${OTHER}" });
+        // Only the renamed ref is unforwardable; the literal LOG_LEVEL is not.
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0][0]).toContain("RENAMED");
+      } finally {
+        warn.mockRestore();
+      }
     });
 
     it("translates remote servers to a url-based entry", () => {
@@ -251,7 +314,7 @@ describe("CodexAdapter", () => {
       expect(config.mcp_servers.github.env_vars).toEqual(["GITHUB_TOKEN"]);
     });
 
-    it("never writes an unresolved ${VAR} into the TOML", async () => {
+    it("forwards a same-named ${VAR} via env_vars instead of writing it literally", async () => {
       const dir = createTempDir();
       const artifacts = emptyArtifacts();
       artifacts.mcp["@local/server"] = {
@@ -513,6 +576,40 @@ describe("CodexAdapter", () => {
         expect(existsSync(join(dir, ".codex", "config.toml"))).toBe(false);
       });
 
+      it("re-registers a previously AIR-managed hook whose directory already exists", async () => {
+        const dir = createTempDir();
+
+        const hookSrcDir = join(dir, "..", "hooks", "guard");
+        mkdirSync(hookSrcDir, { recursive: true });
+        writeFileSync(
+          join(hookSrcDir, "HOOK.json"),
+          JSON.stringify({ event: "session_start", command: "echo hi" })
+        );
+
+        const artifacts = emptyArtifacts();
+        artifacts.hooks["@local/guard"] = {
+          description: "Guard",
+          path: resolve(hookSrcDir),
+        };
+        const root: RootEntry = { description: "Test", default_hooks: ["guard"] };
+
+        // First run materializes the dir + registers the entry.
+        await adapter.prepareSession(artifacts, dir, { root });
+        expect(existsSync(join(dir, ".codex", "hooks", "guard"))).toBe(true);
+        expect(readConfig(dir).hooks.SessionStart).toHaveLength(1);
+
+        // Second run: the hook dir already exists and was AIR-managed
+        // (prevHookIds has it), so the registration is rebuilt rather than
+        // skipped — no duplicate, exactly one entry remains.
+        const result = await adapter.prepareSession(artifacts, dir, { root });
+        const config = readConfig(dir);
+        expect(config.hooks.SessionStart).toHaveLength(1);
+        expect(config.hooks.SessionStart[0].hooks[0]._air_hook_id).toBe("guard");
+        expect(
+          result.hookActivations.map((a) => a.short)
+        ).toEqual(["guard"]);
+      });
+
       it("passes timeout_seconds through as timeout", async () => {
         const dir = createTempDir();
 
@@ -751,6 +848,50 @@ describe("CodexAdapter", () => {
         expect(result.removedHooks).toEqual([]);
         expect(result.removedMcpServers).toEqual([]);
         expect(result.manifestExisted).toBe(false);
+      });
+
+      it("prunes hooks but keeps MCP servers in the shared config.toml with keepMcpServers", async () => {
+        const dir = createTempDir();
+        const artifacts = emptyArtifacts();
+
+        const hookSrc = join(dir, "..", "hooks", "guard");
+        mkdirSync(hookSrc, { recursive: true });
+        writeFileSync(
+          join(hookSrc, "HOOK.json"),
+          JSON.stringify({ event: "session_start", command: "echo" })
+        );
+
+        artifacts.hooks["@local/guard"] = {
+          description: "Guard",
+          path: resolve(hookSrc),
+        };
+        artifacts.mcp["@local/github"] = { type: "stdio", command: "gh" };
+
+        await adapter.prepareSession(artifacts, dir, {
+          root: {
+            description: "Test",
+            default_hooks: ["guard"],
+            default_mcp_servers: ["github"],
+          },
+        });
+
+        // Both live in the same .codex/config.toml — clean hooks, keep MCP.
+        const result = await adapter.cleanSession(dir, { keepMcpServers: true });
+
+        expect(result.removedHooks).toEqual(["guard"]);
+        expect(result.removedMcpServers).toEqual([]);
+        expect(existsSync(join(dir, ".codex", "hooks", "guard"))).toBe(false);
+
+        // The MCP server survives and the hooks table is gone — the file is
+        // rewritten, not deleted, because it still has AIR-managed content.
+        const config = readConfig(dir);
+        expect(config.mcp_servers.github.command).toBe("gh");
+        expect(config.hooks).toBeUndefined();
+
+        // The manifest is rewritten (not deleted) with the kept MCP server.
+        const manifest = loadManifest(dir);
+        expect(manifest?.mcpServers).toEqual(["github"]);
+        expect(manifest?.hooks ?? []).toEqual([]);
       });
     });
   });

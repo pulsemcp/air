@@ -50,6 +50,9 @@ interface Activation {
 /** Matches an env/header value that is exactly a single `${VAR}` reference. */
 const WHOLE_VAR_RE = /^\$\{([^}]+)\}$/;
 
+/** Matches a value that contains a `${VAR}` reference anywhere within it. */
+const CONTAINS_VAR_RE = /\$\{[^}]+\}/;
+
 export class CodexAdapter implements AgentAdapter {
   name = "codex";
   displayName = "OpenAI Codex";
@@ -178,9 +181,11 @@ export class CodexAdapter implements AgentAdapter {
    *
    * NOTE: `configFiles` is intentionally returned empty. Codex's config is
    * TOML, which is outside AIR's JSON-based transform/validation pipeline.
-   * Secret references (`${VAR}`) in MCP env/headers are mapped to Codex-native
-   * host-env forwarding (`env_vars`, `env_http_headers`) at translation time,
-   * so no unresolved `${VAR}` is ever written to the TOML.
+   * Whole-value, same-named secret references (`${VAR}`) in MCP env/headers are
+   * mapped to Codex-native host-env forwarding (`env_vars`, `env_http_headers`)
+   * at translation time. Renamed or partial refs that can't be forwarded fall
+   * through to the literal table and emit a warning (see `warnUnforwardableSecret`),
+   * since the TOML never passes through the `${VAR}` transform pipeline.
    */
   async prepareSession(
     artifacts: ResolvedArtifacts,
@@ -369,11 +374,11 @@ export class CodexAdapter implements AgentAdapter {
 
     return {
       // Empty by design — see method doc: Codex's TOML config is outside AIR's
-      // JSON transform pipeline, and `${VAR}` references are mapped to
-      // Codex-native env forwarding at translation time, so no unresolved
-      // reference is ever written and there is nothing for the pipeline to
-      // transform or validate. The `.codex/config.toml` we wrote above is
-      // deliberately not surfaced as a config file.
+      // JSON transform pipeline, and whole-value `${VAR}` references are mapped
+      // to Codex-native env forwarding at translation time, so there is nothing
+      // for the pipeline to transform or validate. (Unforwardable renamed/partial
+      // refs warn at translation time.) The `.codex/config.toml` we wrote above
+      // is deliberately not surfaced as a config file.
       configFiles: [],
       skillPaths,
       hookPaths,
@@ -622,18 +627,27 @@ export class CodexAdapter implements AgentAdapter {
    * `[mcp_servers.<name>.env]` table. For remote servers, a header value of
    * `${VAR}` becomes an `env_http_headers` entry; other header values are
    * written into `http_headers`.
+   *
+   * Codex's native forwarding only expresses *whole-value* refs: `env_vars`
+   * forwards a host var to an env key of the same name, and `env_http_headers`
+   * forwards a host var as a whole header value. A *renamed* whole-value ref
+   * (`KEY = "${OTHER}"`) or a *partial* value (`"Bearer ${TOKEN}"`) can't be
+   * expressed either way, so it falls through to the literal table — and since
+   * the TOML never passes through AIR's `${VAR}` transform pipeline, Codex
+   * would inject the literal `${…}` string at runtime. We warn loudly in that
+   * case rather than silently shipping a broken secret.
    */
   translateMcpServersByShort(
     servers: Record<string, McpServerEntry>
   ): Record<string, Record<string, unknown>> {
     const out: Record<string, Record<string, unknown>> = {};
     for (const [name, server] of Object.entries(servers)) {
-      out[name] = this.translateMcpServer(server);
+      out[name] = this.translateMcpServer(name, server);
     }
     return out;
   }
 
-  private translateMcpServer(server: McpServerEntry): Record<string, unknown> {
+  private translateMcpServer(name: string, server: McpServerEntry): Record<string, unknown> {
     if (server.type === "stdio") {
       const out: Record<string, unknown> = { command: server.command };
       if (server.args && server.args.length > 0) out.args = server.args;
@@ -646,6 +660,9 @@ export class CodexAdapter implements AgentAdapter {
           // `${KEY}` referencing the host var of the same name → forward it.
           envVars.push(key);
         } else {
+          if (CONTAINS_VAR_RE.test(value)) {
+            this.warnUnforwardableSecret(name, `env["${key}"]`, value);
+          }
           envTable[key] = value;
         }
       }
@@ -664,6 +681,9 @@ export class CodexAdapter implements AgentAdapter {
       if (m) {
         envHttpHeaders[key] = m[1];
       } else {
+        if (CONTAINS_VAR_RE.test(value)) {
+          this.warnUnforwardableSecret(name, `headers["${key}"]`, value);
+        }
         httpHeaders[key] = value;
       }
     }
@@ -673,6 +693,25 @@ export class CodexAdapter implements AgentAdapter {
     // static Codex equivalent — Codex performs interactive OAuth via
     // `codex mcp login <name>`. The gap is documented in the adapter README.
     return out;
+  }
+
+  /**
+   * Warn that a secret reference can't be expressed via Codex's native host-env
+   * forwarding and will be written to `.codex/config.toml` as a literal `${…}`
+   * string. Codex would then inject that literal text at runtime — a silently
+   * broken secret. Only whole-value, same-named refs forward cleanly; renamed
+   * (`KEY = "${OTHER}"`) and partial (`"Bearer ${TOKEN}"`) refs land here.
+   */
+  private warnUnforwardableSecret(serverName: string, field: string, value: string): void {
+    console.warn(
+      `[air-adapter-codex] MCP server "${serverName}" ${field} = "${value}" contains a ` +
+        `\${VAR} reference that Codex cannot forward natively. Codex's env_vars / ` +
+        `env_http_headers only express whole-value refs to a host var of the same name, ` +
+        `so this value is written to .codex/config.toml verbatim and Codex will inject the ` +
+        `literal "\${…}" string at runtime. Rewrite it as a whole-value, same-named ref ` +
+        `(e.g. ${field.includes("headers") ? `Authorization = "\${AUTHORIZATION}"` : `KEY = "\${KEY}"`}) ` +
+        `or set the value directly.`
+    );
   }
 
   /**

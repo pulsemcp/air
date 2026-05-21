@@ -110,8 +110,11 @@ Some AIR features have no static Codex equivalent: OAuth MCP servers use Codex's
 | AIR config | Codex `config.toml` |
 |------------|---------------------|
 | `env: { GITHUB_TOKEN: "${GITHUB_TOKEN}" }` | `env_vars = ["GITHUB_TOKEN"]` |
-| `env: { TOKEN: "${GITHUB_TOKEN}" }` (renamed) | left in `env` table for a transform to resolve |
+| `env: { TOKEN: "${GITHUB_TOKEN}" }` (renamed) | written literally to the `env` table + a `console.warn` (see below) |
 | `headers: { Authorization: "${API_TOKEN}" }` | `env_http_headers = { Authorization = "API_TOKEN" }` |
+| `headers: { Authorization: "Bearer ${API_TOKEN}" }` (partial) | written literally to `http_headers` + a `console.warn` (see below) |
+
+Codex's host-env forwarding only expresses **whole-value, same-named** refs (`env_vars` forwards a host var to an env key of the same name; `env_http_headers` forwards a host var as a whole header value). A renamed or partial ref can't be expressed either way, so it falls through to the literal table. Because the Codex adapter returns an empty `configFiles` array, its TOML never passes through the `${VAR}` transform/validation pipeline — so the adapter emits a `console.warn` for each unforwardable ref rather than silently writing a literal `${…}` that Codex would inject verbatim at runtime. Rewrite those as whole-value, same-named refs (or set the value directly).
 
 ### Adapter discovery
 
