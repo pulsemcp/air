@@ -69,7 +69,7 @@ $ air start claude
 
 - **Layer multiple catalogs.** Org → team → personal. Composition is additive, not later-wins.
 - **Scoped identity.** Every artifact is `@scope/id`, so duplicates hard-fail and `exclude` is the only knob to drop something.
-- **Pluggable agents.** Claude Code and the OpenAI Codex CLI today, more agents soon — adapter packages translate AIR config into agent-specific formats.
+- **Pluggable agents.** Claude Code, the OpenAI Codex CLI, and the Cursor CLI today, more agents soon — adapter packages translate AIR config into agent-specific formats.
 - **No proprietary backend.** Catalogs live in git repos. AIR fetches them on demand and composes them at session start.
 
 [Quickstart →](#quickstart) · [`air.json` reference →](docs/configuration.md) · [Writing a catalog →](docs/concepts.md)
@@ -110,8 +110,8 @@ AIR generates agent-specific configuration at session start time via **adapter e
 |-------|----------------|--------|
 | **Claude Code** | `@pulsemcp/air-adapter-claude` | Officially maintained |
 | **OpenAI Codex CLI** | `@pulsemcp/air-adapter-codex` | Officially maintained |
+| **Cursor CLI** | `@pulsemcp/air-adapter-cursor` | Officially maintained |
 | **OpenCode** | `@pulsemcp/air-adapter-opencode` | Community / planned |
-| **Cursor** | `@pulsemcp/air-adapter-cursor` | Community / planned |
 
 To add support for a new agent, publish an adapter package implementing the `AgentAdapter` interface from `@pulsemcp/air-core`.
 
@@ -456,6 +456,8 @@ air/
 │       │   └── Translates AIR config → Claude Code format
 │       ├── adapter-codex/            # @pulsemcp/air-adapter-codex
 │       │   └── Translates AIR config → OpenAI Codex CLI format
+│       ├── adapter-cursor/           # @pulsemcp/air-adapter-cursor
+│       │   └── Translates AIR config → Cursor CLI format
 │       └── provider-github/          # @pulsemcp/air-provider-github
 │           └── Resolves github:// URIs in air.json
 ```
@@ -467,7 +469,7 @@ The core defines four extension interfaces:
 | Extension Point | Interface | Built-in | Official Extensions |
 |----------------|-----------|----------|-------------------|
 | **Catalog Providers** | `CatalogProvider` | Local filesystem | `@pulsemcp/air-provider-github` |
-| **Agent Adapters** | `AgentAdapter` | None | `@pulsemcp/air-adapter-claude`, `@pulsemcp/air-adapter-codex` |
+| **Agent Adapters** | `AgentAdapter` | None | `@pulsemcp/air-adapter-claude`, `@pulsemcp/air-adapter-codex`, `@pulsemcp/air-adapter-cursor` |
 | **Transforms** | `PrepareTransform` | None | `@pulsemcp/air-secrets-env`, `@pulsemcp/air-secrets-file` |
 | **Transports** | Consume SDK | CLI | None yet |
 
@@ -481,6 +483,7 @@ Community extensions follow the `@pulsemcp/air-adapter-*` and `@pulsemcp/air-pro
 | `@pulsemcp/air-cli` | CLI wrapper. Discovers installed adapters for `air start`. |
 | `@pulsemcp/air-adapter-claude` | Claude Code adapter. Translates MCP servers, plugins, skills to Claude format. |
 | `@pulsemcp/air-adapter-codex` | OpenAI Codex CLI adapter. Translates MCP servers, skills, and hooks to Codex's `config.toml` / `.agents/skills/` format. |
+| `@pulsemcp/air-adapter-cursor` | Cursor CLI adapter. Translates MCP servers, skills, and hooks to Cursor's `.cursor/mcp.json` / `.cursor/hooks.json` / `.cursor/skills/` format. |
 | `@pulsemcp/air-provider-github` | GitHub catalog provider. Fetches remote artifact indexes via the GitHub REST API. |
 
 ## Contributing
