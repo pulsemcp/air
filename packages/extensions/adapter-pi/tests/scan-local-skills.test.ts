@@ -100,12 +100,12 @@ describe("scanLocalSkills (pi)", () => {
     expect(result[0].description).toBe("(local skill — no description)");
   });
 
-  it("reads frontmatter even when the body has no closing delimiter on its own line", () => {
+  it("reads frontmatter from a well-formed block followed by a multi-line body", () => {
     const dir = createTempDir();
     cleanup.push(dir);
     const skillsDir = join(dir, ".pi", "skills");
     mkdirSync(join(skillsDir, "trailing"), { recursive: true });
-    // Well-formed frontmatter block followed by body.
+    // Closing `---` on its own line, then a heading and more body text.
     writeFileSync(
       join(skillsDir, "trailing", "SKILL.md"),
       "---\ndescription: Trailing body\n---\n# Heading\nmore text"
@@ -113,6 +113,22 @@ describe("scanLocalSkills (pi)", () => {
 
     const result = scanLocalSkills(dir);
     expect(result[0].description).toBe("Trailing body");
+  });
+
+  it("reads frontmatter even when the closing delimiter is missing entirely", () => {
+    const dir = createTempDir();
+    cleanup.push(dir);
+    const skillsDir = join(dir, ".pi", "skills");
+    mkdirSync(join(skillsDir, "unclosed"), { recursive: true });
+    // No closing `---`: the reader consumes every line after the opener and
+    // returns what it parsed rather than discarding the whole block.
+    writeFileSync(
+      join(skillsDir, "unclosed", "SKILL.md"),
+      "---\ndescription: Unclosed\nno closing delimiter"
+    );
+
+    const result = scanLocalSkills(dir);
+    expect(result[0].description).toBe("Unclosed");
   });
 
   it("strips matching quotes from frontmatter values", () => {

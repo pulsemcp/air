@@ -26,7 +26,7 @@ Pi expects:
 - Skills as directories under `.pi/skills/<name>/SKILL.md`. Pi auto-discovers project skills from `<cwd>/.pi/skills/`: any directory containing a `SKILL.md` is treated as a skill root, and Pi stops recursing into it — so reference files bundled inside the skill directory travel with it safely.
 - References copied alongside the skill in `<skill>/references/`.
 
-Because Pi discovers skills purely from the filesystem, no config file is written. `prepareSession()` returns an **empty `configFiles` array** and an **empty `hookPaths` array` — there is no JSON config for AIR's transform pipeline to post-process, and hooks are never materialized.
+Because Pi discovers skills purely from the filesystem, no config file is written. `prepareSession()` returns an **empty `configFiles` array** and an **empty `hookPaths` array** — there is no JSON config for AIR's transform pipeline to post-process, and hooks are never materialized.
 
 ### Why skills-only
 

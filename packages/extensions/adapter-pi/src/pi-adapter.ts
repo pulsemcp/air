@@ -245,6 +245,12 @@ export class PiAdapter implements AgentAdapter {
     }
 
     // 7. Build start command (working directory = prepared directory).
+    //    `root` is passed as `undefined` here on purpose: skill activation
+    //    (root defaults + overrides + subagent + plugin skills) was already
+    //    resolved and materialized above, so we only need `generateConfig` for
+    //    the agent name + env that `buildStartCommand` consumes. Passing `root`
+    //    would redundantly re-resolve skill paths from defaults alone, ignoring
+    //    the overrides applied in this call.
     const config = this.generateConfig(artifacts, undefined, targetDir);
     const startCommand = this.buildStartCommand({
       ...config,
