@@ -103,7 +103,7 @@ describe("PiAdapter", () => {
     }
 
     function writeSkillSrc(dir: string, id: string): string {
-      const src = join(dir, "..", `src-${id}`, "skills", id);
+      const src = join(dir, "__src__", `src-${id}`, "skills", id);
       mkdirSync(src, { recursive: true });
       writeFileSync(join(src, "SKILL.md"), `---\nname: ${id}\n---\n# ${id}`);
       return resolve(src);
@@ -135,7 +135,7 @@ describe("PiAdapter", () => {
     it("injects skills into .pi/skills/ and returns empty config/hook arrays", async () => {
       const dir = createTempDir();
 
-      const skillSrcDir = join(dir, "..", "skills", "deploy");
+      const skillSrcDir = join(dir, "__src__", "skills", "deploy");
       mkdirSync(skillSrcDir, { recursive: true });
       writeFileSync(
         join(skillSrcDir, "SKILL.md"),
@@ -170,11 +170,11 @@ describe("PiAdapter", () => {
     it("copies skill references into a references/ subdir", async () => {
       const dir = createTempDir();
 
-      const skillSrcDir = join(dir, "..", "skills", "deploy");
+      const skillSrcDir = join(dir, "__src__", "skills", "deploy");
       mkdirSync(skillSrcDir, { recursive: true });
       writeFileSync(join(skillSrcDir, "SKILL.md"), "# Deploy");
 
-      const refSrcDir = join(dir, "..", "references");
+      const refSrcDir = join(dir, "__src__", "references");
       mkdirSync(refSrcDir, { recursive: true });
       writeFileSync(join(refSrcDir, "RUNBOOK.md"), "# Runbook");
 
@@ -213,7 +213,7 @@ describe("PiAdapter", () => {
       mkdirSync(localSkillDir, { recursive: true });
       writeFileSync(join(localSkillDir, "SKILL.md"), "# Local Deploy");
 
-      const skillSrcDir = join(dir, "..", "skills", "deploy");
+      const skillSrcDir = join(dir, "__src__", "skills", "deploy");
       mkdirSync(skillSrcDir, { recursive: true });
       writeFileSync(join(skillSrcDir, "SKILL.md"), "# Catalog Deploy");
 
@@ -369,7 +369,7 @@ describe("PiAdapter", () => {
         const artifacts = emptyArtifacts();
         artifacts.skills["@local/ghost"] = {
           description: "Ghost",
-          path: resolve(dir, "..", "does-not-exist"),
+          path: resolve(dir, "__src__", "does-not-exist"),
         };
 
         const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
