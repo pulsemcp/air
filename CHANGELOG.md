@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2026-05-28
+
+### Changed
+- **`@pulsemcp/air-core` no longer hard-fails resolution when an artifact references an unknown (truly-missing) artifact.** v0.4.3 made references to *excluded* artifacts warn-and-drop, but a reference to something that was never contributed at all — a typo, a not-yet-installed catalog, or an upstream rename — still threw `Reference resolution failed: … references unknown skill "create-pr". Available qualified IDs: …`, blocking resolution of the entire config. A single dangling reference (e.g. a root's `default_skills` pointing at a skill the catalog no longer ships) took down every otherwise-valid artifact. `canonicalizeReferences` in `packages/core/src/config.ts` now treats an unknown reference as a warning, drops the dangling reference from the consumer's resolved list, and continues. The warning names the consumer, the field, the missing reference, and the available qualified IDs, and ends with "Dropping the reference." Applies uniformly to every reference field in the resolver (`skill.references`, `hook.references`, `plugin.{skills,mcp_servers,hooks,plugins}`, `root.{default_skills,default_mcp_servers,default_plugins,default_hooks,default_subagent_roots}`). Ambiguous references (a short ID matching multiple scopes) still hard-fail, since those are resolvable by qualifying the reference rather than by dropping it.
+
 ## [0.5.0] - 2026-05-21
 
 ### Added

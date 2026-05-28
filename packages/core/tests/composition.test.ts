@@ -519,7 +519,8 @@ describe("composition", () => {
     expect(artifacts.references["@local/git-workflow"]).toBeDefined();
   });
 
-  it("reference to missing artifact hard-fails", async () => {
+  it("reference to missing artifact warns and drops the reference", async () => {
+    const warnings: string[] = [];
     const { dir, cleanup: c } = createTempAirDir({
       "air.json": {
         name: "test",
@@ -531,9 +532,19 @@ describe("composition", () => {
     });
     cleanup = c;
 
-    await expect(resolveArtifacts(join(dir, "air.json"))).rejects.toThrow(
-      /references unknown reference "missing-ref"/,
+    const artifacts = await resolveArtifacts(join(dir, "air.json"), {
+      onWarning: (m) => warnings.push(m),
+    });
+
+    // Resolution succeeds; the dangling reference is dropped, not fatal.
+    expect(artifacts.skills["@local/deploy"]).toBeDefined();
+    expect(artifacts.skills["@local/deploy"].references).toEqual([]);
+
+    const missingWarns = warnings.filter((w) =>
+      w.includes('references unknown reference "missing-ref"'),
     );
+    expect(missingWarns).toHaveLength(1);
+    expect(missingWarns[0]).toMatch(/Dropping the reference/);
   });
 
   it("reference to an excluded artifact warns and drops the reference", async () => {
