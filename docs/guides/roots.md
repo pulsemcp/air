@@ -61,7 +61,7 @@ Add or edit entries in your roots index file:
 | `default_plugins` | No | Plugin IDs to activate by default. |
 | `default_hooks` | No | Hook IDs to activate by default. |
 | `default_subagent_roots` | No | IDs of other roots this root depends on as subagents. |
-| `default_runtime` | No | Agent runtime for sessions/subagents under this root: `claude_code` or `codex` (defaults to `claude_code`). |
+| `default_runtime` | No | Agent runtime for sessions/subagents under this root (defaults to `claude_code`). Open string; common values include `claude_code`, `codex`, `pi`, `opencode`, `amp`, `gemini`, `github_copilot`. |
 | `user_invocable` | No | Whether users can start sessions with this root directly (default: `true`). |
 
 ## Using roots with air start

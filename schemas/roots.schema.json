@@ -83,8 +83,16 @@
         },
         "default_runtime": {
           "type": "string",
-          "enum": ["claude_code", "codex"],
-          "description": "Agent runtime to use for sessions and subagents spawned under this root. When omitted, resolves to the default runtime 'claude_code'."
+          "examples": [
+            "claude_code",
+            "codex",
+            "pi",
+            "opencode",
+            "amp",
+            "gemini",
+            "github_copilot"
+          ],
+          "description": "Agent runtime to use for sessions and subagents spawned under this root. When omitted, resolves to the default runtime 'claude_code'. The listed values are common runtimes, but this is an open string field — any runtime identifier a downstream consumer recognizes is accepted, so new agents do not require a schema change."
         },
         "user_invocable": {
           "type": "boolean",
