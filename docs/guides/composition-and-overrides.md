@@ -164,6 +164,8 @@ Error: Reference "review" is ambiguous — candidates: @acme/air-org/review,
 @local/review. Use the qualified form to disambiguate.
 ```
 
+A reference to an artifact that does not exist in the resolved set at all — a typo, a not-yet-installed catalog, or an artifact an upstream catalog renamed or removed — does **not** fail resolution. AIR emits a warning naming the consumer, the field, the missing reference, and the available qualified IDs, then drops the dangling reference and continues. A single bad reference (for example a root's `default_skills` pointing at a skill the catalog no longer ships) never blocks the rest of an otherwise-valid config. Ambiguous references are the exception: because they are fixable by qualifying the reference rather than by dropping it, they still hard-fail as shown above.
+
 After resolution, root and plugin reference fields are stored in **canonical (qualified) form** so adapters and consumers do not need to re-resolve them.
 
 ### Single-scope universes: `air resolve --no-scope`
@@ -442,6 +444,7 @@ There is no "disabled" flag, no override-with-empty-entry trick. If you want a t
 | `exclude` key is not a valid artifact type | Hard-fail naming the unknown key and listing valid keys |
 | Short reference, unambiguous | Resolved to its qualified ID |
 | Short reference, ambiguous | Hard-fail with candidate list |
+| Reference to an artifact not in the resolved set | Warning logged naming the consumer and missing reference; the reference is dropped from the consumer and resolution continues |
 | Short reference inside a catalog index | Resolved to the catalog's own scope first |
 | Plugin references another plugin | Recursive expansion; references canonicalized |
 | Subagent root artifacts | Merged into parent session |
