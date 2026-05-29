@@ -479,6 +479,7 @@ describe("initFromRepo", () => {
     expect(airJson.extensions).toEqual([
       "@pulsemcp/air-adapter-claude",
       "@pulsemcp/air-adapter-codex",
+      "@pulsemcp/air-adapter-cursor",
       "@pulsemcp/air-adapter-pi",
       "@pulsemcp/air-provider-github",
       "@pulsemcp/air-secrets-env",

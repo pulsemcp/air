@@ -17,7 +17,7 @@ import { runAutoDiscovery } from "./auto-discover.js";
 export function startCommand(): Command {
   const cmd = new Command("start")
     .description("Start an agent session with AIR configs loaded")
-    .argument("<agent>", "Agent to start (e.g., claude, codex, pi)")
+    .argument("<agent>", "Agent to start (e.g., claude, codex, cursor, pi)")
     .option("--root <name>", "Root to start the session in")
     .option("--dry-run", "Show what would be activated without starting")
     .option(
