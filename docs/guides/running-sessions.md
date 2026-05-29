@@ -14,13 +14,14 @@ AIR assembles configuration for a **single session** from `air.json` each time y
 air start claude
 air start codex
 air start cursor
+air start pi
 ```
 
-The first argument is the agent adapter. AIR ships adapters for Claude Code (`claude`), the OpenAI Codex CLI (`codex`), and the Cursor CLI (`cursor`); the examples below use `claude`, but `codex` and `cursor` work identically. The Codex adapter writes `.codex/config.toml` and `.agents/skills/` instead of `.mcp.json` and `.claude/skills/` — see [Codex adapter specifics](extensions.md#codex-adapter-specifics). The Cursor adapter writes `.cursor/mcp.json`, `.cursor/hooks.json`, and `.cursor/skills/` — see [Cursor adapter specifics](extensions.md#cursor-adapter-specifics).
+The first argument is the agent adapter. AIR ships adapters for Claude Code (`claude`), the OpenAI Codex CLI (`codex`), the Cursor CLI (`cursor`), and the Pi coding agent (`pi`); the examples below use `claude`, but `codex` and `cursor` work identically. The Codex adapter writes `.codex/config.toml` and `.agents/skills/` instead of `.mcp.json` and `.claude/skills/` — see [Codex adapter specifics](extensions.md#codex-adapter-specifics). The Cursor adapter writes `.cursor/mcp.json`, `.cursor/hooks.json`, and `.cursor/skills/` — see [Cursor adapter specifics](extensions.md#cursor-adapter-specifics). The Pi adapter is **skills-only**: it injects skills into `.pi/skills/` and writes no config file — see [Pi adapter specifics](extensions.md#pi-adapter-specifics).
 
 ### What it does
 
-1. Finds the adapter for the specified agent (e.g., `@pulsemcp/air-adapter-claude`, `@pulsemcp/air-adapter-codex`, or `@pulsemcp/air-adapter-cursor`)
+1. Finds the adapter for the specified agent (e.g., `@pulsemcp/air-adapter-claude`, `@pulsemcp/air-adapter-codex`, `@pulsemcp/air-adapter-cursor`, or `@pulsemcp/air-adapter-pi`)
 2. Resolves all artifacts from your `air.json`
 3. Checks if the agent CLI is available on your PATH
 4. Opens an interactive TUI for browsing and selecting artifacts

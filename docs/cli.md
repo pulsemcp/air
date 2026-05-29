@@ -92,6 +92,7 @@ air start claude --skip-confirmation
 - `claude` — via `@pulsemcp/air-adapter-claude` (officially maintained)
 - `codex` — via `@pulsemcp/air-adapter-codex` (officially maintained)
 - `cursor` — via `@pulsemcp/air-adapter-cursor` (officially maintained)
+- `pi` — via `@pulsemcp/air-adapter-pi` (officially maintained; skills-only)
 
 **Options:**
 

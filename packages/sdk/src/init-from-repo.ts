@@ -342,6 +342,7 @@ export function initFromRepo(
       "@pulsemcp/air-adapter-claude",
       "@pulsemcp/air-adapter-codex",
       "@pulsemcp/air-adapter-cursor",
+      "@pulsemcp/air-adapter-pi",
       "@pulsemcp/air-provider-github",
       "@pulsemcp/air-secrets-env",
       "@pulsemcp/air-secrets-file",

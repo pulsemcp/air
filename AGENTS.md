@@ -17,6 +17,7 @@ air/
 │       ├── adapter-claude/           # @pulsemcp/air-adapter-claude — Claude Code session setup
 │       ├── adapter-codex/            # @pulsemcp/air-adapter-codex — OpenAI Codex CLI session setup
 │       ├── adapter-cursor/           # @pulsemcp/air-adapter-cursor — Cursor CLI session setup
+│       ├── adapter-pi/               # @pulsemcp/air-adapter-pi — Pi coding agent session setup (skills-only)
 │       ├── cowork/                   # @pulsemcp/air-cowork — Claude Co-work plugin emitter
 │       └── provider-github/          # @pulsemcp/air-provider-github — github:// URI resolution
 ├── package.json                      # npm workspaces root
@@ -31,7 +32,7 @@ AIR is a TypeScript monorepo (npm workspaces, ESM-only, Node 18+). It has six pa
 - **Core** owns config resolution (`resolveArtifacts`), JSON Schema validation, and the extension interfaces (`AgentAdapter`, `CatalogProvider`, `PrepareTransform`, `PluginEmitter`). No agent-specific code.
 - **SDK** is the programmatic API layer. It re-exports core and adds adapter discovery, root detection, and high-level operations (`validateFile`, `initConfig`, `listArtifacts`, `startSession`, `prepareSession`, `exportMarketplace`). This is the primary dependency for TypeScript/JavaScript consumers.
 - **CLI** is a thin wrapper (Commander.js) that delegates all business logic to the SDK.
-- **Adapter extensions** translate AIR artifacts into agent-specific formats. The Claude adapter writes `.mcp.json` and injects skills via `prepareSession()`; the Codex adapter writes `.codex/config.toml` and injects skills into `.agents/skills/`; the Cursor adapter writes `.cursor/mcp.json` + `.cursor/hooks.json` and injects skills into `.cursor/skills/`.
+- **Adapter extensions** translate AIR artifacts into agent-specific formats. The Claude adapter writes `.mcp.json` and injects skills via `prepareSession()`; the Codex adapter writes `.codex/config.toml` and injects skills into `.agents/skills/`; the Cursor adapter writes `.cursor/mcp.json` + `.cursor/hooks.json` and injects skills into `.cursor/skills/`; the Pi adapter is skills-only and injects skills into `.pi/skills/` with no config file.
 - **Provider extensions** resolve remote URIs in `air.json` (e.g., `github://org/repo/path`).
 
 Six artifact types: skills, references, MCP servers, plugins, roots, hooks. All defined as JSON indexes with JSON Schema validation. Every artifact has a qualified identity of the form `@scope/id` — local indexes contribute under `@local/`; remote catalogs use a provider-derived scope (e.g. `@<owner>/<repo>/`). Composition is additive: duplicate qualified IDs hard-fail, cross-scope shortname collisions warn, and `exclude` is the only way to drop an artifact.

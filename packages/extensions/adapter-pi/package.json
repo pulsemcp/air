@@ -1,15 +1,15 @@
 {
-  "name": "@pulsemcp/air-sdk",
-  "version": "0.8.0",
+  "name": "@pulsemcp/air-adapter-pi",
+  "version": "0.7.0",
   "publishConfig": {
     "access": "public"
   },
   "repository": {
     "type": "git",
     "url": "https://github.com/pulsemcp/air.git",
-    "directory": "packages/sdk"
+    "directory": "packages/extensions/adapter-pi"
   },
-  "description": "AIR SDK — programmatic API for the Agent Infrastructure Repository framework",
+  "description": "AIR adapter for the Pi coding agent — injects AIR skills into Pi's native skills location",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -29,7 +29,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@pulsemcp/air-core": "0.8.0"
+    "@pulsemcp/air-core": "0.7.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
