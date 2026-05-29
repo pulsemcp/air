@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-05-29
+
+### Added
+- **`roots.schema.json` now declares an optional `default_runtime` field on each root.** A new string property lets a root declare which agent runtime sessions and subagents spawned under it should use. When omitted, it resolves to the default runtime `"claude_code"`. The field is an **open string** with a set of suggested values surfaced via JSON Schema `examples` (`claude_code`, `codex`, `pi`, `opencode`, `amp`, `gemini`, `github_copilot`) rather than a closed `enum` — any runtime identifier a downstream consumer recognizes is accepted, so adding a new coding agent does not require a schema change. This formalizes a field that downstream consumers (notably Agent Orchestrator's `agents/agent-roots/roots.json`, which validates against the published `https://pulsemcp.github.io/air/schemas/roots.schema.json`) had begun emitting for the Codex-runtime rollout. The change is additive and backward-compatible — the field is optional and absent from every `required` array, so existing roots indexes remain valid. The schema ships in `@pulsemcp/air-core`. Docs (`docs/roots.md`, `docs/guides/roots.md`) and the `examples/roots/roots.json` example were updated to cover the field.
+
 ## [0.5.1] - 2026-05-28
 
 ### Changed
