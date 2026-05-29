@@ -1,42 +1,27 @@
 {
   "name": "@pulsemcp/air-cli",
-  "version": "0.6.0",
-  "publishConfig": {
-    "access": "public"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/pulsemcp/air.git",
-    "directory": "packages/cli"
-  },
-  "description": "CLI for the AIR (Agent Infrastructure Repository) framework",
-  "type": "module",
+  "version": "0.7.0",
+  "description": "CLI for AIR — validate, list, and inspect agent infrastructure config",
   "bin": {
     "air": "./dist/index.js"
   },
+  "type": "module",
   "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "files": [
-    "dist/"
+    "dist",
+    "schemas"
   ],
   "scripts": {
-    "build": "tsc",
-    "dev": "tsx src/index.ts",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "lint": "tsc --noEmit"
+    "build": "tsc -p tsconfig.json && node ../../scripts/copy-schemas.mjs",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@pulsemcp/air-sdk": "0.6.0",
-    "commander": "^12.1.0",
-    "chalk": "^5.3.0"
+    "@pulsemcp/air-core": "0.7.0",
+    "@pulsemcp/air-sdk": "0.7.0",
+    "commander": "^12.0.0"
   },
   "devDependencies": {
-    "@types/node": "^22.10.0",
-    "tsx": "^4.19.0",
-    "typescript": "^5.7.0",
-    "vitest": "^2.1.0"
-  },
-  "engines": {
-    "node": ">=18"
+    "@types/node": "^20.0.0"
   }
 }

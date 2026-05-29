@@ -81,6 +81,19 @@
           },
           "description": "IDs of other roots that this root depends on as subagents. The default CLI behavior merges subagent roots' skills and MCP servers into the parent session and appends subagent metadata to the system prompt. Orchestrators that manage subagent composition externally (e.g., via an MCP server) can opt out with --no-subagent-merge."
         },
+        "default_runtime": {
+          "type": "string",
+          "examples": [
+            "claude_code",
+            "codex",
+            "pi",
+            "opencode",
+            "amp",
+            "gemini",
+            "github_copilot"
+          ],
+          "description": "Agent runtime to use for sessions and subagents spawned under this root. When omitted, resolves to the default runtime 'claude_code'. The listed values are common runtimes, but this is an open string field — any runtime identifier a downstream consumer recognizes is accepted, so new agents do not require a schema change."
+        },
         "user_invocable": {
           "type": "boolean",
           "description": "Whether this root can be directly invoked by users to start a session.",
