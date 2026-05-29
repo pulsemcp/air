@@ -13,13 +13,14 @@ AIR assembles configuration for a **single session** from `air.json` each time y
 ```bash
 air start claude
 air start codex
+air start pi
 ```
 
-The first argument is the agent adapter. AIR ships adapters for Claude Code (`claude`) and the OpenAI Codex CLI (`codex`); the examples below use `claude`, but `codex` works identically. The Codex adapter writes `.codex/config.toml` and `.agents/skills/` instead of `.mcp.json` and `.claude/skills/` — see [Codex adapter specifics](extensions.md#codex-adapter-specifics).
+The first argument is the agent adapter. AIR ships adapters for Claude Code (`claude`), the OpenAI Codex CLI (`codex`), and the Pi coding agent (`pi`); the examples below use `claude`, but `codex` works identically. The Codex adapter writes `.codex/config.toml` and `.agents/skills/` instead of `.mcp.json` and `.claude/skills/` — see [Codex adapter specifics](extensions.md#codex-adapter-specifics). The Pi adapter is **skills-only**: it injects skills into `.pi/skills/` and writes no config file — see [Pi adapter specifics](extensions.md#pi-adapter-specifics).
 
 ### What it does
 
-1. Finds the adapter for the specified agent (e.g., `@pulsemcp/air-adapter-claude` or `@pulsemcp/air-adapter-codex`)
+1. Finds the adapter for the specified agent (e.g., `@pulsemcp/air-adapter-claude`, `@pulsemcp/air-adapter-codex`, or `@pulsemcp/air-adapter-pi`)
 2. Resolves all artifacts from your `air.json`
 3. Checks if the agent CLI is available on your PATH
 4. Opens an interactive TUI for browsing and selecting artifacts

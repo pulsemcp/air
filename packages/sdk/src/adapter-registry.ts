@@ -11,6 +11,7 @@ import { resolveEsmEntry } from "./esm-resolve.js";
 const KNOWN_ADAPTERS: { name: string; packageName: string }[] = [
   { name: "claude", packageName: "@pulsemcp/air-adapter-claude" },
   { name: "codex", packageName: "@pulsemcp/air-adapter-codex" },
+  { name: "pi", packageName: "@pulsemcp/air-adapter-pi" },
 ];
 
 export interface FindAdapterOptions {
