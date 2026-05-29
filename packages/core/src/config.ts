@@ -658,9 +658,14 @@ function canonicalizeReferences(
               `Dropping the reference.`
           );
         } else {
-          errors.push(
+          // Warn instead of erroring: a reference to an artifact that was
+          // never contributed (typo, not-yet-installed catalog, upstream
+          // rename) should not block resolution of everything else. Drop the
+          // dangling reference and let the session proceed.
+          warnings.push(
             `${ownerLabel}.${field} references unknown ${poolType} "${ref}". ` +
-              `Available qualified IDs: ${listIds(pool)}.`
+              `Available qualified IDs: ${listIds(pool)}. ` +
+              `Dropping the reference.`
           );
         }
       } else {
