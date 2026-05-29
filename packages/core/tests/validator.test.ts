@@ -213,6 +213,52 @@ describe("validateJson", () => {
       );
       expect(result.valid).toBe(true);
     });
+
+    it("validates root with a suggested default_runtime", () => {
+      for (const runtime of [
+        "claude_code",
+        "codex",
+        "pi",
+        "opencode",
+        "amp",
+        "gemini",
+        "github_copilot",
+      ]) {
+        const result = validateJson(
+          {
+            "my-root": exampleRoot("my-root", {
+              default_runtime: runtime,
+            }),
+          },
+          "roots"
+        );
+        expect(result.valid).toBe(true);
+      }
+    });
+
+    it("accepts a default_runtime outside the suggested list (open string field)", () => {
+      const result = validateJson(
+        {
+          "my-root": exampleRoot("my-root", {
+            default_runtime: "some-future-agent",
+          }),
+        },
+        "roots"
+      );
+      expect(result.valid).toBe(true);
+    });
+
+    it("rejects a non-string default_runtime", () => {
+      const result = validateJson(
+        {
+          "my-root": exampleRoot("my-root", {
+            default_runtime: 123,
+          }),
+        },
+        "roots"
+      );
+      expect(result.valid).toBe(false);
+    });
   });
 
   describe("references.json", () => {

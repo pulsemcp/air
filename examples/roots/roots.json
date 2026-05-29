@@ -17,6 +17,7 @@
     "subdirectory": "pipeline",
     "default_mcp_servers": ["github", "analytics"],
     "default_skills": ["initial-pr-review"],
+    "default_runtime": "codex",
     "user_invocable": true
   }
 }
