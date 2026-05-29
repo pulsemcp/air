@@ -45,6 +45,7 @@ Roots are registered in `roots.json`:
 | `default_skills` | No | Skill IDs to make available by default. |
 | `default_plugins` | No | Plugin IDs to activate by default. |
 | `default_hooks` | No | Hook IDs to activate by default. |
+| `default_runtime` | No | Agent runtime for sessions/subagents under this root: `claude_code` or `codex` (defaults to `claude_code`). |
 | `user_invocable` | No | Whether users can start sessions with this root directly (default: true). |
 
 ## Monorepo Support

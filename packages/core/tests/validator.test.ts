@@ -213,6 +213,32 @@ describe("validateJson", () => {
       );
       expect(result.valid).toBe(true);
     });
+
+    it("validates root with default_runtime", () => {
+      for (const runtime of ["claude_code", "codex"]) {
+        const result = validateJson(
+          {
+            "my-root": exampleRoot("my-root", {
+              default_runtime: runtime,
+            }),
+          },
+          "roots"
+        );
+        expect(result.valid).toBe(true);
+      }
+    });
+
+    it("rejects root with unknown default_runtime", () => {
+      const result = validateJson(
+        {
+          "my-root": exampleRoot("my-root", {
+            default_runtime: "cursor",
+          }),
+        },
+        "roots"
+      );
+      expect(result.valid).toBe(false);
+    });
   });
 
   describe("references.json", () => {
