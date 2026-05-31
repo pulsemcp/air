@@ -53,6 +53,17 @@ const WHOLE_VAR_RE = /^\$\{([^}]+)\}$/;
 /** Matches a value that contains a `${VAR}` reference anywhere within it. */
 const CONTAINS_VAR_RE = /\$\{[^}]+\}/;
 
+/**
+ * A plain POSIX environment-variable name. The `${...}` capture in
+ * `WHOLE_VAR_RE` / `CONTAINS_VAR_RE` is deliberately permissive (`[^}]+`), so a
+ * crafted value such as `${X:-$(cmd)}` would smuggle shell default-value /
+ * command-substitution syntax through the `sh -c` rebind shim and the sub-shell
+ * would EXECUTE it. Only names matching this pattern are ever routed into the
+ * shim; anything else is treated as unforwardable (kept literal + warned), so
+ * untrusted catalog config can never reach the shell as evaluatable syntax.
+ */
+const SAFE_ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
 export class CodexAdapter implements AgentAdapter {
   name = "codex";
   displayName = "OpenAI Codex";
@@ -674,9 +685,21 @@ export class CodexAdapter implements AgentAdapter {
           // Renamed whole-value (`KEY = "${OTHER}"`) or partial
           // (`"Bearer ${TOKEN}"`) ref. Codex's env_vars can express neither, so
           // rebind `key` inside a `sh -c` shim from the forwarded source var(s).
-          const { quoted, vars } = this.toShellDoubleQuoted(value);
-          rebindings.push(`${key}=${quoted}`);
-          for (const v of vars) forward(v);
+          //
+          // Guard the shim against shell injection: it interpolates `key` on the
+          // assignment's left-hand side (`KEY=...`) and each `${VAR}` reference
+          // on the right. A key with shell metacharacters (`A;rm -rf /`) or a
+          // reference carrying shell syntax (`${X:-$(cmd)}`) would be EXECUTED by
+          // the sub-shell. Only forward when the key and every reference are
+          // plain POSIX variable names; otherwise keep the value literal + warn.
+          if (SAFE_ENV_NAME_RE.test(key) && this.allVarRefsSafe(value)) {
+            const { quoted, vars } = this.toShellDoubleQuoted(value);
+            rebindings.push(`${key}=${quoted}`);
+            for (const v of vars) forward(v);
+          } else {
+            this.warnUnsafeEnvReference(name, key, value);
+            envTable[key] = value;
+          }
         } else {
           // Literal value → plain env table.
           envTable[key] = value;
@@ -753,6 +776,21 @@ export class CodexAdapter implements AgentAdapter {
   }
 
   /**
+   * Whether every `${...}` reference in `value` is a plain POSIX variable name.
+   * The capture used elsewhere is permissive (`[^}]+`), so this gates which
+   * values may enter the `sh -c` rebind shim — a reference like `${X:-$(cmd)}`
+   * carries shell syntax the sub-shell would execute and must be rejected.
+   */
+  private allVarRefsSafe(value: string): boolean {
+    const re = /\$\{([^}]+)\}/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(value)) !== null) {
+      if (!SAFE_ENV_NAME_RE.test(m[1])) return false;
+    }
+    return true;
+  }
+
+  /**
    * Render an AIR value containing `${VAR}` refs as a shell double-quoted
    * string: literal runs are escaped for the double-quote context and each
    * `${VAR}` is preserved so the sub-shell expands it from the forwarded host
@@ -815,6 +853,25 @@ export class CodexAdapter implements AgentAdapter {
    * literal `${…}` string at runtime. (Stdio `env` refs never reach here:
    * renamed/partial env values are rebound via a `sh -c` shim instead.)
    */
+  /**
+   * Warn that a stdio `env` value can't be safely rebound via the `sh -c` shim:
+   * the env *name* or a `${VAR}` reference inside the value is not a plain POSIX
+   * variable name, so it carries shell syntax (e.g. `${X:-$(cmd)}`) the sub-shell
+   * would execute. The value is kept literal in the `env` table (Codex injects it
+   * verbatim) rather than shipping an injectable shim. Rewrite it using plain
+   * variable references (e.g. `KEY = "${OTHER}"`).
+   */
+  private warnUnsafeEnvReference(serverName: string, key: string, value: string): void {
+    console.warn(
+      `[air-adapter-codex] MCP server "${serverName}" env["${key}"] = "${value}" ` +
+        `cannot be forwarded: the env name or a \${VAR} reference is not a plain ` +
+        `variable name ([A-Za-z_][A-Za-z0-9_]*), so routing it through the launch ` +
+        `shim could let the shell evaluate embedded syntax. The value is written to ` +
+        `.codex/config.toml verbatim and Codex will inject the literal "\${…}" string ` +
+        `at runtime. Rewrite it using plain variable references (e.g. KEY = "\${OTHER}").`
+    );
+  }
+
   private warnUnforwardableSecret(serverName: string, field: string, value: string): void {
     console.warn(
       `[air-adapter-codex] MCP server "${serverName}" ${field} = "${value}" embeds a ` +

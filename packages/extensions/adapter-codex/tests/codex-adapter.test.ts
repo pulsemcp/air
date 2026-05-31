@@ -233,6 +233,86 @@ describe("CodexAdapter", () => {
       }
     });
 
+    it("does NOT shim a ${VAR} reference carrying shell syntax — keeps it literal + warns", () => {
+      // The `${...}` capture is permissive, so a value like `${X:-$(cmd)}` would
+      // smuggle shell default-value/command-substitution syntax into the rebind
+      // shim and the sub-shell would execute it. Such values must never reach the
+      // shell: keep the command real, the value literal, and warn.
+      const servers: Record<string, McpServerEntry> = {
+        srv: {
+          type: "stdio",
+          command: "run",
+          env: { EVIL: "${X:-$(touch /tmp/pwned)}" },
+        },
+      };
+
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        const result = adapter.translateMcpServersByShort(servers);
+        // No shim — the real command is preserved unchanged.
+        expect(result.srv.command).toBe("run");
+        expect(result.srv.args).toBeUndefined();
+        expect(result.srv.env_vars).toBeUndefined();
+        // The dangerous value is kept literal (Codex injects it verbatim).
+        expect(result.srv.env).toEqual({ EVIL: "${X:-$(touch /tmp/pwned)}" });
+        expect(warn).toHaveBeenCalledTimes(1);
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it("does NOT shim when the env KEY itself carries shell metacharacters", () => {
+      // The env name is interpolated on the assignment's left-hand side
+      // (`KEY=...`), so a key like `A;rm -rf /` would terminate the assignment and
+      // run a command. Reject it the same way.
+      const servers: Record<string, McpServerEntry> = {
+        srv: {
+          type: "stdio",
+          command: "run",
+          env: { "A;rm -rf /": "${TOKEN}" },
+        },
+      };
+
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        const result = adapter.translateMcpServersByShort(servers);
+        expect(result.srv.command).toBe("run");
+        expect(result.srv.env_vars).toBeUndefined();
+        expect(result.srv.env).toEqual({ "A;rm -rf /": "${TOKEN}" });
+        expect(warn).toHaveBeenCalledTimes(1);
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it("end-to-end: a shell-syntax value is inert when the (literal) env is applied", () => {
+      // Belt-and-suspenders: prove the kept-literal value never executes. We build
+      // the same literal env Codex would inject and confirm no command ran.
+      const servers: Record<string, McpServerEntry> = {
+        srv: {
+          type: "stdio",
+          command: "printenv",
+          args: ["EVIL"],
+          env: { EVIL: "${X:-$(echo INJECTED >&2)}" },
+        },
+      };
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      let result: Record<string, any>;
+      try {
+        result = adapter.translateMcpServersByShort(servers);
+      } finally {
+        warn.mockRestore();
+      }
+      // No shim was produced, so there is no `sh -c` wrapper to execute. Codex
+      // would set env EVIL to the literal string and run `printenv EVIL`; emulate
+      // that and confirm the literal is echoed verbatim (no INJECTED on stderr).
+      const out = execFileSync("printenv", ["EVIL"], {
+        env: { ...process.env, EVIL: result.srv.env.EVIL as string },
+        encoding: "utf-8",
+      });
+      expect(out.trim()).toBe("${X:-$(echo INJECTED >&2)}");
+    });
+
     it("translates remote servers to a url-based entry", () => {
       const servers: Record<string, McpServerEntry> = {
         remote: {
