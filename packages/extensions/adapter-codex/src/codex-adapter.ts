@@ -707,18 +707,23 @@ export class CodexAdapter implements AgentAdapter {
       }
 
       const out: Record<string, unknown> = {};
-      if (rebindings.length > 0) {
+      if (rebindings.length > 0 && server.command) {
         // Wrap the real launch so the rebindings apply in the sub-shell right
         // before `exec` replaces it with the MCP binary. Forwarded source vars
         // arrive via env_vars and literal entries via the env table; both
         // survive `exec` into the real process. The original command/args are
         // single-quoted so the shell treats them as literal words.
-        const original = [server.command ?? "", ...(server.args ?? [])]
+        const original = [server.command, ...(server.args ?? [])]
           .map((part) => this.shSingleQuote(part))
           .join(" ");
         out.command = "sh";
         out.args = ["-c", `${rebindings.join(" ")} exec ${original}`];
       } else {
+        // No command to wrap (malformed stdio entry — `command` is required by
+        // schema): skip the shim entirely so we never emit `exec ''`. The
+        // renamed/partial refs that produced `rebindings` are dropped here, but a
+        // command-less stdio server can't launch anyway.
+        if (rebindings.length > 0) this.warnRebindWithoutCommand(name, rebindings);
         out.command = server.command;
         if (server.args && server.args.length > 0) out.args = server.args;
       }
@@ -766,6 +771,17 @@ export class CodexAdapter implements AgentAdapter {
     // global in Codex — see `collectOAuthCallbackUrl` / `mcp_oauth_callback_url`.
     if (server.oauth?.clientId) {
       out.oauth = { client_id: server.oauth.clientId };
+    }
+    // Codex's per-server oauth table accepts only `client_id` (and the global
+    // callback URL); it has no slot for scopes, a confidential client secret, or
+    // an explicit auth-server metadata URL. Warn rather than silently dropping
+    // these so an author relying on them isn't left with a quietly broken flow.
+    if (server.oauth) {
+      const unmappable: string[] = [];
+      if (server.oauth.scopes && server.oauth.scopes.length > 0) unmappable.push("scopes");
+      if (server.oauth.clientSecret) unmappable.push("clientSecret");
+      if (server.oauth.authServerMetadataUrl) unmappable.push("authServerMetadataUrl");
+      if (unmappable.length > 0) this.warnUnmappableOAuthFields(name, unmappable);
     }
     return out;
   }
@@ -844,16 +860,6 @@ export class CodexAdapter implements AgentAdapter {
   }
 
   /**
-   * Warn that a *partial* header value embeds a `${VAR}` reference Codex can't
-   * express. Whole-value header refs forward via `env_http_headers`, and an
-   * `Authorization: Bearer ${VAR}` value maps to `bearer_token_env_var`. Any
-   * other partial header value (e.g. `X-Key = "v1-${TOKEN}"`) has no Codex
-   * equivalent — remote servers have no launch process to wrap in a shell shim —
-   * so it is written to `.codex/config.toml` literally and Codex injects the
-   * literal `${…}` string at runtime. (Stdio `env` refs never reach here:
-   * renamed/partial env values are rebound via a `sh -c` shim instead.)
-   */
-  /**
    * Warn that a stdio `env` value can't be safely rebound via the `sh -c` shim:
    * the env *name* or a `${VAR}` reference inside the value is not a plain POSIX
    * variable name, so it carries shell syntax (e.g. `${X:-$(cmd)}`) the sub-shell
@@ -872,6 +878,47 @@ export class CodexAdapter implements AgentAdapter {
     );
   }
 
+  /**
+   * Warn that a stdio server declared renamed/partial env refs (which need a
+   * `sh -c` rebind shim) but has no `command` to wrap, so the shim was skipped
+   * to avoid emitting `exec ''`. A command-less stdio server is malformed
+   * (`command` is required by schema) and can't launch regardless.
+   */
+  private warnRebindWithoutCommand(serverName: string, rebindings: string[]): void {
+    console.warn(
+      `[air-adapter-codex] MCP server "${serverName}" has env references needing a ` +
+        `launch shim (${rebindings.join(", ")}) but no command to wrap. The shim was ` +
+        `skipped; set a command so the references can be rebound at launch.`
+    );
+  }
+
+  /**
+   * Warn that OAuth fields with no Codex per-server config slot were dropped.
+   * Codex's `[mcp_servers.<id>.oauth]` table accepts only `client_id` (plus the
+   * global `mcp_oauth_callback_url`), so `scopes`, `clientSecret`, and
+   * `authServerMetadataUrl` cannot be expressed. Surface them rather than letting
+   * an author's auth flow break silently.
+   */
+  private warnUnmappableOAuthFields(serverName: string, fields: string[]): void {
+    console.warn(
+      `[air-adapter-codex] MCP server "${serverName}" oauth.${fields.join(", oauth.")} ` +
+        `${fields.length === 1 ? "has" : "have"} no Codex equivalent and ` +
+        `${fields.length === 1 ? "was" : "were"} dropped. Codex's per-server oauth ` +
+        `config accepts only client_id (and the global mcp_oauth_callback_url). If ` +
+        `the provider requires these, configure them in Codex directly.`
+    );
+  }
+
+  /**
+   * Warn that a *partial* header value embeds a `${VAR}` reference Codex can't
+   * express. Whole-value header refs forward via `env_http_headers`, and an
+   * `Authorization: Bearer ${VAR}` value maps to `bearer_token_env_var`. Any
+   * other partial header value (e.g. `X-Key = "v1-${TOKEN}"`) has no Codex
+   * equivalent — remote servers have no launch process to wrap in a shell shim —
+   * so it is written to `.codex/config.toml` literally and Codex injects the
+   * literal `${…}` string at runtime. (Stdio `env` refs never reach here:
+   * renamed/partial env values are rebound via a `sh -c` shim instead.)
+   */
   private warnUnforwardableSecret(serverName: string, field: string, value: string): void {
     console.warn(
       `[air-adapter-codex] MCP server "${serverName}" ${field} = "${value}" embeds a ` +

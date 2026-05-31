@@ -233,6 +233,47 @@ describe("CodexAdapter", () => {
       }
     });
 
+    it("rebinds multiple refs in one value, forwarding each source var once", () => {
+      const servers: Record<string, McpServerEntry> = {
+        srv: {
+          type: "stdio",
+          command: "run",
+          env: { COMPOUND: "${A}-${B}-${A}" },
+        },
+      };
+
+      const result = adapter.translateMcpServersByShort(servers);
+      expect(result.srv.command).toBe("sh");
+      expect(result.srv.args).toEqual([
+        "-c",
+        `COMPOUND="\${A}-\${B}-\${A}" exec 'run'`,
+      ]);
+      // Each source var forwarded once, in first-seen order, no duplicate of A.
+      expect(result.srv.env_vars).toEqual(["A", "B"]);
+    });
+
+    it("skips the shim (and warns) when a renamed ref has no command to wrap", () => {
+      // A stdio server with env refs but no command is malformed (command is
+      // schema-required). Skip the shim so we never emit `exec ''`.
+      const servers: Record<string, McpServerEntry> = {
+        srv: {
+          type: "stdio",
+          env: { DEST: "${SRC}" },
+        } as McpServerEntry,
+      };
+
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        const result = adapter.translateMcpServersByShort(servers);
+        expect(result.srv.command).toBeUndefined();
+        // No `sh -c ... exec ''` was produced.
+        expect(result.srv.args).toBeUndefined();
+        expect(warn).toHaveBeenCalledTimes(1);
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
     it("does NOT shim a ${VAR} reference carrying shell syntax — keeps it literal + warns", () => {
       // The `${...}` capture is permissive, so a value like `${X:-$(cmd)}` would
       // smuggle shell default-value/command-substitution syntax into the rebind
@@ -386,6 +427,61 @@ describe("CodexAdapter", () => {
 
       const result = adapter.translateMcpServersByShort(servers);
       expect(result.remote.oauth).toBeUndefined();
+    });
+
+    it("warns when oauth fields without a Codex slot are dropped", () => {
+      // Codex's per-server oauth table accepts only client_id, so scopes,
+      // clientSecret, and authServerMetadataUrl have nowhere to go. They must
+      // surface a warning rather than vanishing silently.
+      const servers: Record<string, McpServerEntry> = {
+        remote: {
+          type: "streamable-http",
+          url: "https://mcp.example.com/api",
+          oauth: {
+            clientId: "air-registered-client",
+            scopes: ["read", "write"],
+            clientSecret: "${OAUTH_SECRET}",
+            authServerMetadataUrl: "https://auth.example.com/.well-known/openid-configuration",
+          },
+        },
+      };
+
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        const result = adapter.translateMcpServersByShort(servers);
+        // client_id still emitted; the unmappable fields are not.
+        expect(result.remote.oauth).toEqual({ client_id: "air-registered-client" });
+        expect(warn).toHaveBeenCalledTimes(1);
+        const msg = warn.mock.calls[0][0] as string;
+        expect(msg).toContain("oauth.scopes");
+        expect(msg).toContain("oauth.clientSecret");
+        expect(msg).toContain("oauth.authServerMetadataUrl");
+        // The secret VALUE must never appear in a warning (or anywhere on disk).
+        expect(msg).not.toContain("OAUTH_SECRET");
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it("does not warn when only mappable oauth fields are present", () => {
+      const servers: Record<string, McpServerEntry> = {
+        remote: {
+          type: "streamable-http",
+          url: "https://mcp.example.com/api",
+          oauth: {
+            clientId: "air-registered-client",
+            redirectUri: "https://cb.example.com/callback",
+          },
+        },
+      };
+
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        adapter.translateMcpServersByShort(servers);
+        expect(warn).not.toHaveBeenCalled();
+      } finally {
+        warn.mockRestore();
+      }
     });
   });
 

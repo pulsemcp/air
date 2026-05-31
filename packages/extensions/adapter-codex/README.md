@@ -88,6 +88,7 @@ Codex's config is TOML, which is outside AIR's JSON-based transform/validation p
 
 - `oauth.clientId` → per-server `[mcp_servers.<name>.oauth]` `client_id`. Emitting an explicit `client_id` bypasses OAuth dynamic client registration (RFC 7591), which some providers reject.
 - `oauth.redirectUri` → the single top-level `mcp_oauth_callback_url`. Codex has no per-server redirect URI, so if multiple servers declare distinct URIs the adapter keeps the first and warns.
+- `oauth.scopes`, `oauth.clientSecret`, and `oauth.authServerMetadataUrl` have no Codex per-server config slot (the `oauth` table accepts only `client_id`), so they are dropped with a warning rather than silently.
 
 ## Known gaps
 
