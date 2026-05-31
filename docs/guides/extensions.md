@@ -85,13 +85,14 @@ The `@pulsemcp/air-adapter-codex` adapter targets the [OpenAI Codex CLI](https:/
 
 - Writes MCP servers into `[mcp_servers.<name>]` tables in `.codex/config.toml` (stripping `title`/`description`)
 - Models remote servers as a `url`-based entry — Codex auto-detects `sse` vs. `streamable-http` from the URL
-- Maps secret references to Codex's native host-env forwarding instead of writing `${VAR}` placeholders: a `${VAR}` env value whose key matches `VAR` becomes `env_vars = ["VAR"]`, and a `${VAR}` header becomes an `env_http_headers` entry (see [Secrets](#secrets-and-codex) below)
+- Maps secret references to Codex-native mechanisms instead of writing `${VAR}` placeholders, so only variable *names* land in the TOML: same-named env refs become `env_vars`, renamed/partial env refs become a `sh -c` rebind shim, whole-value headers become `env_http_headers`, and `Authorization: Bearer ${VAR}` becomes `bearer_token_env_var` (see [Secrets](#secrets-and-codex) below)
+- Maps OAuth config — `oauth.clientId` to a per-server `[mcp_servers.<name>.oauth]` `client_id`, and `oauth.redirectUri` to the single global top-level `mcp_oauth_callback_url`
 - Copies skills into `.agents/skills/{skill-id}/` (where Codex discovers them) and references into `{skill-id}/references/`
 - Copies hooks into `.codex/hooks/{hook-id}/` and registers them under `[[hooks.<Event>]]` in `config.toml`, anchoring hook-relative commands to the repo root
 - Preserves user-authored servers, hooks, and top-level config keys — only AIR-owned entries are replaced
 - Does not overwrite skills or hooks that already exist locally
 
-Because Codex's config is TOML (outside AIR's JSON transform pipeline), the adapter returns an empty `configFiles` array and resolves secrets to host-env forwarding at translation time rather than relying on transforms.
+Because Codex's config is TOML (outside AIR's JSON transform pipeline), the adapter returns an empty `configFiles` array and resolves secrets to Codex-native mechanisms at translation time rather than relying on transforms.
 
 AIR hook events map to Codex lifecycle events as follows:
 
@@ -105,18 +106,26 @@ AIR hook events map to Codex lifecycle events as follows:
 
 AIR events without a Codex equivalent are skipped with a warning. PascalCase Codex event names are also accepted directly.
 
-Some AIR features have no static Codex equivalent: OAuth MCP servers use Codex's interactive `codex mcp login`, plugins are expanded into their underlying primitives (Codex installs marketplace plugins remotely), and subagent context is returned via `PreparedSession.subagentContext` since Codex has no `--append-system-prompt`.
+Some AIR features have no static Codex equivalent: plugins are expanded into their underlying primitives (Codex installs marketplace plugins remotely), and subagent context is returned via `PreparedSession.subagentContext` since Codex has no `--append-system-prompt`.
 
 #### Secrets and Codex
 
+The adapter keeps secret *values* off disk — only variable *names* are written to `config.toml`.
+
 | AIR config | Codex `config.toml` |
 |------------|---------------------|
-| `env: { GITHUB_TOKEN: "${GITHUB_TOKEN}" }` | `env_vars = ["GITHUB_TOKEN"]` |
-| `env: { TOKEN: "${GITHUB_TOKEN}" }` (renamed) | written literally to the `env` table + a `console.warn` (see below) |
-| `headers: { Authorization: "${API_TOKEN}" }` | `env_http_headers = { Authorization = "API_TOKEN" }` |
-| `headers: { Authorization: "Bearer ${API_TOKEN}" }` (partial) | written literally to `http_headers` + a `console.warn` (see below) |
+| `env: { GITHUB_TOKEN: "${GITHUB_TOKEN}" }` (whole-value, same name) | `env_vars = ["GITHUB_TOKEN"]` |
+| `env: { TOKEN: "${GITHUB_TOKEN}" }` (renamed) | `command = "sh"`, `args = ["-c", "TOKEN=\"${GITHUB_TOKEN}\" exec <orig>"]`, `env_vars = ["GITHUB_TOKEN"]` |
+| `env: { AUTH: "Bearer ${TOKEN}" }` (partial) | `command = "sh"`, `args = ["-c", "AUTH=\"Bearer ${TOKEN}\" exec <orig>"]`, `env_vars = ["TOKEN"]` |
+| `headers: { Authorization: "${API_TOKEN}" }` (whole-value, renamed or not) | `env_http_headers = { Authorization = "API_TOKEN" }` |
+| `headers: { Authorization: "Bearer ${API_TOKEN}" }` | `bearer_token_env_var = "API_TOKEN"` |
+| `headers: { "X-Api-Key": "v1-${TOKEN}" }` (non-Bearer partial) | written literally to `http_headers` + a `console.warn` (see below) |
+| `oauth: { clientId: "abc" }` | per-server `[mcp_servers.<name>.oauth]` `client_id = "abc"` |
+| `oauth: { redirectUri: "https://…" }` | single global top-level `mcp_oauth_callback_url = "https://…"` |
 
-Codex's host-env forwarding only expresses **whole-value, same-named** refs (`env_vars` forwards a host var to an env key of the same name; `env_http_headers` forwards a host var as a whole header value). A renamed or partial ref can't be expressed either way, so it falls through to the literal table. Because the Codex adapter returns an empty `configFiles` array, its TOML never passes through the `${VAR}` transform/validation pipeline — so the adapter emits a `console.warn` for each unforwardable ref rather than silently writing a literal `${…}` that Codex would inject verbatim at runtime. Rewrite those as whole-value, same-named refs (or set the value directly).
+For stdio servers, same-named refs forward natively via `env_vars`, while **renamed** (`KEY = "${OTHER}"`) and **partial** (`"Bearer ${TOKEN}"`) refs — which Codex's `env_vars` can't express — are rebound inside a `sh -c` shim that sets the key from the forwarded source var(s) right before `exec` hands off to the real MCP binary. For remote servers, whole-value header refs forward via `env_http_headers` (Codex maps a header to a host var of any name) and `Authorization: Bearer ${VAR}` maps to `bearer_token_env_var`. Only a **non-Bearer partial header** has no Codex expression — remote servers have no launch process to wrap in a shell shim — so it falls through to the literal `http_headers` table, and since the TOML never passes through the `${VAR}` transform/validation pipeline the adapter emits a `console.warn` rather than silently writing a literal `${…}` that Codex would inject verbatim. Rewrite those as a whole-value ref (or set the value directly).
+
+For OAuth, AIR's `oauth.clientId` becomes the per-server `client_id` — emitting it explicitly bypasses OAuth dynamic client registration (RFC 7591), which some providers reject. Codex exposes only a single global `mcp_oauth_callback_url`, so if multiple servers declare distinct `redirectUri`s the adapter keeps the first and warns. Codex's per-server `oauth` table accepts only `client_id`, so `oauth.scopes`, `oauth.clientSecret`, and `oauth.authServerMetadataUrl` have no Codex slot and are dropped with a warning.
 
 ### Cursor adapter specifics
 

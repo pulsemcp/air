@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "fs";
+import { execFileSync } from "child_process";
 import { resolve, join } from "path";
 import { tmpdir } from "os";
 import { parse as parseToml } from "smol-toml";
@@ -75,7 +76,7 @@ describe("CodexAdapter", () => {
       expect(result.github.env).toBeUndefined();
     });
 
-    it("keeps a renamed ${VAR} env reference in the env table and warns", () => {
+    it("rebinds a renamed ${VAR} env reference via a sh -c shim and forwards the source var", () => {
       const servers: Record<string, McpServerEntry> = {
         github: {
           type: "stdio",
@@ -87,21 +88,52 @@ describe("CodexAdapter", () => {
       const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
       try {
         const result = adapter.translateMcpServersByShort(servers);
-        // Codex's env_vars can only forward same-named host vars, so a rename
-        // stays in the literal env table — and we warn that Codex will inject
-        // the literal "${...}" string rather than resolve it.
-        expect(result.github.env).toEqual({ TOKEN: "${GITHUB_TOKEN}" });
-        expect(result.github.env_vars).toBeUndefined();
-        expect(warn).toHaveBeenCalledTimes(1);
-        expect(warn.mock.calls[0][0]).toMatch(/cannot forward natively/);
-        expect(warn.mock.calls[0][0]).toContain("github");
-        expect(warn.mock.calls[0][0]).toContain("${GITHUB_TOKEN}");
+        // Codex's env_vars can only forward same-named host vars, so a rename is
+        // expressed as a sh -c shim that rebinds TOKEN from the forwarded
+        // GITHUB_TOKEN right before exec — keeping the secret value off disk.
+        expect(result.github.command).toBe("sh");
+        expect(result.github.args).toEqual([
+          "-c",
+          `TOKEN="\${GITHUB_TOKEN}" exec 'npx'`,
+        ]);
+        expect(result.github.env_vars).toEqual(["GITHUB_TOKEN"]);
+        expect(result.github.env).toBeUndefined();
+        // No warning — the rename now forwards correctly.
+        expect(warn).not.toHaveBeenCalled();
       } finally {
         warn.mockRestore();
       }
     });
 
-    it("keeps a partial ${VAR} header in http_headers and warns", () => {
+    it("rebinds a partial Bearer-style ${VAR} env value via a sh -c shim", () => {
+      const servers: Record<string, McpServerEntry> = {
+        srv: {
+          type: "stdio",
+          command: "run",
+          args: ["--serve"],
+          env: { AUTH: "Bearer ${TOKEN}" },
+        },
+      };
+
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        const result = adapter.translateMcpServersByShort(servers);
+        // The secret is embedded in a larger string, so the shim templates the
+        // value as a shell double-quoted string and forwards the source var.
+        expect(result.srv.command).toBe("sh");
+        expect(result.srv.args).toEqual([
+          "-c",
+          `AUTH="Bearer \${TOKEN}" exec 'run' '--serve'`,
+        ]);
+        expect(result.srv.env_vars).toEqual(["TOKEN"]);
+        expect(result.srv.env).toBeUndefined();
+        expect(warn).not.toHaveBeenCalled();
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it("maps an Authorization: Bearer ${VAR} header to bearer_token_env_var", () => {
       const servers: Record<string, McpServerEntry> = {
         remote: {
           type: "streamable-http",
@@ -113,15 +145,38 @@ describe("CodexAdapter", () => {
       const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
       try {
         const result = adapter.translateMcpServersByShort(servers);
-        // A partial value can't be expressed via env_http_headers (whole-value
-        // only), so it lands literally in http_headers — with a warning.
-        expect(result.remote.http_headers).toEqual({
-          Authorization: "Bearer ${API_TOKEN}",
-        });
+        // Codex emits the Authorization header itself from the env var, so it is
+        // not also written literally to http_headers.
+        expect(result.remote.bearer_token_env_var).toBe("API_TOKEN");
+        expect(result.remote.http_headers).toBeUndefined();
         expect(result.remote.env_http_headers).toBeUndefined();
+        expect(warn).not.toHaveBeenCalled();
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it("warns and keeps a non-Bearer partial header literal (no Codex expression)", () => {
+      const servers: Record<string, McpServerEntry> = {
+        remote: {
+          type: "streamable-http",
+          url: "https://mcp.example.com/api",
+          headers: { "X-Api-Key": "key-${SECRET}" },
+        },
+      };
+
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        const result = adapter.translateMcpServersByShort(servers);
+        // A remote server has no launch process to wrap, and env_http_headers /
+        // bearer_token_env_var can't express an arbitrary partial header — so it
+        // stays literal and warns.
+        expect(result.remote.http_headers).toEqual({ "X-Api-Key": "key-${SECRET}" });
+        expect(result.remote.env_http_headers).toBeUndefined();
+        expect(result.remote.bearer_token_env_var).toBeUndefined();
         expect(warn).toHaveBeenCalledTimes(1);
-        expect(warn.mock.calls[0][0]).toMatch(/cannot forward natively/);
         expect(warn.mock.calls[0][0]).toContain("remote");
+        expect(warn.mock.calls[0][0]).toContain("${SECRET}");
       } finally {
         warn.mockRestore();
       }
@@ -146,7 +201,7 @@ describe("CodexAdapter", () => {
       }
     });
 
-    it("splits mixed env into env_vars + env table", () => {
+    it("splits mixed env into env_vars + a sh -c shim + a literal env table", () => {
       const servers: Record<string, McpServerEntry> = {
         srv: {
           type: "stdio",
@@ -162,14 +217,141 @@ describe("CodexAdapter", () => {
       const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
       try {
         const result = adapter.translateMcpServersByShort(servers);
-        expect(result.srv.env_vars).toEqual(["API_KEY"]);
-        expect(result.srv.env).toEqual({ LOG_LEVEL: "debug", RENAMED: "${OTHER}" });
-        // Only the renamed ref is unforwardable; the literal LOG_LEVEL is not.
-        expect(warn).toHaveBeenCalledTimes(1);
-        expect(warn.mock.calls[0][0]).toContain("RENAMED");
+        // Same-named ref forwards natively; the renamed ref is rebound in a shim
+        // (forwarding OTHER); the literal stays in the env table.
+        expect(result.srv.command).toBe("sh");
+        expect(result.srv.args).toEqual([
+          "-c",
+          `RENAMED="\${OTHER}" exec 'run'`,
+        ]);
+        expect(result.srv.env_vars).toEqual(["API_KEY", "OTHER"]);
+        expect(result.srv.env).toEqual({ LOG_LEVEL: "debug" });
+        // Everything forwards now — no warning.
+        expect(warn).not.toHaveBeenCalled();
       } finally {
         warn.mockRestore();
       }
+    });
+
+    it("rebinds multiple refs in one value, forwarding each source var once", () => {
+      const servers: Record<string, McpServerEntry> = {
+        srv: {
+          type: "stdio",
+          command: "run",
+          env: { COMPOUND: "${A}-${B}-${A}" },
+        },
+      };
+
+      const result = adapter.translateMcpServersByShort(servers);
+      expect(result.srv.command).toBe("sh");
+      expect(result.srv.args).toEqual([
+        "-c",
+        `COMPOUND="\${A}-\${B}-\${A}" exec 'run'`,
+      ]);
+      // Each source var forwarded once, in first-seen order, no duplicate of A.
+      expect(result.srv.env_vars).toEqual(["A", "B"]);
+    });
+
+    it("skips the shim (and warns) when a renamed ref has no command to wrap", () => {
+      // A stdio server with env refs but no command is malformed (command is
+      // schema-required). Skip the shim so we never emit `exec ''`.
+      const servers: Record<string, McpServerEntry> = {
+        srv: {
+          type: "stdio",
+          env: { DEST: "${SRC}" },
+        } as McpServerEntry,
+      };
+
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        const result = adapter.translateMcpServersByShort(servers);
+        expect(result.srv.command).toBeUndefined();
+        // No `sh -c ... exec ''` was produced.
+        expect(result.srv.args).toBeUndefined();
+        expect(warn).toHaveBeenCalledTimes(1);
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it("does NOT shim a ${VAR} reference carrying shell syntax — keeps it literal + warns", () => {
+      // The `${...}` capture is permissive, so a value like `${X:-$(cmd)}` would
+      // smuggle shell default-value/command-substitution syntax into the rebind
+      // shim and the sub-shell would execute it. Such values must never reach the
+      // shell: keep the command real, the value literal, and warn.
+      const servers: Record<string, McpServerEntry> = {
+        srv: {
+          type: "stdio",
+          command: "run",
+          env: { EVIL: "${X:-$(touch /tmp/pwned)}" },
+        },
+      };
+
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        const result = adapter.translateMcpServersByShort(servers);
+        // No shim — the real command is preserved unchanged.
+        expect(result.srv.command).toBe("run");
+        expect(result.srv.args).toBeUndefined();
+        expect(result.srv.env_vars).toBeUndefined();
+        // The dangerous value is kept literal (Codex injects it verbatim).
+        expect(result.srv.env).toEqual({ EVIL: "${X:-$(touch /tmp/pwned)}" });
+        expect(warn).toHaveBeenCalledTimes(1);
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it("does NOT shim when the env KEY itself carries shell metacharacters", () => {
+      // The env name is interpolated on the assignment's left-hand side
+      // (`KEY=...`), so a key like `A;rm -rf /` would terminate the assignment and
+      // run a command. Reject it the same way.
+      const servers: Record<string, McpServerEntry> = {
+        srv: {
+          type: "stdio",
+          command: "run",
+          env: { "A;rm -rf /": "${TOKEN}" },
+        },
+      };
+
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        const result = adapter.translateMcpServersByShort(servers);
+        expect(result.srv.command).toBe("run");
+        expect(result.srv.env_vars).toBeUndefined();
+        expect(result.srv.env).toEqual({ "A;rm -rf /": "${TOKEN}" });
+        expect(warn).toHaveBeenCalledTimes(1);
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it("end-to-end: a shell-syntax value is inert when the (literal) env is applied", () => {
+      // Belt-and-suspenders: prove the kept-literal value never executes. We build
+      // the same literal env Codex would inject and confirm no command ran.
+      const servers: Record<string, McpServerEntry> = {
+        srv: {
+          type: "stdio",
+          command: "printenv",
+          args: ["EVIL"],
+          env: { EVIL: "${X:-$(echo INJECTED >&2)}" },
+        },
+      };
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      let result: Record<string, any>;
+      try {
+        result = adapter.translateMcpServersByShort(servers);
+      } finally {
+        warn.mockRestore();
+      }
+      // No shim was produced, so there is no `sh -c` wrapper to execute. Codex
+      // would set env EVIL to the literal string and run `printenv EVIL`; emulate
+      // that and confirm the literal is echoed verbatim (no INJECTED on stderr).
+      const out = execFileSync("printenv", ["EVIL"], {
+        env: { ...process.env, EVIL: result.srv.env.EVIL as string },
+        encoding: "utf-8",
+      });
+      expect(out.trim()).toBe("${X:-$(echo INJECTED >&2)}");
     });
 
     it("translates remote servers to a url-based entry", () => {
@@ -214,6 +396,141 @@ describe("CodexAdapter", () => {
 
       const result = adapter.translateMcpServersByShort(servers);
       expect(result.events).toEqual({ url: "https://mcp.example.com/sse" });
+    });
+
+    it("emits a per-server oauth.client_id for a remote server (redirectUri is global)", () => {
+      const servers: Record<string, McpServerEntry> = {
+        remote: {
+          type: "streamable-http",
+          url: "https://mcp.example.com/api",
+          oauth: {
+            clientId: "air-registered-client",
+            redirectUri: "https://cb.example.com/callback",
+          },
+        },
+      };
+
+      const result = adapter.translateMcpServersByShort(servers);
+      expect(result.remote.url).toBe("https://mcp.example.com/api");
+      // client_id is per-server; the redirect URI is global and not emitted here.
+      expect(result.remote.oauth).toEqual({ client_id: "air-registered-client" });
+    });
+
+    it("omits the oauth table when no clientId is configured", () => {
+      const servers: Record<string, McpServerEntry> = {
+        remote: {
+          type: "streamable-http",
+          url: "https://mcp.example.com/api",
+          oauth: { redirectUri: "https://cb.example.com/callback" },
+        },
+      };
+
+      const result = adapter.translateMcpServersByShort(servers);
+      expect(result.remote.oauth).toBeUndefined();
+    });
+
+    it("warns when oauth fields without a Codex slot are dropped", () => {
+      // Codex's per-server oauth table accepts only client_id, so scopes,
+      // clientSecret, and authServerMetadataUrl have nowhere to go. They must
+      // surface a warning rather than vanishing silently.
+      const servers: Record<string, McpServerEntry> = {
+        remote: {
+          type: "streamable-http",
+          url: "https://mcp.example.com/api",
+          oauth: {
+            clientId: "air-registered-client",
+            scopes: ["read", "write"],
+            clientSecret: "${OAUTH_SECRET}",
+            authServerMetadataUrl: "https://auth.example.com/.well-known/openid-configuration",
+          },
+        },
+      };
+
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        const result = adapter.translateMcpServersByShort(servers);
+        // client_id still emitted; the unmappable fields are not.
+        expect(result.remote.oauth).toEqual({ client_id: "air-registered-client" });
+        expect(warn).toHaveBeenCalledTimes(1);
+        const msg = warn.mock.calls[0][0] as string;
+        expect(msg).toContain("oauth.scopes");
+        expect(msg).toContain("oauth.clientSecret");
+        expect(msg).toContain("oauth.authServerMetadataUrl");
+        // The secret VALUE must never appear in a warning (or anywhere on disk).
+        expect(msg).not.toContain("OAUTH_SECRET");
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it("does not warn when only mappable oauth fields are present", () => {
+      const servers: Record<string, McpServerEntry> = {
+        remote: {
+          type: "streamable-http",
+          url: "https://mcp.example.com/api",
+          oauth: {
+            clientId: "air-registered-client",
+            redirectUri: "https://cb.example.com/callback",
+          },
+        },
+      };
+
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        adapter.translateMcpServersByShort(servers);
+        expect(warn).not.toHaveBeenCalled();
+      } finally {
+        warn.mockRestore();
+      }
+    });
+  });
+
+  // Runtime proof that the sh -c shim actually rebinds the renamed/partial env
+  // var inside the spawned child — not just that the emitted TOML looks right.
+  describe("sh -c shim runtime behavior", () => {
+    it("rebinds a renamed env var so the child process sees the forwarded value", () => {
+      const servers: Record<string, McpServerEntry> = {
+        srv: {
+          type: "stdio",
+          command: "printenv",
+          args: ["DEST_KEY"],
+          env: { DEST_KEY: "${SRC_KEY}" },
+        },
+      };
+
+      const result = adapter.translateMcpServersByShort(servers);
+      expect(result.srv.command).toBe("sh");
+      expect(result.srv.env_vars).toEqual(["SRC_KEY"]);
+
+      // Codex would forward SRC_KEY from the host env into the sub-shell; we
+      // emulate that here and run the produced command verbatim.
+      const out = execFileSync(
+        result.srv.command as string,
+        result.srv.args as string[],
+        { env: { ...process.env, SRC_KEY: "s3cr3t-renamed" }, encoding: "utf-8" }
+      );
+      expect(out.trim()).toBe("s3cr3t-renamed");
+    });
+
+    it("rebinds a partial Bearer-style env value at runtime", () => {
+      const servers: Record<string, McpServerEntry> = {
+        srv: {
+          type: "stdio",
+          command: "printenv",
+          args: ["AUTH"],
+          env: { AUTH: "Bearer ${TOKEN}" },
+        },
+      };
+
+      const result = adapter.translateMcpServersByShort(servers);
+      expect(result.srv.env_vars).toEqual(["TOKEN"]);
+
+      const out = execFileSync(
+        result.srv.command as string,
+        result.srv.args as string[],
+        { env: { ...process.env, TOKEN: "abc123" }, encoding: "utf-8" }
+      );
+      expect(out.trim()).toBe("Bearer abc123");
     });
   });
 
@@ -363,6 +680,78 @@ describe("CodexAdapter", () => {
       expect(config.model).toBe("o3");
       expect(config.mcp_servers["user-mcp"].command).toBe("user-cmd");
       expect(config.mcp_servers["air-mcp"].command).toBe("air-cmd");
+    });
+
+    it("emits per-server oauth.client_id and a global mcp_oauth_callback_url", async () => {
+      const dir = createTempDir();
+      const artifacts = emptyArtifacts();
+      artifacts.mcp["@local/remote"] = {
+        type: "streamable-http",
+        url: "https://mcp.example.com/api",
+        oauth: {
+          clientId: "air-registered-client",
+          redirectUri: "https://cb.example.com/callback",
+        },
+      };
+
+      const root: RootEntry = {
+        description: "Test",
+        default_mcp_servers: ["remote"],
+      };
+
+      await adapter.prepareSession(artifacts, dir, { root });
+
+      const config = readConfig(dir);
+      expect(config.mcp_servers.remote.url).toBe("https://mcp.example.com/api");
+      expect(config.mcp_servers.remote.oauth).toEqual({
+        client_id: "air-registered-client",
+      });
+      // Codex has no per-server redirect URI — it lives at the top level.
+      expect(config.mcp_oauth_callback_url).toBe(
+        "https://cb.example.com/callback"
+      );
+    });
+
+    it("warns and keeps the first URI when servers declare distinct redirect URIs", async () => {
+      const dir = createTempDir();
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        const artifacts = emptyArtifacts();
+        artifacts.mcp["@local/alpha"] = {
+          type: "streamable-http",
+          url: "https://alpha.example.com/api",
+          oauth: {
+            clientId: "alpha-client",
+            redirectUri: "https://alpha.example.com/callback",
+          },
+        };
+        artifacts.mcp["@local/beta"] = {
+          type: "streamable-http",
+          url: "https://beta.example.com/api",
+          oauth: {
+            clientId: "beta-client",
+            redirectUri: "https://beta.example.com/callback",
+          },
+        };
+
+        const root: RootEntry = {
+          description: "Test",
+          default_mcp_servers: ["alpha", "beta"],
+        };
+
+        await adapter.prepareSession(artifacts, dir, { root });
+
+        const config = readConfig(dir);
+        // First-declared URI wins; the second is dropped with a warning.
+        expect(config.mcp_oauth_callback_url).toBe(
+          "https://alpha.example.com/callback"
+        );
+        expect(warn).toHaveBeenCalled();
+        const warned = warn.mock.calls.map((c) => String(c[0])).join("\n");
+        expect(warned).toContain("mcp_oauth_callback_url");
+      } finally {
+        warn.mockRestore();
+      }
     });
 
     it("injects skills into .agents/skills/", async () => {

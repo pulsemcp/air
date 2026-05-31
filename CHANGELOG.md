@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-05-31
+
+### Fixed
+- **`@pulsemcp/air-adapter-codex` — renamed and partial `${VAR}` secret references no longer ship a broken literal to `.codex/config.toml`.** Codex's TOML has no native string interpolation, so the adapter maps AIR `${VAR}` refs onto Codex's host-env forwarding (`env_vars` / `env_http_headers`), which can only express *whole-value, same-named* refs. Previously a renamed stdio env ref (`KEY = "${OTHER}"`) or a partial one (`AUTH = "Bearer ${TOKEN}"`) fell through to the literal `env` table with a `console.warn`, so Codex injected the literal `${…}` string at runtime and the secret broke. The adapter now wraps such launches in a `sh -c` shim that rebinds the key from the forwarded source var(s) right before `exec` hands off to the real MCP binary (`command = "sh"`, `args = ["-c", "KEY=\"…\" exec <orig>"]`), forwarding the source var(s) via `env_vars`. The value is templated as a shell double-quoted string (literal runs escaped, original command/args POSIX single-quoted) so only variable *names* — never values — land in the TOML. For remote-server headers, a `${VAR}` value of any name now forwards via `env_http_headers` (renames included), and `Authorization: "Bearer ${VAR}"` maps to Codex's native `bearer_token_env_var`; only a non-Bearer *partial* header (which has no Codex expression, since remote servers have no launch process to wrap) still falls through to a literal `http_headers` entry with a warning.
+
+### Added
+- **`@pulsemcp/air-adapter-codex` — OAuth MCP servers now emit `client_id` and a callback URL into `.codex/config.toml`.** Remote (SSE / streamable-HTTP) servers previously dropped AIR's OAuth config entirely, so Codex fell back to OAuth dynamic client registration (RFC 7591), which some providers reject. The adapter now maps `oauth.clientId` to Codex's per-server `[mcp_servers.<id>.oauth]` table (`client_id = "…"`) and collects every server's `oauth.redirectUri` into the single global top-level `mcp_oauth_callback_url` (Codex has no per-server redirect URI). When servers declare distinct redirect URIs the adapter keeps the first and warns, since Codex honors only one.
+
 ## [0.8.0] - 2026-05-29
 
 ### Added

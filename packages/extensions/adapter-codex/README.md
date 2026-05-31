@@ -54,10 +54,15 @@ const session = await adapter.prepareSession(artifacts, "./my-project", {
 |------------|--------------|
 | `mcp.json` (flat map with `type`, `title`, `description`) | `[mcp_servers.<name>]` tables in `.codex/config.toml` (metadata stripped) |
 | `stdio` servers | `{ command, args, env, env_vars }` |
-| `sse` / `streamable-http` servers | `{ url, http_headers, env_http_headers }` (Codex auto-detects transport from the URL) |
+| `sse` / `streamable-http` servers | `{ url, http_headers, env_http_headers, bearer_token_env_var, oauth }` (Codex auto-detects transport from the URL) |
 | MCP `env` value `${VAR}` where key == `VAR` | `env_vars = ["VAR"]` (host env forwarding) |
-| MCP `env` value `${OTHER}` (renamed) or literal | left in the `env` table |
-| Header value `${VAR}` | `env_http_headers = { Header = "VAR" }` |
+| MCP `env` value `${OTHER}` (renamed) or `"Bearer ${TOKEN}"` (partial) | `sh -c` rebind shim (`command = "sh"`, source forwarded via `env_vars`) |
+| MCP `env` literal value | left in the `env` table |
+| Header value `${VAR}` (whole-value, renamed or not) | `env_http_headers = { Header = "VAR" }` |
+| Header `Authorization: "Bearer ${VAR}"` | `bearer_token_env_var = "VAR"` |
+| Non-Bearer partial header (`"v1-${TOKEN}"`) | left literal in `http_headers` + `console.warn` |
+| MCP `oauth.clientId` | per-server `[mcp_servers.<name>.oauth]` `client_id` |
+| MCP `oauth.redirectUri` | single top-level `mcp_oauth_callback_url` (global) |
 | Skills (`SKILL.md` + content) | `.agents/skills/{name}/` |
 | Hooks (`HOOK.json` + scripts) | `.codex/hooks/{name}/` + `[[hooks.<Event>]]` registration |
 | Hook events `session_start`, `pre_tool_call`, `post_tool_call`, `user_prompt_submit`, `stop` | Codex `SessionStart`, `PreToolUse`, `PostToolUse`, `UserPromptSubmit`, `Stop` |
@@ -65,19 +70,29 @@ const session = await adapter.prepareSession(artifacts, "./my-project", {
 
 ## Secrets
 
-Codex's config is TOML, which is outside AIR's JSON-based transform/validation pipeline. Instead of writing `${VAR}` placeholders, the adapter maps secret references to Codex's **native host-env forwarding** at translation time:
+Codex's config is TOML, which is outside AIR's JSON-based transform/validation pipeline. Instead of writing `${VAR}` placeholders, the adapter maps secret references to Codex-native mechanisms at translation time so only variable *names* — never values — land in `config.toml`. As a result, `prepareSession()` returns an **empty `configFiles` array** — there is no JSON config for secret transforms to post-process.
 
-- `env: { GITHUB_TOKEN: "${GITHUB_TOKEN}" }` → `env_vars = ["GITHUB_TOKEN"]` — Codex injects the host's `GITHUB_TOKEN` at launch.
-- `headers: { Authorization: "${API_TOKEN}" }` → `env_http_headers = { Authorization = "API_TOKEN" }`.
+**stdio `env`:**
 
-As a result, `prepareSession()` returns an **empty `configFiles` array** — there is no JSON config for secret transforms to post-process.
+- `env: { GITHUB_TOKEN: "${GITHUB_TOKEN}" }` (whole-value, same name) → `env_vars = ["GITHUB_TOKEN"]` — Codex injects the host's `GITHUB_TOKEN` at launch.
+- `env: { TOKEN: "${GITHUB_TOKEN}" }` (renamed) or `env: { AUTH: "Bearer ${TOKEN}" }` (partial) → Codex's `env_vars` can express neither, so the launch is wrapped in a `sh -c` shim that rebinds the key from the forwarded source var right before `exec`: `command = "sh"`, `args = ["-c", "AUTH=\"Bearer ${TOKEN}\" exec <orig command/args>"]`, with the source forwarded via `env_vars = ["TOKEN"]`. The secret value never touches disk — only the variable name does.
+- A literal value (no `${…}`) stays in the `[mcp_servers.<name>.env]` table.
 
-**Limitation — only whole-value, same-named refs forward.** Codex's `env_vars` forwards a host var to an env key of the *same name*, and `env_http_headers` forwards a host var as a *whole* header value. A renamed ref (`KEY = "${OTHER}"`) or a partial value (`"Bearer ${TOKEN}"`) can't be expressed either way, so it falls through to the literal `env` / `http_headers` table. Because the TOML never passes through AIR's `${VAR}` transform pipeline, Codex would inject the literal `${…}` string at runtime — so the adapter emits a `console.warn` for each such value instead of silently shipping a broken secret. Rewrite these as whole-value, same-named refs (or set the value directly).
+**remote-server headers:**
+
+- `headers: { Authorization: "${API_TOKEN}" }` (whole-value, renamed or not) → `env_http_headers = { Authorization = "API_TOKEN" }`.
+- `headers: { Authorization: "Bearer ${API_TOKEN}" }` → `bearer_token_env_var = "API_TOKEN"` (Codex emits the `Authorization` header itself).
+- A non-Bearer *partial* header (`X-Api-Key = "v1-${TOKEN}"`) has no Codex expression — remote servers have no launch process to wrap in a shell shim — so it stays literal in `http_headers` and the adapter emits a `console.warn`. Rewrite these as a whole-value ref (or set the value directly).
+
+**OAuth (remote servers):**
+
+- `oauth.clientId` → per-server `[mcp_servers.<name>.oauth]` `client_id`. Emitting an explicit `client_id` bypasses OAuth dynamic client registration (RFC 7591), which some providers reject.
+- `oauth.redirectUri` → the single top-level `mcp_oauth_callback_url`. Codex has no per-server redirect URI, so if multiple servers declare distinct URIs the adapter keeps the first and warns.
+- `oauth.scopes`, `oauth.clientSecret`, and `oauth.authServerMetadataUrl` have no Codex per-server config slot (the `oauth` table accepts only `client_id`), so they are dropped with a warning rather than silently.
 
 ## Known gaps
 
 These AIR features have no static Codex equivalent and are handled out of band:
 
-- **OAuth MCP servers** — AIR's detailed OAuth config (`clientId`/`scopes`/`redirectUri`/…) has no static `config.toml` form. Codex performs interactive OAuth via `codex mcp login <name>`.
 - **Plugins** — Codex's marketplace plugins are remote-installed (`codex plugin add`). AIR treats plugins as composition sugar: a plugin's declared MCP servers / skills / hooks are expanded into the activation set and materialized as their underlying Codex-native artifacts.
 - **Subagent context** — Codex has no `--append-system-prompt` flag, so subagent-root context is returned to the caller via `PreparedSession.subagentContext` rather than passed to the CLI.
