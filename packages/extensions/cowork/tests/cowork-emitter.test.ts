@@ -838,8 +838,14 @@ describe("CoworkEmitter", () => {
         )
       ).toThrow(/no Claude Co-work equivalent/);
 
-      // No partial/broken hook output should remain.
+      // Emission is atomic: a doomed plugin is validated before any disk write,
+      // so nothing is left behind — not the hooks.json, and not the manifest
+      // (which would otherwise be a broken-but-present plugin dir).
       expect(existsSync(join(pluginDir, "hooks", "hooks.json"))).toBe(false);
+      expect(existsSync(join(pluginDir, ".claude-plugin", "plugin.json"))).toBe(
+        false
+      );
+      expect(existsSync(pluginDir)).toBe(false);
     });
 
     it("writes .mcp.json with translated servers", () => {

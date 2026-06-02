@@ -113,19 +113,35 @@ export class CoworkEmitter implements PluginEmitter {
     plugin: PluginEntry,
     outputDir: string
   ): BuiltPlugin {
+    const manifest = this.buildManifest(shortId, plugin);
+
+    const skillActs = this.shortenChildIds(plugin.skills ?? []);
+    const hookActs = this.shortenChildIds(plugin.hooks ?? []);
+    const mcpActs = this.shortenChildIds(plugin.mcp_servers ?? []);
+
+    // Validate hooks BEFORE writing anything to disk. buildHooksConfig fails
+    // loud on any hook it can't fully materialize, so resolving it up front
+    // means a doomed plugin throws before a partial dir lands on disk —
+    // per-plugin emission is atomic and never leaves a broken-but-present dir
+    // (e.g. a plugin.json with no hooks/hooks.json) that looks successful.
+    const hooksConfig: { hooks: Record<string, unknown[]> } =
+      hookActs.length > 0
+        ? this.buildHooksConfig(artifacts, hookActs)
+        : { hooks: {} };
+    // Each materialized hook contributes exactly one matcher group.
+    const writtenHookCount = Object.values(hooksConfig.hooks).reduce(
+      (sum, groups) => sum + groups.length,
+      0
+    );
+
     mkdirSync(outputDir, { recursive: true });
 
-    const manifest = this.buildManifest(shortId, plugin);
     const manifestDir = join(outputDir, ".claude-plugin");
     mkdirSync(manifestDir, { recursive: true });
     writeFileSync(
       join(manifestDir, "plugin.json"),
       JSON.stringify(manifest, null, 2) + "\n"
     );
-
-    const skillActs = this.shortenChildIds(plugin.skills ?? []);
-    const hookActs = this.shortenChildIds(plugin.hooks ?? []);
-    const mcpActs = this.shortenChildIds(plugin.mcp_servers ?? []);
 
     // Emit skills under skills/<short>/
     for (const a of skillActs) {
@@ -140,26 +156,15 @@ export class CoworkEmitter implements PluginEmitter {
       }
     }
 
-    // Emit hooks. buildHooksConfig fails loud on any hook it can't fully
-    // materialize, so a non-zero hookActs length always yields a complete
-    // hooks.json + scripts (or the export throws) — never a broken plugin dir.
-    let writtenHookCount = 0;
-    if (hookActs.length > 0) {
-      const hooksConfig = this.buildHooksConfig(artifacts, hookActs);
-      // Each materialized hook contributes exactly one matcher group.
-      writtenHookCount = Object.values(hooksConfig.hooks).reduce(
-        (sum, groups) => sum + groups.length,
-        0
+    // Emit hooks (already validated above).
+    if (Object.keys(hooksConfig.hooks).length > 0) {
+      const hooksDir = join(outputDir, "hooks");
+      mkdirSync(hooksDir, { recursive: true });
+      writeFileSync(
+        join(hooksDir, "hooks.json"),
+        JSON.stringify(hooksConfig, null, 2) + "\n"
       );
-      if (Object.keys(hooksConfig.hooks).length > 0) {
-        const hooksDir = join(outputDir, "hooks");
-        mkdirSync(hooksDir, { recursive: true });
-        writeFileSync(
-          join(hooksDir, "hooks.json"),
-          JSON.stringify(hooksConfig, null, 2) + "\n"
-        );
-        this.copyHookScripts(artifacts, hookActs, outputDir);
-      }
+      this.copyHookScripts(artifacts, hookActs, outputDir);
     }
 
     // Emit MCP servers
