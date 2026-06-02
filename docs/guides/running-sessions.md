@@ -494,6 +494,8 @@ The structured JSON output to stdout describes what was built:
 }
 ```
 
+The reported `hookCount` reflects only what was actually written to disk. If a plugin references a hook the emitter cannot fully materialize (an unmapped `event`, a missing or malformed `HOOK.json`, or a missing `command`), `air export` **fails with a non-zero exit** instead of silently skipping the hook — so it never reports success for a plugin that is missing its `hooks/hooks.json` and script. To intentionally drop such a hook, exclude it via `air.json`'s `exclude` list.
+
 ## How roots, adapters, and providers interact
 
 Here's the full flow when you run a session:

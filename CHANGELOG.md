@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-06-02
+
+### Fixed
+- **`@pulsemcp/air-cowork` — `air export cowork` no longer silently drops hooks whose event has no Co-work mapping, and command paths in `args` are now anchored to `${CLAUDE_PLUGIN_ROOT}`.** Previously the emitter only knew five AIR events (`session_start`, `session_end`, `pre_tool_call`, `post_tool_call`, `notification`); any other event — including the common `Stop` — was *silently skipped*. The export still wrote a `plugin.json`, never wrote `hooks/hooks.json` or copied the hook script, and yet reported `hookCount: 1` and exited `0`, producing a broken/empty plugin directory that looked successful. (This is what kept `agent-transcript-capture`, a `Stop`-event hook resolved via `github://pulsemcp/ai-artifacts`, from exporting.) Three changes fix this: (1) the event map now covers AIR's full lifecycle vocabulary — `stop`/`Stop`, `subagent_stop`/`SubagentStop`, `pre_compact`/`PreCompact`, `user_prompt_submit`/`UserPromptSubmit` in addition to the originals — accepting both snake_case AIR names and PascalCase Claude/Co-work names as identity mappings, mirroring the Claude adapter; (2) any hook that cannot be fully materialized (unknown artifact, missing/malformed `HOOK.json`, unmapped event, or missing `command`) now throws, so the export fails loud with a non-zero exit instead of shipping a broken plugin, and the reported `hookCount` reflects only what was actually written; (3) interpreter-style commands whose relative script path lives in `args` (e.g. `node dist/capture.js`) now anchor that path under `${CLAUDE_PLUGIN_ROOT}/scripts/<id>/` when the file exists in the hook directory — matching the Claude adapter — so the emitted command resolves regardless of cwd.
+
 ## [0.9.0] - 2026-05-31
 
 ### Fixed

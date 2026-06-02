@@ -256,23 +256,55 @@ describe("CoworkEmitter", () => {
 
   describe("buildHookCommand", () => {
     it("rewrites relative paths to use CLAUDE_PLUGIN_ROOT", () => {
-      const cmd = emitter.buildHookCommand("my-hook", "./notify.sh");
+      const cmd = emitter.buildHookCommand("my-hook", "/nonexistent", "./notify.sh");
       expect(cmd).toBe("${CLAUDE_PLUGIN_ROOT}/scripts/my-hook/notify.sh");
     });
 
     it("leaves absolute/non-relative commands unchanged", () => {
-      const cmd = emitter.buildHookCommand("my-hook", "npx", [
+      const cmd = emitter.buildHookCommand("my-hook", "/nonexistent", "npx", [
         "lint-staged",
       ]);
       expect(cmd).toBe("npx lint-staged");
     });
 
     it("escapes shell metacharacters in args", () => {
-      const cmd = emitter.buildHookCommand("my-hook", "echo", [
+      const cmd = emitter.buildHookCommand("my-hook", "/nonexistent", "echo", [
         "hello world",
         "safe",
       ]);
       expect(cmd).toBe("echo 'hello world' safe");
+    });
+
+    it("anchors a path-like arg that resolves to a real file under the hook dir", () => {
+      // Mirrors agent-transcript-capture: command "node", args ["dist/capture.js"].
+      const hookDir = makeTempDir();
+      mkdirSync(join(hookDir, "dist"), { recursive: true });
+      writeFileSync(join(hookDir, "dist", "capture.js"), "console.log('x');");
+
+      const cmd = emitter.buildHookCommand("capture", hookDir, "node", [
+        "dist/capture.js",
+      ]);
+      expect(cmd).toBe(
+        "node ${CLAUDE_PLUGIN_ROOT}/scripts/capture/dist/capture.js"
+      );
+    });
+
+    it("does not anchor a path-like arg that has no matching file under the hook dir", () => {
+      const hookDir = makeTempDir();
+      const cmd = emitter.buildHookCommand("capture", hookDir, "node", [
+        "dist/missing.js",
+      ]);
+      // No such file → left as a bare arg (not rewritten).
+      expect(cmd).toBe("node dist/missing.js");
+    });
+
+    it("never anchors bare command/package names even if a same-named file exists", () => {
+      const hookDir = makeTempDir();
+      writeFileSync(join(hookDir, "lint-staged"), "");
+      const cmd = emitter.buildHookCommand("my-hook", hookDir, "npx", [
+        "lint-staged",
+      ]);
+      expect(cmd).toBe("npx lint-staged");
     });
   });
 
@@ -333,7 +365,85 @@ describe("CoworkEmitter", () => {
       expect(result.hooks).toHaveProperty("SessionEnd");
     });
 
-    it("skips hooks with unmapped AIR events", () => {
+    it("maps the Stop event (snake_case) to a Co-work Stop hook", () => {
+      const sourceDir = makeTempDir();
+      const hookDir = createHookOnDisk(sourceDir, "capture", {
+        event: "stop",
+        command: "./capture.js",
+      });
+
+      const artifacts = emptyArtifacts();
+      artifacts.hooks = {
+        "@local/capture": { description: "Transcript capture", path: hookDir },
+      };
+
+      const result = emitter.buildHooksConfig(artifacts, acts("capture"));
+
+      expect(result.hooks).toHaveProperty("Stop");
+      expect(result.hooks.Stop).toHaveLength(1);
+      const group = result.hooks.Stop[0] as any;
+      expect(group.hooks[0].command).toBe(
+        "${CLAUDE_PLUGIN_ROOT}/scripts/capture/capture.js"
+      );
+    });
+
+    it("accepts PascalCase Claude event names as identity mappings", () => {
+      const sourceDir = makeTempDir();
+      const hookDir = createHookOnDisk(sourceDir, "capture", {
+        // Hook authors targeting the Claude runtime sometimes write the
+        // PascalCase Claude event name directly instead of the snake_case form.
+        event: "Stop",
+        command: "./capture.js",
+      });
+
+      const artifacts = emptyArtifacts();
+      artifacts.hooks = {
+        "@local/capture": { description: "Transcript capture", path: hookDir },
+      };
+
+      const result = emitter.buildHooksConfig(artifacts, acts("capture"));
+
+      expect(result.hooks).toHaveProperty("Stop");
+      expect(result.hooks.Stop).toHaveLength(1);
+    });
+
+    it("maps every AIR lifecycle event to its Co-work equivalent", () => {
+      const sourceDir = makeTempDir();
+      const cases: Array<[string, string, string]> = [
+        ["start", "session_start", "SessionStart"],
+        ["end", "session_end", "SessionEnd"],
+        ["pre-tool", "pre_tool_call", "PreToolUse"],
+        ["post-tool", "post_tool_call", "PostToolUse"],
+        ["notify", "notification", "Notification"],
+        ["stop", "stop", "Stop"],
+        ["subagent", "subagent_stop", "SubagentStop"],
+        ["compact", "pre_compact", "PreCompact"],
+        ["prompt", "user_prompt_submit", "UserPromptSubmit"],
+      ];
+
+      const artifacts = emptyArtifacts();
+      const ids: string[] = [];
+      for (const [id, airEvent] of cases) {
+        const hookDir = createHookOnDisk(sourceDir, id, {
+          event: airEvent,
+          command: "echo",
+          args: [id],
+        });
+        artifacts.hooks[`@local/${id}`] = {
+          description: `${id} hook`,
+          path: hookDir,
+        };
+        ids.push(id);
+      }
+
+      const result = emitter.buildHooksConfig(artifacts, acts(...ids));
+
+      for (const [, , coworkEvent] of cases) {
+        expect(result.hooks).toHaveProperty(coworkEvent);
+      }
+    });
+
+    it("throws (fail loud) on hooks with unmapped AIR events", () => {
       const sourceDir = makeTempDir();
       const hookDir = createHookOnDisk(sourceDir, "pre-commit", {
         event: "pre_commit",
@@ -346,13 +456,12 @@ describe("CoworkEmitter", () => {
         "@local/pre-commit": { description: "Pre-commit", path: hookDir },
       };
 
-      const pluginDir = makeTempDir();
-      const result = emitter.buildHooksConfig(artifacts, acts("pre-commit"));
-
-      expect(Object.keys(result.hooks)).toHaveLength(0);
+      expect(() =>
+        emitter.buildHooksConfig(artifacts, acts("pre-commit"))
+      ).toThrow(/no Claude Co-work equivalent/);
     });
 
-    it("skips hooks with malformed HOOK.json", () => {
+    it("throws (fail loud) on malformed HOOK.json", () => {
       const sourceDir = makeTempDir();
       const hookDir = join(sourceDir, "broken");
       mkdirSync(hookDir, { recursive: true });
@@ -363,10 +472,40 @@ describe("CoworkEmitter", () => {
         "@local/broken": { description: "Broken hook", path: hookDir },
       };
 
-      const pluginDir = makeTempDir();
-      const result = emitter.buildHooksConfig(artifacts, acts("broken"));
+      expect(() =>
+        emitter.buildHooksConfig(artifacts, acts("broken"))
+      ).toThrow(/malformed HOOK\.json/);
+    });
 
-      expect(Object.keys(result.hooks)).toHaveLength(0);
+    it("throws (fail loud) when the hook directory has no HOOK.json", () => {
+      const sourceDir = makeTempDir();
+      const hookDir = join(sourceDir, "no-json");
+      mkdirSync(hookDir, { recursive: true });
+
+      const artifacts = emptyArtifacts();
+      artifacts.hooks = {
+        "@local/no-json": { description: "No HOOK.json", path: hookDir },
+      };
+
+      expect(() =>
+        emitter.buildHooksConfig(artifacts, acts("no-json"))
+      ).toThrow(/no HOOK\.json/);
+    });
+
+    it("throws (fail loud) when a hook is missing its command", () => {
+      const sourceDir = makeTempDir();
+      const hookDir = createHookOnDisk(sourceDir, "no-cmd", {
+        event: "session_start",
+      });
+
+      const artifacts = emptyArtifacts();
+      artifacts.hooks = {
+        "@local/no-cmd": { description: "No command", path: hookDir },
+      };
+
+      expect(() =>
+        emitter.buildHooksConfig(artifacts, acts("no-cmd"))
+      ).toThrow(/no "command" field/);
     });
   });
 
@@ -590,6 +729,123 @@ describe("CoworkEmitter", () => {
       const scriptsDir = join(pluginDir, "scripts", "my-hook");
       expect(existsSync(join(scriptsDir, "run.sh"))).toBe(true);
       expect(existsSync(join(scriptsDir, "HOOK.json"))).toBe(false);
+    });
+
+    it("fully materializes a Stop-event hook (hooks.json + script + count)", () => {
+      // Regression: a github://-resolved hook declaring event "Stop" — the exact
+      // shape of agent-transcript-capture — must produce a self-contained plugin
+      // dir, not silently vanish. Mirrors the real HOOK.json (event + dist script).
+      const sourceDir = makeTempDir();
+      const hookDir = join(sourceDir, "agent-transcript-capture");
+      mkdirSync(join(hookDir, "dist"), { recursive: true });
+      writeFileSync(
+        join(hookDir, "HOOK.json"),
+        JSON.stringify({
+          event: "Stop",
+          command: "node",
+          args: ["dist/capture.js"],
+          timeout_seconds: 120,
+        })
+      );
+      writeFileSync(
+        join(hookDir, "dist", "capture.js"),
+        "#!/usr/bin/env node\nconsole.log('capture');"
+      );
+
+      const outputDir = makeTempDir();
+      const pluginDir = join(outputDir, "agent-transcript-capture");
+
+      const artifacts = emptyArtifacts();
+      artifacts.hooks = {
+        "@local/agent-transcript-capture": {
+          description: "Transcript capture",
+          path: hookDir,
+        },
+      };
+      artifacts.plugins = {
+        "@local/agent-transcript-capture": {
+          description: "Captures agent transcripts on stop",
+          hooks: ["@local/agent-transcript-capture"],
+        },
+      };
+
+      const result = emitter.buildPlugin(
+        artifacts,
+        "@local/agent-transcript-capture",
+        "agent-transcript-capture",
+        artifacts.plugins["@local/agent-transcript-capture"],
+        pluginDir
+      );
+
+      // hooks/hooks.json materialized with a Stop entry
+      const hooksJsonPath = join(pluginDir, "hooks", "hooks.json");
+      expect(existsSync(hooksJsonPath)).toBe(true);
+      const hooksConfig = JSON.parse(readFileSync(hooksJsonPath, "utf-8"));
+      expect(hooksConfig.hooks.Stop[0].hooks[0].command).toBe(
+        "node ${CLAUDE_PLUGIN_ROOT}/scripts/agent-transcript-capture/dist/capture.js"
+      );
+      expect(hooksConfig.hooks.Stop[0].hooks[0].timeout).toBe(120);
+
+      // The dist script was copied into scripts/
+      expect(
+        existsSync(
+          join(
+            pluginDir,
+            "scripts",
+            "agent-transcript-capture",
+            "dist",
+            "capture.js"
+          )
+        )
+      ).toBe(true);
+
+      // Reported count reflects what was actually written
+      expect(result.hookCount).toBe(1);
+    });
+
+    it("throws (fail loud) on an unmapped event instead of emitting a broken plugin with a false count", () => {
+      // Before the fix the emitter silently skipped the unmapped hook, wrote no
+      // hooks.json/script, yet still reported hookCount: 1 and exited 0. Now it
+      // must throw — and must not leave a half-written plugin dir behind.
+      const sourceDir = makeTempDir();
+      const hookDir = createHookOnDisk(sourceDir, "pre-commit", {
+        event: "pre_commit",
+        command: "npx",
+        args: ["lint-staged"],
+      });
+
+      const outputDir = makeTempDir();
+      const pluginDir = join(outputDir, "linter");
+
+      const artifacts = emptyArtifacts();
+      artifacts.hooks = {
+        "@local/pre-commit": { description: "Pre-commit", path: hookDir },
+      };
+      artifacts.plugins = {
+        "@local/linter": {
+          description: "Linter plugin",
+          hooks: ["@local/pre-commit"],
+        },
+      };
+
+      expect(() =>
+        emitter.buildPlugin(
+          artifacts,
+          "@local/linter",
+          "linter",
+          artifacts.plugins["@local/linter"],
+          pluginDir
+        )
+      ).toThrow(/no Claude Co-work equivalent/);
+
+      // Emission is atomic: a doomed plugin is validated before any disk write,
+      // so nothing is left behind — not the hooks.json, and not the manifest
+      // (which would otherwise be a broken-but-present plugin dir).
+      expect(existsSync(join(pluginDir, "hooks", "hooks.json"))).toBe(false);
+      expect(existsSync(join(pluginDir, ".claude-plugin", "plugin.json"))).toBe(
+        false
+      );
+      expect(existsSync(pluginDir)).toBe(false);
     });
 
     it("writes .mcp.json with translated servers", () => {

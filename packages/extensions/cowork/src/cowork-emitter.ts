@@ -31,17 +31,45 @@ interface ChildActivation {
 }
 
 /**
- * AIR event names → Claude Co-work hook event names.
- * Co-work supports many more events than AIR currently models;
- * unmapped AIR events are silently skipped.
+ * AIR lifecycle event names → Claude Co-work hook event names.
+ *
+ * Accepts both snake_case AIR names and PascalCase Claude/Co-work lifecycle
+ * names as identity mappings, so hook authors targeting the Claude runtime can
+ * write Claude-native event names directly without translating to snake_case.
+ * This mirrors the Claude adapter's AIR_TO_CLAUDE_EVENT map — Co-work consumes
+ * the same `hooks/hooks.json` event vocabulary as Claude Code.
+ *
+ * An AIR event that is absent here cannot be materialized into a valid Co-work
+ * hook. Rather than silently dropping such a hook (which previously produced a
+ * broken/empty plugin dir while still reporting success), `buildHooksConfig`
+ * throws so the export fails loudly with a non-zero exit.
  */
 const AIR_TO_COWORK_EVENT: Record<string, string> = {
+  // snake_case AIR names
   session_start: "SessionStart",
   session_end: "SessionEnd",
   pre_tool_call: "PreToolUse",
   post_tool_call: "PostToolUse",
   notification: "Notification",
+  stop: "Stop",
+  subagent_stop: "SubagentStop",
+  pre_compact: "PreCompact",
+  user_prompt_submit: "UserPromptSubmit",
+  // PascalCase Claude/Co-work event names (identity — hook authors targeting
+  // the Claude runtime often write these directly).
+  SessionStart: "SessionStart",
+  SessionEnd: "SessionEnd",
+  PreToolUse: "PreToolUse",
+  PostToolUse: "PostToolUse",
+  Notification: "Notification",
+  Stop: "Stop",
+  SubagentStop: "SubagentStop",
+  PreCompact: "PreCompact",
+  UserPromptSubmit: "UserPromptSubmit",
 };
+
+/** Distinct Co-work event names supported by the mapping, for error messages. */
+const SUPPORTED_COWORK_EVENTS = [...new Set(Object.values(AIR_TO_COWORK_EVENT))];
 
 export class CoworkEmitter implements PluginEmitter {
   name = "cowork";
@@ -85,19 +113,35 @@ export class CoworkEmitter implements PluginEmitter {
     plugin: PluginEntry,
     outputDir: string
   ): BuiltPlugin {
+    const manifest = this.buildManifest(shortId, plugin);
+
+    const skillActs = this.shortenChildIds(plugin.skills ?? []);
+    const hookActs = this.shortenChildIds(plugin.hooks ?? []);
+    const mcpActs = this.shortenChildIds(plugin.mcp_servers ?? []);
+
+    // Validate hooks BEFORE writing anything to disk. buildHooksConfig fails
+    // loud on any hook it can't fully materialize, so resolving it up front
+    // means a doomed plugin throws before a partial dir lands on disk —
+    // per-plugin emission is atomic and never leaves a broken-but-present dir
+    // (e.g. a plugin.json with no hooks/hooks.json) that looks successful.
+    const hooksConfig: { hooks: Record<string, unknown[]> } =
+      hookActs.length > 0
+        ? this.buildHooksConfig(artifacts, hookActs)
+        : { hooks: {} };
+    // Each materialized hook contributes exactly one matcher group.
+    const writtenHookCount = Object.values(hooksConfig.hooks).reduce(
+      (sum, groups) => sum + groups.length,
+      0
+    );
+
     mkdirSync(outputDir, { recursive: true });
 
-    const manifest = this.buildManifest(shortId, plugin);
     const manifestDir = join(outputDir, ".claude-plugin");
     mkdirSync(manifestDir, { recursive: true });
     writeFileSync(
       join(manifestDir, "plugin.json"),
       JSON.stringify(manifest, null, 2) + "\n"
     );
-
-    const skillActs = this.shortenChildIds(plugin.skills ?? []);
-    const hookActs = this.shortenChildIds(plugin.hooks ?? []);
-    const mcpActs = this.shortenChildIds(plugin.mcp_servers ?? []);
 
     // Emit skills under skills/<short>/
     for (const a of skillActs) {
@@ -112,18 +156,15 @@ export class CoworkEmitter implements PluginEmitter {
       }
     }
 
-    // Emit hooks
-    if (hookActs.length > 0) {
-      const hooksConfig = this.buildHooksConfig(artifacts, hookActs);
-      if (Object.keys(hooksConfig.hooks).length > 0) {
-        const hooksDir = join(outputDir, "hooks");
-        mkdirSync(hooksDir, { recursive: true });
-        writeFileSync(
-          join(hooksDir, "hooks.json"),
-          JSON.stringify(hooksConfig, null, 2) + "\n"
-        );
-        this.copyHookScripts(artifacts, hookActs, outputDir);
-      }
+    // Emit hooks (already validated above).
+    if (Object.keys(hooksConfig.hooks).length > 0) {
+      const hooksDir = join(outputDir, "hooks");
+      mkdirSync(hooksDir, { recursive: true });
+      writeFileSync(
+        join(hooksDir, "hooks.json"),
+        JSON.stringify(hooksConfig, null, 2) + "\n"
+      );
+      this.copyHookScripts(artifacts, hookActs, outputDir);
     }
 
     // Emit MCP servers
@@ -141,7 +182,7 @@ export class CoworkEmitter implements PluginEmitter {
       id: shortId,
       path: outputDir,
       skillCount: skillActs.filter((a) => artifacts.skills[a.qualified]).length,
-      hookCount: hookActs.filter((a) => artifacts.hooks[a.qualified]).length,
+      hookCount: writtenHookCount,
       mcpServerCount: mcpActs.filter((a) => artifacts.mcp[a.qualified]).length,
     };
   }
@@ -167,6 +208,13 @@ export class CoworkEmitter implements PluginEmitter {
    * Build inline hooks.json in the Co-work format.
    * Each hook activation contributes one matcher group; commands are rewritten
    * to use ${CLAUDE_PLUGIN_ROOT}/scripts/<short>/ for relative paths.
+   *
+   * Fails loud: any hook that cannot be fully materialized into a valid Co-work
+   * entry (unknown artifact, missing/malformed HOOK.json, unmapped event, or
+   * missing command) throws rather than being silently skipped. A silently
+   * skipped hook would leave the plugin dir without its `hooks/hooks.json` and
+   * script while the export still reported a non-zero hook count — emitting a
+   * broken plugin that looks successful.
    */
   buildHooksConfig(
     artifacts: ResolvedArtifacts,
@@ -176,23 +224,52 @@ export class CoworkEmitter implements PluginEmitter {
 
     for (const a of hookActs) {
       const hook = artifacts.hooks[a.qualified];
-      if (!hook) continue;
+      if (!hook) {
+        throw new Error(
+          `Hook "${a.qualified}" is referenced by a plugin but is not present ` +
+            `in the resolved artifacts. Cannot export a plugin that references ` +
+            `a missing hook.`
+        );
+      }
 
       const hookJsonPath = join(hook.path, "HOOK.json");
-      if (!existsSync(hookJsonPath)) continue;
+      if (!existsSync(hookJsonPath)) {
+        throw new Error(
+          `Hook "${a.qualified}" has no HOOK.json at ${hookJsonPath}. ` +
+            `The hook directory must contain a HOOK.json to be exported.`
+        );
+      }
 
       let hookJson: Record<string, unknown>;
       try {
         hookJson = JSON.parse(readFileSync(hookJsonPath, "utf-8"));
-      } catch {
-        continue;
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        throw new Error(
+          `Hook "${a.qualified}" has a malformed HOOK.json at ${hookJsonPath}: ${detail}`
+        );
       }
 
-      const coworkEvent = AIR_TO_COWORK_EVENT[hookJson.event as string];
-      if (!coworkEvent || !hookJson.command) continue;
+      const airEvent = hookJson.event as string | undefined;
+      const coworkEvent = airEvent ? AIR_TO_COWORK_EVENT[airEvent] : undefined;
+      if (!coworkEvent) {
+        throw new Error(
+          `Hook "${a.qualified}" declares event ${JSON.stringify(airEvent)}, ` +
+            `which has no Claude Co-work equivalent. Supported events: ` +
+            `${SUPPORTED_COWORK_EVENTS.join(", ")}. Add a mapping in the cowork ` +
+            `emitter or exclude this hook from the plugin via air.json#exclude.`
+        );
+      }
+      if (!hookJson.command) {
+        throw new Error(
+          `Hook "${a.qualified}" has no "command" field in HOOK.json. ` +
+            `A hook must define a command to be exported.`
+        );
+      }
 
       const command = this.buildHookCommand(
         a.short,
+        hook.path,
         hookJson.command as string,
         hookJson.args as string[] | undefined
       );
@@ -219,22 +296,73 @@ export class CoworkEmitter implements PluginEmitter {
     return { hooks };
   }
 
+  /**
+   * Build a shell command string from HOOK.json's command and args fields,
+   * anchoring hook-relative paths under ${CLAUDE_PLUGIN_ROOT}/scripts/<short>/.
+   *
+   * Hook authors write paths relative to their own hook directory, but Co-work
+   * copies those files into the plugin's scripts/<short>/ tree and invokes the
+   * command with an arbitrary cwd, so a bare relative path would not resolve.
+   * Mirroring the Claude adapter:
+   *   - `command` is anchored if it starts with `./` (explicit hook-relative).
+   *   - Each `args` entry is anchored if it is path-like (has a `/` separator
+   *     or an explicit `./` prefix) AND names a real file under the hook's
+   *     source directory. This is what makes interpreter-style invocations like
+   *     `node dist/capture.js` resolve. The path-like + exists requirement
+   *     keeps bare command/package names (e.g. `lint-staged`) from being
+   *     accidentally rewritten.
+   *
+   * Args that are neither anchored nor safe (contain shell metacharacters) are
+   * single-quoted.
+   */
   buildHookCommand(
     shortId: string,
+    hookDir: string,
     command: string,
     args?: string[]
   ): string {
     let cmd = command;
     if (cmd.startsWith("./")) {
-      cmd = `\${CLAUDE_PLUGIN_ROOT}/scripts/${shortId}/${cmd.slice(2)}`;
+      cmd = this.pluginScriptPath(shortId, cmd.slice(2));
     }
     if (args?.length) {
-      const escaped = args.map((a) =>
-        /[\s;&|`$"'\\]/.test(a) ? `'${a.replace(/'/g, "'\\''")}'` : a
-      );
+      const escaped = args.map((a) => {
+        const rel = this.hookRelativeArg(a, hookDir);
+        if (rel !== null) {
+          return this.pluginScriptPath(shortId, rel);
+        }
+        return /[\s;&|`$"'\\]/.test(a) ? `'${a.replace(/'/g, "'\\''")}'` : a;
+      });
       cmd += " " + escaped.join(" ");
     }
     return cmd;
+  }
+
+  /** Anchor a hook-relative path under the plugin's scripts/<short>/ tree. */
+  private pluginScriptPath(shortId: string, rel: string): string {
+    return `\${CLAUDE_PLUGIN_ROOT}/scripts/${shortId}/${rel}`;
+  }
+
+  /**
+   * If `arg` is a hook-relative path pointing at a real file under the hook's
+   * source directory, return its path relative to that directory (for anchoring
+   * under scripts/<short>/). Otherwise return null. Flags, absolute/home paths,
+   * and bare command/package names are never rewritten.
+   */
+  private hookRelativeArg(arg: string, hookDir: string): string | null {
+    if (!arg) return null;
+    if (arg.startsWith("-") || arg.startsWith("/") || arg.startsWith("~")) {
+      return null;
+    }
+    const hasExplicitPrefix = arg.startsWith("./");
+    const candidate = hasExplicitPrefix ? arg.slice(2) : arg;
+    if (!hasExplicitPrefix && !candidate.includes("/")) {
+      return null;
+    }
+    if (!existsSync(join(hookDir, candidate))) {
+      return null;
+    }
+    return candidate;
   }
 
   /**

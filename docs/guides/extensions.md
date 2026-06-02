@@ -313,7 +313,7 @@ The `@pulsemcp/air-cowork` emitter translates AIR plugins into Claude Co-work pl
 - Writes `.claude-plugin/plugin.json` manifest from AIR plugin metadata
 - Copies skills into `skills/{skill-id}/SKILL.md` with reference documents
 - Translates AIR hooks into Co-work's inline `hooks/hooks.json` format (mapping AIR event names to Co-work event names like `SessionStart`, `PreToolUse`, etc.)
-- Copies hook scripts into `scripts/{hook-id}/` and rewrites paths to use `${CLAUDE_PLUGIN_ROOT}`
+- Copies hook scripts into `scripts/{hook-id}/` and rewrites hook-relative paths — whether in the `command` field or in a path-like `args` entry (e.g. `node dist/capture.js`) — to use `${CLAUDE_PLUGIN_ROOT}`
 - Translates MCP server configs into `.mcp.json` (same format as Claude Code)
 - Produces a `marketplace.json` index suitable for Co-work's GitHub marketplace sync
 
@@ -326,8 +326,14 @@ AIR events are mapped to Co-work events as follows:
 | `pre_tool_call` | `PreToolUse` |
 | `post_tool_call` | `PostToolUse` |
 | `notification` | `Notification` |
+| `stop` | `Stop` |
+| `subagent_stop` | `SubagentStop` |
+| `pre_compact` | `PreCompact` |
+| `user_prompt_submit` | `UserPromptSubmit` |
 
-AIR events without a Co-work equivalent are silently skipped.
+The emitter also accepts the PascalCase Claude/Co-work event names (`SessionStart`, `Stop`, `PreCompact`, …) directly in `HOOK.json`'s `event` field as identity mappings, so hook authors targeting the Claude runtime need not translate to snake_case.
+
+If a plugin references a hook the emitter cannot fully materialize — an unmapped `event`, a missing or malformed `HOOK.json`, or a missing `command` — `air export` **fails with a non-zero exit** rather than silently skipping the hook. This guarantees the emitter never produces a plugin directory that looks successful (a reported hook count) but is missing its `hooks/hooks.json` and script. To intentionally drop such a hook, exclude it via `air.json`'s `exclude` list.
 
 ## Extension loading order
 
