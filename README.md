@@ -298,7 +298,7 @@ A plugin entry in `plugins.json` declares which AIR artifacts it bundles by refe
 
 ### Roots
 
-Roots are self-contained agent workspaces — a git repo (or subdirectory) with a file hierarchy (including AGENTS.md files) an agent needs for a specific project. Each root declares its default MCP servers, skills, plugins, and hooks:
+Roots are self-contained agent workspaces — a git repo (or subdirectory) with a file hierarchy (including AGENTS.md files) an agent needs for a specific project. Each root declares its default MCP servers, skills, plugins, hooks, and the agent runtime it runs on:
 
 ```json
 {
@@ -309,10 +309,13 @@ Roots are self-contained agent workspaces — a git repo (or subdirectory) with 
     "url": "https://github.com/acme/web-app.git",
     "default_mcp_servers": ["github", "postgres-prod"],
     "default_skills": ["deploy-staging", "pr-review"],
+    "default_runtime": "codex",
     "user_invocable": true
   }
 }
 ```
+
+`default_runtime` is optional and selects the agent runtime for sessions (and subagents) spawned under the root. When omitted, it resolves to `claude_code`. It is an open string field — common values are `claude_code`, `codex`, `pi`, `opencode`, `amp`, `gemini`, and `github_copilot`, but any runtime identifier a downstream consumer recognizes is accepted, so new agents don't require a schema change. See the [roots guide](docs/guides/roots.md) for the full field reference.
 
 ### Hooks
 
