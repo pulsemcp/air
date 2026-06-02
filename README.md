@@ -309,7 +309,7 @@ Roots are self-contained agent workspaces — a git repo (or subdirectory) with 
     "url": "https://github.com/acme/web-app.git",
     "default_mcp_servers": ["github", "postgres-prod"],
     "default_skills": ["deploy-staging", "pr-review"],
-    "default_runtime": "codex",
+    "default_runtime": "claude_code",
     "user_invocable": true
   }
 }
