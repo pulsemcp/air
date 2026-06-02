@@ -315,7 +315,7 @@ Roots are self-contained agent workspaces — a git repo (or subdirectory) with 
 }
 ```
 
-`default_runtime` is optional and selects the agent runtime for sessions (and subagents) spawned under the root. When omitted, it resolves to `claude_code`. It is an open string field — common values are `claude_code`, `codex`, `pi`, `opencode`, `amp`, `gemini`, and `github_copilot`, but any runtime identifier a downstream consumer recognizes is accepted, so new agents don't require a schema change. See the [roots guide](docs/guides/roots.md) for the full field reference.
+`default_runtime` is optional and selects the agent runtime for sessions and subagents spawned under the root (default: `claude_code`). It is an open string field — common values are `claude_code`, `codex`, `pi`, `opencode`, `amp`, `gemini`, and `github_copilot`, but any identifier a downstream consumer recognizes is accepted, so new agents don't require a schema change. See the [roots guide](docs/guides/roots.md) for the full field reference.
 
 ### Hooks
 
