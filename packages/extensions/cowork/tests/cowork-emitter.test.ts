@@ -819,6 +819,89 @@ describe("CoworkEmitter", () => {
       );
     });
 
+    it("merges a consumer x-config overlay into the exported HOOK.json (matches air prepare)", () => {
+      // A consumer can override the hook author's x-config defaults from their
+      // own air.json index entry — AIR resolves that overlay onto the hook
+      // entry's `x-config`. The exported plugin must carry the SAME merged
+      // config `air prepare` materializes (source deep-merged with overlay),
+      // not just the source. Overlay wins on per-key conflict; untouched source
+      // keys survive.
+      const sourceDir = makeTempDir();
+      const hookDir = join(sourceDir, "capture");
+      mkdirSync(join(hookDir, "dist"), { recursive: true });
+      writeFileSync(
+        join(hookDir, "HOOK.json"),
+        JSON.stringify({
+          event: "Stop",
+          command: "node",
+          args: ["dist/capture.js"],
+          "x-config": {
+            mode: "no-auth",
+            no_auth: {
+              provider: "gcs",
+              bucket: "agent-transcripts-secret-do-not-share-93825b427be562",
+              max_archive_bytes: 52428800,
+            },
+            privacy: { mode: "redacted", extra_patterns: [] },
+          },
+        })
+      );
+      writeFileSync(join(hookDir, "dist", "capture.js"), "console.log('x');");
+
+      const outputDir = makeTempDir();
+      const pluginDir = join(outputDir, "capture");
+
+      const artifacts = emptyArtifacts();
+      artifacts.hooks = {
+        // Consumer overlay resolved onto the hook entry: tighten privacy and
+        // shrink the archive cap, leave the bucket/provider alone.
+        "@local/capture": {
+          description: "Transcript capture",
+          path: hookDir,
+          "x-config": {
+            no_auth: { max_archive_bytes: 1048576 },
+            privacy: { extra_patterns: ["EMAIL"] },
+          },
+        },
+      };
+      artifacts.plugins = {
+        "@local/capture": {
+          description: "Captures agent transcripts on stop",
+          hooks: ["@local/capture"],
+        },
+      };
+
+      emitter.buildPlugin(
+        artifacts,
+        "@local/capture",
+        "capture",
+        artifacts.plugins["@local/capture"],
+        pluginDir
+      );
+
+      const exported = JSON.parse(
+        readFileSync(
+          join(pluginDir, "scripts", "capture", "HOOK.json"),
+          "utf-8"
+        )
+      );
+      // Overlay wins where it overlaps...
+      expect(exported["x-config"].no_auth.max_archive_bytes).toBe(1048576);
+      expect(exported["x-config"].privacy.extra_patterns).toEqual(["EMAIL"]);
+      // ...and source keys the overlay didn't touch survive.
+      expect(exported["x-config"].no_auth.provider).toBe("gcs");
+      expect(exported["x-config"].no_auth.bucket).toBe(
+        "agent-transcripts-secret-do-not-share-93825b427be562"
+      );
+      expect(exported["x-config"].privacy.mode).toBe("redacted");
+      expect(exported["x-config"].mode).toBe("no-auth");
+      // Still no S3-only namespace_key.
+      expect(exported["x-config"].no_auth.namespace_key).toBeUndefined();
+      // Non-x-config fields preserved.
+      expect(exported.event).toBe("Stop");
+      expect(exported.command).toBe("node");
+    });
+
     it("fully materializes a Stop-event hook (hooks.json + script + count)", () => {
       // Regression: a github://-resolved hook declaring event "Stop" — the exact
       // shape of agent-transcript-capture — must produce a self-contained plugin
