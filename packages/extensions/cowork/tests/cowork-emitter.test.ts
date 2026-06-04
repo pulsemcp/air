@@ -697,7 +697,11 @@ describe("CoworkEmitter", () => {
       expect(readFileSync(scriptPath, "utf-8")).toContain("echo hello");
     });
 
-    it("does not copy HOOK.json to scripts directory", () => {
+    it("copies HOOK.json into scripts/<short>/ alongside the runtime scripts", () => {
+      // The hook's own runtime config loader resolves HOOK.json one level up
+      // from its compiled script (adjacent to dist/). In the exported layout
+      // that's scripts/<short>/HOOK.json, so it MUST be carried forward — not
+      // dropped — or the loader returns null and the hook no-ops at runtime.
       const sourceDir = makeTempDir();
       const hookDir = join(sourceDir, "my-hook");
       mkdirSync(hookDir, { recursive: true });
@@ -728,7 +732,91 @@ describe("CoworkEmitter", () => {
 
       const scriptsDir = join(pluginDir, "scripts", "my-hook");
       expect(existsSync(join(scriptsDir, "run.sh"))).toBe(true);
-      expect(existsSync(join(scriptsDir, "HOOK.json"))).toBe(false);
+      expect(existsSync(join(scriptsDir, "HOOK.json"))).toBe(true);
+    });
+
+    it("carries the hook's x-config forward verbatim into the exported HOOK.json (GCS no-auth)", () => {
+      // Regression for the transcript-capture upload silently no-op'ing: the
+      // exported plugin must ship a HOOK.json whose `x-config` (storage backend
+      // + privacy) survives export at the loader-resolved path adjacent to
+      // dist/. The config is copied verbatim — no namespace_key is injected
+      // (GCS forbids it; namespace_key is S3-only).
+      const xConfig = {
+        mode: "no-auth",
+        no_auth: {
+          provider: "gcs",
+          bucket: "agent-transcripts-secret-do-not-share-93825b427be562",
+          max_archive_bytes: 52428800,
+        },
+        privacy: { mode: "redacted", extra_patterns: [] },
+      };
+
+      const sourceDir = makeTempDir();
+      const hookDir = join(sourceDir, "agent-transcript-capture");
+      mkdirSync(join(hookDir, "dist"), { recursive: true });
+      writeFileSync(
+        join(hookDir, "HOOK.json"),
+        JSON.stringify({
+          event: "Stop",
+          command: "node",
+          args: ["dist/capture.js"],
+          timeout_seconds: 120,
+          "x-config": xConfig,
+        })
+      );
+      writeFileSync(
+        join(hookDir, "dist", "capture.js"),
+        "#!/usr/bin/env node\nconsole.log('capture');"
+      );
+
+      const outputDir = makeTempDir();
+      const pluginDir = join(outputDir, "agent-transcript-capture");
+
+      const artifacts = emptyArtifacts();
+      artifacts.hooks = {
+        "@local/agent-transcript-capture": {
+          description: "Transcript capture",
+          path: hookDir,
+        },
+      };
+      artifacts.plugins = {
+        "@local/agent-transcript-capture": {
+          description: "Captures agent transcripts on stop",
+          hooks: ["@local/agent-transcript-capture"],
+        },
+      };
+
+      emitter.buildPlugin(
+        artifacts,
+        "@local/agent-transcript-capture",
+        "agent-transcript-capture",
+        artifacts.plugins["@local/agent-transcript-capture"],
+        pluginDir
+      );
+
+      // HOOK.json sits adjacent to the copied dist/ — exactly where the hook's
+      // runtime config loader resolves it.
+      const scriptsDir = join(
+        pluginDir,
+        "scripts",
+        "agent-transcript-capture"
+      );
+      const exportedHookJsonPath = join(scriptsDir, "HOOK.json");
+      expect(existsSync(exportedHookJsonPath)).toBe(true);
+      expect(existsSync(join(scriptsDir, "dist", "capture.js"))).toBe(true);
+
+      const exported = JSON.parse(
+        readFileSync(exportedHookJsonPath, "utf-8")
+      );
+      // x-config survives verbatim.
+      expect(exported["x-config"]).toEqual(xConfig);
+      // No namespace_key injected for a GCS hook (it's S3-only and the
+      // hook's own validator throws if present).
+      expect(exported["x-config"].no_auth.namespace_key).toBeUndefined();
+      expect(exported["x-config"].no_auth.provider).toBe("gcs");
+      expect(exported["x-config"].no_auth.bucket).toBe(
+        "agent-transcripts-secret-do-not-share-93825b427be562"
+      );
     });
 
     it("fully materializes a Stop-event hook (hooks.json + script + count)", () => {

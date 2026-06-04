@@ -366,7 +366,20 @@ export class CoworkEmitter implements PluginEmitter {
   }
 
   /**
-   * Copy hook scripts into scripts/<short>/ inside the plugin directory.
+   * Copy a hook's directory — scripts AND its HOOK.json — into
+   * scripts/<short>/ inside the plugin directory.
+   *
+   * The HOOK.json must be carried forward, not dropped. A hook's own runtime
+   * config loader resolves its HOOK.json relative to its compiled entrypoint —
+   * one level up from `dist/` — and reads the top-level `x-config` block
+   * (storage backend + privacy settings) from it. In the exported plugin the
+   * copied `dist/` lands at scripts/<short>/dist/, so the loader looks for
+   * scripts/<short>/HOOK.json. If that file is absent the loader returns null
+   * and the hook fires at runtime but does nothing (e.g. transcript-capture
+   * uploads silently no-op). We copy the source HOOK.json verbatim — the exact
+   * config `air prepare` already materializes — injecting and stripping
+   * nothing, so backend-specific validation rules (e.g. GCS forbidding a
+   * `no_auth.namespace_key`) are preserved by construction.
    */
   copyHookScripts(
     artifacts: ResolvedArtifacts,
@@ -381,7 +394,6 @@ export class CoworkEmitter implements PluginEmitter {
       const entries = readdirSync(hook.path);
 
       for (const entry of entries) {
-        if (entry === "HOOK.json") continue;
         const srcPath = join(hook.path, entry);
         if (statSync(srcPath).isDirectory()) {
           this.copyDirRecursive(srcPath, join(scriptsDir, entry));
