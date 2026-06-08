@@ -18,7 +18,11 @@ import type {
   BuiltMarketplace,
   QualifiedId,
 } from "@pulsemcp/air-core";
-import { parseQualifiedId, resolveReference } from "@pulsemcp/air-core";
+import {
+  parseQualifiedId,
+  resolveReference,
+  mergeXConfig,
+} from "@pulsemcp/air-core";
 
 interface PluginActivation {
   qualified: QualifiedId;
@@ -366,7 +370,26 @@ export class CoworkEmitter implements PluginEmitter {
   }
 
   /**
-   * Copy hook scripts into scripts/<short>/ inside the plugin directory.
+   * Copy a hook's directory — scripts AND its HOOK.json — into
+   * scripts/<short>/ inside the plugin directory.
+   *
+   * The HOOK.json must be carried forward, not dropped. A hook's own runtime
+   * config loader resolves its HOOK.json relative to its compiled entrypoint —
+   * one level up from `dist/` — and reads the top-level `x-config` block
+   * (storage backend + privacy settings) from it. In the exported plugin the
+   * copied `dist/` lands at scripts/<short>/dist/, so the loader looks for
+   * scripts/<short>/HOOK.json. If that file is absent the loader returns null
+   * and the hook fires at runtime but does nothing (e.g. transcript-capture
+   * uploads silently no-op).
+   *
+   * The emitted HOOK.json carries the same fully-composed `x-config` that
+   * `air prepare` materializes: the hook author's source `x-config` deep-merged
+   * with any consumer-supplied overlay declared in `air.json` (resolved onto
+   * the hook entry as `x-config`). With no consumer overlay the source file is
+   * copied byte-for-byte; with one, only the `x-config` is replaced by the
+   * merged value and every other field is preserved. Nothing is otherwise
+   * injected or stripped, so backend-specific validation rules (e.g. GCS
+   * forbidding a `no_auth.namespace_key`) survive by construction.
    */
   copyHookScripts(
     artifacts: ResolvedArtifacts,
@@ -381,16 +404,57 @@ export class CoworkEmitter implements PluginEmitter {
       const entries = readdirSync(hook.path);
 
       for (const entry of entries) {
-        if (entry === "HOOK.json") continue;
         const srcPath = join(hook.path, entry);
         if (statSync(srcPath).isDirectory()) {
           this.copyDirRecursive(srcPath, join(scriptsDir, entry));
+        } else if (entry === "HOOK.json") {
+          mkdirSync(scriptsDir, { recursive: true });
+          this.writeExportedHookJson(
+            srcPath,
+            join(scriptsDir, entry),
+            hook["x-config"]
+          );
         } else {
           mkdirSync(scriptsDir, { recursive: true });
           copyFileSync(srcPath, join(scriptsDir, entry));
         }
       }
     }
+  }
+
+  /**
+   * Write the hook's HOOK.json into the exported plugin, merging any
+   * consumer-supplied `x-config` overlay (from the resolved hook entry) onto
+   * the source file's own `x-config` — mirroring what `air prepare` does via
+   * `writeMergedHookXConfigs`. With no overlay the source is copied verbatim so
+   * its exact formatting is preserved; with one, the source is re-serialized
+   * with only `x-config` replaced by the merged value.
+   */
+  private writeExportedHookJson(
+    srcPath: string,
+    destPath: string,
+    consumerXConfig: Record<string, unknown> | undefined
+  ): void {
+    const raw = readFileSync(srcPath, "utf-8");
+    if (consumerXConfig === undefined) {
+      writeFileSync(destPath, raw);
+      return;
+    }
+
+    let hookJson: Record<string, unknown>;
+    try {
+      hookJson = JSON.parse(raw);
+    } catch {
+      // buildHooksConfig already validated and hard-failed on a malformed
+      // HOOK.json before reaching here; copy verbatim as a defensive fallback.
+      writeFileSync(destPath, raw);
+      return;
+    }
+
+    const merged = mergeXConfig(hookJson["x-config"], consumerXConfig);
+    const next =
+      merged === undefined ? hookJson : { ...hookJson, "x-config": merged };
+    writeFileSync(destPath, JSON.stringify(next, null, 2) + "\n");
   }
 
   /**

@@ -314,6 +314,7 @@ The `@pulsemcp/air-cowork` emitter translates AIR plugins into Claude Co-work pl
 - Copies skills into `skills/{skill-id}/SKILL.md` with reference documents
 - Translates AIR hooks into Co-work's inline `hooks/hooks.json` format (mapping AIR event names to Co-work event names like `SessionStart`, `PreToolUse`, etc.)
 - Copies hook scripts into `scripts/{hook-id}/` and rewrites hook-relative paths — whether in the `command` field or in a path-like `args` entry (e.g. `node dist/capture.js`) — to use `${CLAUDE_PLUGIN_ROOT}`
+- Writes each hook's `HOOK.json` into `scripts/{hook-id}/` alongside its scripts, so a hook whose runtime config loader reads its own `HOOK.json` (e.g. an `x-config` storage/privacy block resolved one level up from `dist/`) finds its config in the exported plugin. The emitted `HOOK.json` carries the same fully-composed `x-config` that `air prepare` materializes — the hook author's source `x-config` deep-merged with any consumer-supplied overlay declared in `air.json`. With no overlay the source file is copied verbatim; with one, only `x-config` is replaced by the merged value and all other fields are preserved. Nothing else is injected or stripped, so any backend-specific validation rules the config satisfies are preserved.
 - Translates MCP server configs into `.mcp.json` (same format as Claude Code)
 - Produces a `marketplace.json` index suitable for Co-work's GitHub marketplace sync
 

@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-06-04
+
+### Fixed
+- **`@pulsemcp/air-cowork` — `air export cowork` now carries each hook's `HOOK.json` (and its `x-config`) into the exported plugin, so config-driven hooks actually run.** Previously the emitter copied a hook's runtime scripts into `scripts/<id>/` but *dropped* its `HOOK.json`, deliberately skipping it during the copy. A hook whose runtime config loader resolves `HOOK.json` relative to its compiled entrypoint — one level up from `dist/`, i.e. `scripts/<id>/HOOK.json` in the exported layout — therefore found no config: the loader returned `null` and the hook fired at runtime but did nothing. This is what kept `agent-transcript-capture` (a `Stop`-event hook whose `x-config` declares its GCS storage backend + privacy settings) from uploading transcripts when distributed via a Co-work plugin, even though the same hook worked under `air prepare` (which already materializes the full `HOOK.json` forward). The emitter now writes each hook's `HOOK.json` into `scripts/<id>/` alongside the scripts — exactly where the hook's loader resolves it — carrying the same fully-composed `x-config` that `air prepare` materializes: the hook author's source `x-config` deep-merged with any consumer-supplied overlay declared in `air.json`. With no overlay the source file is copied byte-for-byte; with one, only `x-config` is replaced by the merged value and all other fields are preserved. Nothing is otherwise injected or stripped, so backend-specific validation rules (e.g. GCS forbidding an S3-only `no_auth.namespace_key`) are preserved by construction.
+
 ## [0.10.0] - 2026-06-02
 
 ### Fixed
