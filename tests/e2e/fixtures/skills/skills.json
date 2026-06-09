@@ -3,38 +3,45 @@
     "title": "Deploy to Staging",
     "description": "Deploy the current branch to the staging environment, run smoke tests, and report status.",
     "path": "deploy",
-    "references": ["git-workflow", "deploy-checklist"]
+    "references": ["git-workflow", "deploy-checklist"],
+    "default_in_roots": ["platform-orchestrator"]
   },
   "incident-response": {
     "title": "Incident Response",
     "description": "Triage production incidents — gather logs, identify root cause, and coordinate the fix.",
     "path": "incident-response",
-    "references": ["runbook"]
+    "references": ["runbook"],
+    "default_in_roots": ["platform-orchestrator"]
   },
   "query-builder": {
     "title": "Query Builder",
     "description": "Build and optimize SQL queries for the analytics data warehouse.",
-    "path": "query-builder"
+    "path": "query-builder",
+    "default_in_roots": ["data-pipeline"]
   },
   "provision-env": {
     "title": "Provision Environment",
     "description": "Provision cloud infrastructure using Terraform — VPCs, databases, and compute resources.",
-    "path": "provision-env"
+    "path": "provision-env",
+    "default_in_roots": ["infra-agent"]
   },
   "component-review": {
     "title": "Component Review",
     "description": "Review React components for accessibility, design system compliance, and performance.",
     "path": "component-review",
-    "references": ["design-guide"]
+    "references": ["design-guide"],
+    "default_in_roots": ["frontend-app"]
   },
   "lint-fix": {
     "title": "Lint & Fix",
     "description": "Run ESLint with auto-fix on staged files and report remaining issues.",
-    "path": "lint-fix"
+    "path": "lint-fix",
+    "default_in_roots": ["platform-orchestrator", "frontend-app"]
   },
   "format-check": {
     "title": "Format Check",
     "description": "Check code formatting with Prettier and fix any violations.",
-    "path": "format-check"
+    "path": "format-check",
+    "default_in_roots": ["platform-orchestrator", "frontend-app"]
   }
 }

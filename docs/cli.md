@@ -159,6 +159,8 @@ Loads `air.json`, runs catalog providers (e.g., `github://`) declared under `ext
 
 Keys are qualified IDs (`@scope/id`); reference fields inside entries (e.g. `default_skills`, `mcp_servers`) are likewise qualified. All `path` fields are absolute, making the output self-contained regardless of where the `air.json` lives.
 
+The `default_in_roots` field that artifacts author in their indexes is consumed during resolution and does **not** appear in the resolved tree. Instead, AIR inverts it into each root's computed `default_mcp_servers`, `default_skills`, `default_plugins`, `default_hooks`, `default_references`, and `default_subagent_roots` arrays — which is what you see on `roots` entries above.
+
 **Options:**
 
 | Flag | Description |

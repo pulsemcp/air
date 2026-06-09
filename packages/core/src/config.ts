@@ -593,6 +593,8 @@ function canonicalizeReferences(
     | { kind: "skill"; entry: SkillEntry }
     | { kind: "hook"; entry: HookEntry }
     | { kind: "plugin"; entry: PluginEntry }
+    | { kind: "mcp"; entry: McpServerEntry }
+    | { kind: "reference"; entry: ReferenceEntry }
     | { kind: "root"; entry: RootEntry };
 
   const result: ResolvedArtifacts = {
@@ -679,6 +681,34 @@ function canonicalizeReferences(
     return out;
   }
 
+  /**
+   * Canonicalize a `default_in_roots` list. Every entry is a reference into
+   * the roots pool — except the literal `"*"` wildcard, which means "all
+   * resolved roots" and is preserved verbatim for {@link computeRootMembership}
+   * to expand. Non-wildcard entries go through the same warn-and-drop /
+   * ambiguity rules as any other reference.
+   */
+  function resolveInRoots(
+    list: string[] | undefined,
+    fromScope: string,
+    ownerLabel: string
+  ): string[] | undefined {
+    if (!list) return undefined;
+    const wildcard = list.includes("*");
+    const explicit = list.filter((r) => r !== "*");
+    const resolved =
+      resolveList(
+        explicit,
+        result.roots,
+        fromScope,
+        "root",
+        "roots",
+        ownerLabel,
+        "default_in_roots"
+      ) ?? [];
+    return wildcard ? ["*", ...resolved] : resolved;
+  }
+
   function processOwner(
     qualified: QualifiedId,
     owner: RefField
@@ -697,8 +727,29 @@ function canonicalizeReferences(
         ownerLabel,
         "references"
       );
+      next.default_in_roots = resolveInRoots(
+        next.default_in_roots,
+        scope,
+        ownerLabel
+      );
       if (owner.kind === "skill") result.skills[qualified] = next as SkillEntry;
       else result.hooks[qualified] = next as HookEntry;
+    } else if (owner.kind === "mcp") {
+      const next: McpServerEntry = { ...owner.entry };
+      next.default_in_roots = resolveInRoots(
+        next.default_in_roots,
+        scope,
+        ownerLabel
+      );
+      result.mcp[qualified] = next;
+    } else if (owner.kind === "reference") {
+      const next: ReferenceEntry = { ...owner.entry };
+      next.default_in_roots = resolveInRoots(
+        next.default_in_roots,
+        scope,
+        ownerLabel
+      );
+      result.references[qualified] = next;
     } else if (owner.kind === "plugin") {
       const next: PluginEntry = { ...owner.entry };
       next.skills = resolveList(
@@ -737,53 +788,40 @@ function canonicalizeReferences(
         ownerLabel,
         "plugins"
       );
+      next.default_in_roots = resolveInRoots(
+        next.default_in_roots,
+        scope,
+        ownerLabel
+      );
       result.plugins[qualified] = next;
     } else {
       const next: RootEntry = { ...owner.entry };
-      next.default_skills = resolveList(
-        next.default_skills,
-        result.skills,
+      // Membership is inverted: a root now declares which OTHER roots it is a
+      // default subagent of via `default_in_roots`. The legacy per-root
+      // `default_*` arrays are no longer authored here — warn loudly if a
+      // catalog still carries them so authors migrate, then drop them (they
+      // are overwritten by the computed membership below regardless).
+      const legacy = LEGACY_ROOT_MEMBERSHIP_FIELDS.filter((f) => {
+        const v = (owner.entry as unknown as Record<string, unknown>)[f];
+        // Only warn for arrays that actually carry membership intent — an
+        // empty leftover array means "nothing", which is already the default.
+        return Array.isArray(v) && v.length > 0;
+      });
+      if (legacy.length > 0) {
+        warnings.push(
+          `Root "${ownerLabel}" declares legacy membership field(s) ` +
+            `${legacy.join(", ")}. These are ignored — declare membership on ` +
+            `each artifact via "default_in_roots" (use "*" for all roots) ` +
+            `instead. See docs/guides/roots.md.`
+        );
+        for (const f of legacy) {
+          delete (next as unknown as Record<string, unknown>)[f];
+        }
+      }
+      next.default_in_roots = resolveInRoots(
+        next.default_in_roots,
         scope,
-        "skill",
-        "skills",
-        ownerLabel,
-        "default_skills"
-      );
-      next.default_mcp_servers = resolveList(
-        next.default_mcp_servers,
-        result.mcp,
-        scope,
-        "mcp",
-        "mcp",
-        ownerLabel,
-        "default_mcp_servers"
-      );
-      next.default_plugins = resolveList(
-        next.default_plugins,
-        result.plugins,
-        scope,
-        "plugin",
-        "plugins",
-        ownerLabel,
-        "default_plugins"
-      );
-      next.default_hooks = resolveList(
-        next.default_hooks,
-        result.hooks,
-        scope,
-        "hook",
-        "hooks",
-        ownerLabel,
-        "default_hooks"
-      );
-      next.default_subagent_roots = resolveList(
-        next.default_subagent_roots,
-        result.roots,
-        scope,
-        "root",
-        "roots",
-        ownerLabel,
-        "default_subagent_roots"
+        ownerLabel
       );
       result.roots[qualified] = next;
     }
@@ -791,6 +829,12 @@ function canonicalizeReferences(
 
   for (const [qualified, entry] of Object.entries(artifacts.skills)) {
     processOwner(qualified, { kind: "skill", entry });
+  }
+  for (const [qualified, entry] of Object.entries(artifacts.references)) {
+    processOwner(qualified, { kind: "reference", entry });
+  }
+  for (const [qualified, entry] of Object.entries(artifacts.mcp)) {
+    processOwner(qualified, { kind: "mcp", entry });
   }
   for (const [qualified, entry] of Object.entries(artifacts.hooks)) {
     processOwner(qualified, { kind: "hook", entry });
@@ -802,7 +846,124 @@ function canonicalizeReferences(
     processOwner(qualified, { kind: "root", entry });
   }
 
+  // Invert the now-canonical `default_in_roots` declarations into the computed
+  // per-root membership arrays the rest of AIR consumes, then strip the
+  // authored field from every resolved entry.
+  computeRootMembership(result);
+
   return result;
+}
+
+/**
+ * Legacy per-root membership fields that used to be authored on root entries.
+ * Their meaning is now inverted onto the artifacts via `default_in_roots`;
+ * resolution warns when a catalog still carries them and ignores their values.
+ */
+const LEGACY_ROOT_MEMBERSHIP_FIELDS = [
+  "default_skills",
+  "default_mcp_servers",
+  "default_plugins",
+  "default_hooks",
+  "default_subagent_roots",
+] as const;
+
+/**
+ * Derive each root's membership arrays from the `default_in_roots` field
+ * declared on artifacts, then remove that authored field from the resolved
+ * entries (it has been "compiled" into the inverse view).
+ *
+ * The `"*"` wildcard on an artifact expands to every resolved root. A root
+ * that lists itself (directly or via `"*"`) is never made its own subagent.
+ * Membership arrays are sorted for deterministic output; empty categories are
+ * omitted so the resolved root shape matches the pre-inversion contract.
+ *
+ * Mutates `result` in place.
+ */
+function computeRootMembership(result: ResolvedArtifacts): void {
+  const rootIds = Object.keys(result.roots);
+
+  interface Membership {
+    skills: Set<string>;
+    mcp: Set<string>;
+    hooks: Set<string>;
+    plugins: Set<string>;
+    references: Set<string>;
+    subagents: Set<string>;
+  }
+  const membership = new Map<string, Membership>();
+  for (const rid of rootIds) {
+    membership.set(rid, {
+      skills: new Set(),
+      mcp: new Set(),
+      hooks: new Set(),
+      plugins: new Set(),
+      references: new Set(),
+      subagents: new Set(),
+    });
+  }
+
+  function distribute(
+    pool: Record<string, { default_in_roots?: string[] }>,
+    category: keyof Membership,
+    isRoot: boolean
+  ): void {
+    for (const [artifactId, entry] of Object.entries(pool)) {
+      const inRoots = entry.default_in_roots;
+      if (!inRoots || inRoots.length === 0) continue;
+      const targets = inRoots.includes("*") ? rootIds : inRoots;
+      for (const targetRoot of targets) {
+        // A root is never a subagent of itself, even under the "*" wildcard.
+        if (isRoot && targetRoot === artifactId) continue;
+        membership.get(targetRoot)?.[category].add(artifactId);
+      }
+    }
+  }
+
+  distribute(result.skills, "skills", false);
+  distribute(result.mcp, "mcp", false);
+  distribute(result.hooks, "hooks", false);
+  distribute(result.plugins, "plugins", false);
+  distribute(result.references, "references", false);
+  distribute(result.roots, "subagents", true);
+
+  const fieldByCategory: Record<keyof Membership, keyof RootEntry> = {
+    skills: "default_skills",
+    mcp: "default_mcp_servers",
+    hooks: "default_hooks",
+    plugins: "default_plugins",
+    references: "default_references",
+    subagents: "default_subagent_roots",
+  };
+
+  for (const rid of rootIds) {
+    const m = membership.get(rid)!;
+    const root = result.roots[rid] as unknown as Record<string, unknown>;
+    for (const category of Object.keys(fieldByCategory) as (keyof Membership)[]) {
+      const field = fieldByCategory[category];
+      const ids = m[category];
+      if (ids.size > 0) {
+        root[field] = [...ids].sort();
+      } else {
+        delete root[field];
+      }
+    }
+  }
+
+  // The authored membership declaration has been consumed — drop it from every
+  // resolved entry so the resolved set carries only the computed inverse view.
+  const pools: Record<string, { default_in_roots?: string[] }>[] = [
+    result.skills,
+    result.mcp,
+    result.hooks,
+    result.plugins,
+    result.references,
+    result.roots,
+  ];
+  for (const pool of pools) {
+    for (const entry of Object.values(pool)) {
+      delete entry.default_in_roots;
+    }
+  }
 }
 
 function listIds(pool: Record<string, unknown>): string {

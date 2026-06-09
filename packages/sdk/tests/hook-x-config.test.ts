@@ -203,6 +203,7 @@ describe("hook x-config materialization", () => {
           "merge-hook": {
             description: "merge hook",
             path: "hooks/merge-hook",
+            default_in_roots: ["default"],
             "x-config": {
               defaults: { greeting: "hi" },
               tags: ["c"],
@@ -221,7 +222,6 @@ describe("hook x-config materialization", () => {
         "roots.json": {
           default: {
             description: "Default",
-            default_hooks: ["merge-hook"],
           },
         },
       });
@@ -262,6 +262,7 @@ describe("hook x-config materialization", () => {
           "passthrough-hook": {
             description: "passthrough",
             path: "hooks/passthrough-hook",
+            default_in_roots: ["default"],
           },
         },
         "hooks/passthrough-hook/HOOK.json": JSON.stringify({
@@ -272,7 +273,6 @@ describe("hook x-config materialization", () => {
         "roots.json": {
           default: {
             description: "Default",
-            default_hooks: ["passthrough-hook"],
           },
         },
       });
@@ -311,6 +311,7 @@ describe("hook x-config materialization", () => {
             "interp-hook": {
               description: "interp hook",
               path: "hooks/interp-hook",
+              default_in_roots: ["default"],
               "x-config": {
                 credentials: { token: "${SDK_TEST_XCONFIG_SECRET}" },
               },
@@ -324,7 +325,6 @@ describe("hook x-config materialization", () => {
           "roots.json": {
             default: {
               description: "Default",
-              default_hooks: ["interp-hook"],
             },
           },
         });

@@ -49,6 +49,13 @@
           "type": "object",
           "description": "Consumer-supplied configuration overrides that AIR deep-merges into the materialized HOOK.json's own x-config at resolve time. Objects merge recursively (consumer wins on conflict), arrays replace, scalars replace. Values support ${VAR} interpolation via secrets transforms (e.g. @pulsemcp/air-secrets-env). The shape is intentionally permissive — hook-specific validation is the hook author's responsibility.",
           "additionalProperties": true
+        },
+        "default_in_roots": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Names of roots this hook is activated in by default. Use the literal \"*\" to activate it in every resolved root — handy for a personal hook in a local catalog that should apply everywhere. This replaces the legacy default_hooks array that lived on root entries — membership is now declared on the artifact."
         }
       },
       "required": ["description", "path"],

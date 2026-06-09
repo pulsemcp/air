@@ -23,14 +23,26 @@ Roots are registered in `roots.json`:
     "description": "Main web app — Rails backend, React frontend",
     "url": "https://github.com/acme/web-app.git",
     "default_branch": "main",
-    "default_mcp_servers": ["github", "postgres-prod"],
-    "default_skills": ["deploy-staging", "pr-review"],
-    "default_plugins": ["code-quality"],
-    "default_hooks": ["lint-pre-commit"],
     "user_invocable": true
   }
 }
 ```
+
+A root entry no longer lists its members. Instead, each artifact declares which roots it belongs to via `default_in_roots`. For example, an MCP server joins `web-app` by listing it in the server's own entry in `mcp.json`:
+
+```json
+{
+  "github": {
+    "title": "GitHub",
+    "type": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-github@0.6.2"],
+    "default_in_roots": ["web-app", "data-pipeline"]
+  }
+}
+```
+
+Skills, references, hooks, and plugins use the same `default_in_roots` field in their respective indexes. A root itself can declare `default_in_roots` to become a default subagent of other roots (see [Roots in Multi-Agent Systems](#roots-in-multi-agent-systems)). The wildcard `"*"` means "all roots" — useful for, say, a personal hook that should apply everywhere without editing each root.
 
 ### Fields
 
@@ -41,12 +53,11 @@ Roots are registered in `roots.json`:
 | `url` | No | Git repository URL. |
 | `default_branch` | No | Branch to use when cloning (defaults to `main`). |
 | `subdirectory` | No | Path within the repo (for monorepo setups). |
-| `default_mcp_servers` | No | MCP server IDs to activate by default. |
-| `default_skills` | No | Skill IDs to make available by default. |
-| `default_plugins` | No | Plugin IDs to activate by default. |
-| `default_hooks` | No | Hook IDs to activate by default. |
+| `default_in_roots` | No | Names of other roots this root is a default subagent of. Use `["*"]` for all roots. (A root is never its own subagent.) |
 | `default_runtime` | No | Agent runtime for sessions/subagents under this root (defaults to `claude_code`). Open string; common values include `claude_code`, `codex`, `pi`, `opencode`, `amp`, `gemini`, `github_copilot`. |
 | `user_invocable` | No | Whether users can start sessions with this root directly (default: true). |
+
+Skills, MCP servers, plugins, and hooks become members of a root by listing the root name in their own `default_in_roots` field. AIR inverts these declarations during resolution to compute each root's effective `default_mcp_servers`, `default_skills`, `default_plugins`, `default_hooks`, and `default_references` (see the resolved-output examples below).
 
 ## Monorepo Support
 
@@ -57,12 +68,12 @@ For monorepos, use the `subdirectory` field to point to a specific path within t
   "api-service": {
     "description": "API service within the platform monorepo",
     "url": "https://github.com/acme/platform.git",
-    "subdirectory": "services/api",
-    "default_mcp_servers": ["github"],
-    "default_skills": ["deploy-staging"]
+    "subdirectory": "services/api"
   }
 }
 ```
+
+Artifacts that belong to `api-service` (such as the `github` server or the `deploy-staging` skill) list it in their own `default_in_roots`.
 
 AIR works inside monorepos seamlessly — you just need everyone to know where the `air.json` file is.
 
@@ -90,18 +101,22 @@ When you start a session with a root, AIR:
 
 Roots are the primary building block for multi-agent architectures. An orchestrator agent operates on one root, and spawns subagents on other roots — each with its own skills, MCP servers, and scope.
 
+Membership is authored on the artifacts (and on subagent roots) via `default_in_roots`, not on the parent root. A root becomes a default subagent of another root by listing the parent in its own `default_in_roots`. The tree below shows the *effective* membership AIR computes after inverting those declarations — what each root resolves to:
+
 ```
 Orchestrator root: "pipeline"
   ├── default_mcp_servers: ["orchestrator-mcp"]     ← can spawn subagents
-  └── default_skills: ["run-pipeline"]
+  ├── default_skills: ["run-pipeline"]
+  └── default_subagent_roots: ["pipeline-phase-1"]
 
 Subagent root: "pipeline-phase-1"
   ├── default_mcp_servers: ["domain-db"]             ← domain tools only
   ├── default_skills: ["ingest-data"]
+  ├── default_in_roots: ["pipeline"]                 ← makes it a subagent of "pipeline"
   └── user_invocable: false                          ← only spawned by orchestrator
 ```
 
-Setting `user_invocable: false` on subagent roots signals that they exist to be spawned programmatically, not started directly by users.
+Here `pipeline-phase-1` authors `default_in_roots: ["pipeline"]` in `roots.json`, and AIR computes `pipeline`'s `default_subagent_roots` from it. Likewise, the `orchestrator-mcp` server lists `pipeline` in its `default_in_roots`, and AIR computes `pipeline`'s `default_mcp_servers`. The resolver also computes a `default_references` array per root the same way. Setting `user_invocable: false` on subagent roots signals that they exist to be spawned programmatically, not started directly by users.
 
 AIR resolves the config for each root independently. The orchestration logic — deciding execution order, passing data, handling failures — lives in the orchestration platform, not in AIR. See [Orchestration & Multi-Agent Patterns](orchestration.md) for detailed patterns.
 

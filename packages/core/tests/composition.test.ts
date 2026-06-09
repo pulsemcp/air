@@ -451,7 +451,7 @@ describe("composition", () => {
     expect(Object.keys(artifacts.mcp)).toEqual(["@local/x"]);
   });
 
-  it("root reference fields are canonicalized to qualified IDs", async () => {
+  it("artifact default_in_roots is inverted into qualified root membership", async () => {
     const { dir, cleanup: c } = createTempAirDir({
       "air.json": {
         name: "test",
@@ -460,18 +460,15 @@ describe("composition", () => {
         roots: ["./roots.json"],
       },
       "skills.json": {
-        deploy: exampleSkill("deploy"),
+        deploy: exampleSkill("deploy", { default_in_roots: ["web-app"] }),
         review: exampleSkill("review"),
       },
       "mcp.json": {
-        github: exampleMcpStdio({ title: "GitHub" }),
+        github: exampleMcpStdio({ title: "GitHub", default_in_roots: ["web-app"] }),
         slack: exampleMcpStdio({ title: "Slack" }),
       },
       "roots.json": {
-        "web-app": exampleRoot("web-app", {
-          default_mcp_servers: ["github"],
-          default_skills: ["deploy"],
-        }),
+        "web-app": exampleRoot("web-app"),
       },
     });
     cleanup = c;
@@ -482,6 +479,16 @@ describe("composition", () => {
     expect(root).toBeDefined();
     expect(root.default_mcp_servers).toEqual(["@local/github"]);
     expect(root.default_skills).toEqual(["@local/deploy"]);
+
+    // Artifacts not assigned to the root contribute no membership.
+    expect(root.default_mcp_servers).not.toContain("@local/slack");
+    expect(root.default_skills).not.toContain("@local/review");
+
+    // The authored field is consumed — it does not survive on resolved entries.
+    expect(
+      (artifacts.skills["@local/deploy"] as { default_in_roots?: string[] })
+        .default_in_roots
+    ).toBeUndefined();
 
     for (const id of root.default_mcp_servers!) {
       expect(artifacts.mcp[id]).toBeDefined();
@@ -590,7 +597,7 @@ describe("composition", () => {
     expect(dropWarns[0]).toMatch(/Dropping the reference/);
   });
 
-  it("excluded MCP server referenced by a root's default_mcp_servers warns and is dropped", async () => {
+  it("excluded MCP server drops out of every root's computed membership", async () => {
     const warnings: string[] = [];
     const { dir, cleanup: c } = createTempAirDir({
       "air.json": {
@@ -600,13 +607,14 @@ describe("composition", () => {
         exclude: { mcp: ["@local/github"] },
       },
       "mcp.json": {
-        github: exampleMcpStdio({ title: "GitHub MCP" }),
-        jira: exampleMcpStdio({ title: "Jira MCP" }),
+        github: exampleMcpStdio({
+          title: "GitHub MCP",
+          default_in_roots: ["web"],
+        }),
+        jira: exampleMcpStdio({ title: "Jira MCP", default_in_roots: ["web"] }),
       },
       "roots.json": {
-        web: exampleRoot("web", {
-          default_mcp_servers: ["github", "jira"],
-        }),
+        web: exampleRoot("web"),
       },
     });
     cleanup = c;
@@ -615,17 +623,52 @@ describe("composition", () => {
       onWarning: (m) => warnings.push(m),
     });
 
+    // The excluded server is gone from the pool, so it never lands in the
+    // inverted membership — only the surviving server remains.
     expect(artifacts.roots["@local/web"].default_mcp_servers).toEqual([
       "@local/jira",
     ]);
     expect(artifacts.mcp["@local/github"]).toBeUndefined();
+  });
+
+  it("default_in_roots referencing an excluded root warns and is dropped", async () => {
+    const warnings: string[] = [];
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        mcp: ["./mcp.json"],
+        roots: ["./roots.json"],
+        exclude: { roots: ["@local/legacy"] },
+      },
+      "mcp.json": {
+        github: exampleMcpStdio({
+          title: "GitHub MCP",
+          default_in_roots: ["web", "legacy"],
+        }),
+      },
+      "roots.json": {
+        web: exampleRoot("web"),
+        legacy: exampleRoot("legacy"),
+      },
+    });
+    cleanup = c;
+
+    const artifacts = await resolveArtifacts(join(dir, "air.json"), {
+      onWarning: (m) => warnings.push(m),
+    });
+
+    // The excluded root is gone; the surviving root still gets the server.
+    expect(artifacts.roots["@local/legacy"]).toBeUndefined();
+    expect(artifacts.roots["@local/web"].default_mcp_servers).toEqual([
+      "@local/github",
+    ]);
 
     const dropWarns = warnings.filter((w) =>
       w.includes("removed by air.json#exclude"),
     );
     expect(dropWarns).toHaveLength(1);
-    expect(dropWarns[0]).toMatch(/default_mcp_servers/);
-    expect(dropWarns[0]).toMatch(/@local\/github/);
+    expect(dropWarns[0]).toMatch(/default_in_roots/);
+    expect(dropWarns[0]).toMatch(/@local\/legacy/);
   });
 
   it("excluded child plugin referenced by another plugin's plugins[] warns and is dropped before expandPlugins runs", async () => {

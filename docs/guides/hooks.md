@@ -282,19 +282,33 @@ The `matcher` field is a regex pattern. The hook only fires when the pattern mat
 
 ## Assigning hooks to roots
 
-Hooks are activated per-root via `default_hooks`:
+A hook joins one or more roots by listing the root names in its own `default_in_roots` field:
 
 ```json
 {
-  "web-app": {
-    "name": "web-app",
-    "description": "Main web application",
-    "default_hooks": ["lint-pre-commit", "notify-session-start"]
+  "lint-pre-commit": {
+    "title": "Pre-Commit Lint Check",
+    "description": "Run linting on staged files before allowing a commit",
+    "path": "lint-pre-commit",
+    "default_in_roots": ["web-app"]
   }
 }
 ```
 
-Without a root, all hooks are available.
+Use the `"*"` wildcard to apply a hook to every root — handy for a personal hook like a session-start notification that should fire everywhere without editing each root:
+
+```json
+{
+  "notify-session-start": {
+    "title": "Session Start Notification",
+    "description": "Send a Slack notification when an agent session starts",
+    "path": "notify-session-start",
+    "default_in_roots": ["*"]
+  }
+}
+```
+
+During resolution AIR inverts these declarations into each root's computed `default_hooks`. Without a root, all hooks are available.
 
 ## Secret resolution in hooks
 

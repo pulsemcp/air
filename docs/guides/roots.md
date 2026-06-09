@@ -28,23 +28,39 @@ Add or edit entries in your roots index file:
     "name": "web-app",
     "display_name": "Web Application",
     "description": "Main web application. Full-stack Rails app with React frontend.",
-    "url": "https://github.com/acme/web-app.git",
-    "default_mcp_servers": ["github", "postgres-prod"],
-    "default_skills": ["deploy-staging", "initial-pr-review"],
-    "default_plugins": ["code-quality"],
-    "default_hooks": ["lint-pre-commit"]
+    "url": "https://github.com/acme/web-app.git"
   },
   "data-pipeline": {
     "name": "data-pipeline",
     "display_name": "Data Pipeline",
     "description": "ETL pipeline and data warehouse management. Python-based with dbt.",
     "url": "https://github.com/acme/data-pipeline.git",
-    "subdirectory": "pipeline",
-    "default_mcp_servers": ["github", "analytics"],
-    "default_skills": ["initial-pr-review"]
+    "subdirectory": "pipeline"
   }
 }
 ```
+
+A root entry doesn't list its members. Membership is declared on each artifact: a skill, reference, MCP server, hook, or plugin joins a root by listing the root's name in its own `default_in_roots` field. For example, in `mcp.json`:
+
+```json
+{
+  "github": {
+    "title": "GitHub",
+    "type": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-github@0.6.2"],
+    "default_in_roots": ["web-app", "data-pipeline"]
+  },
+  "analytics": {
+    "title": "Analytics Dashboard",
+    "type": "streamable-http",
+    "url": "https://mcp.analytics.example.com/mcp",
+    "default_in_roots": ["data-pipeline"]
+  }
+}
+```
+
+The wildcard `"*"` means "all roots" — e.g. `default_in_roots: ["*"]` on a personal hook makes it apply to every root without editing each one.
 
 ### Root fields
 
@@ -56,13 +72,11 @@ Add or edit entries in your roots index file:
 | `url` | No | Git repository URL (used for auto-detection). |
 | `default_branch` | No | Default branch when cloning (defaults to `main`). |
 | `subdirectory` | No | Path within the repo (for monorepos). |
-| `default_mcp_servers` | No | MCP server IDs to activate by default. |
-| `default_skills` | No | Skill IDs to make available by default. |
-| `default_plugins` | No | Plugin IDs to activate by default. |
-| `default_hooks` | No | Hook IDs to activate by default. |
-| `default_subagent_roots` | No | IDs of other roots this root depends on as subagents. |
+| `default_in_roots` | No | Names of other roots this root is a default subagent of. Use `["*"]` for all roots. A root is never its own subagent. |
 | `default_runtime` | No | Agent runtime for sessions/subagents under this root (defaults to `claude_code`). Open string; common values include `claude_code`, `codex`, `pi`, `opencode`, `amp`, `gemini`, `github_copilot`. |
 | `user_invocable` | No | Whether users can start sessions with this root directly (default: `true`). |
+
+During resolution, AIR inverts every artifact's `default_in_roots` into per-root membership: it computes each root's `default_mcp_servers`, `default_skills`, `default_plugins`, `default_hooks`, `default_references`, and `default_subagent_roots`. These computed arrays are what the rest of AIR consumes and what shows up in `air resolve` output.
 
 ## Using roots with air start
 
@@ -105,39 +119,48 @@ Use `subdirectory` to scope a root to a specific path within a repository:
     "name": "api-service",
     "description": "API service within the monorepo",
     "url": "https://github.com/acme/monorepo.git",
-    "subdirectory": "services/api",
-    "default_mcp_servers": ["github", "postgres-prod"]
+    "subdirectory": "services/api"
   },
   "web-frontend": {
     "name": "web-frontend",
     "description": "Web frontend within the monorepo",
     "url": "https://github.com/acme/monorepo.git",
-    "subdirectory": "apps/web",
-    "default_mcp_servers": ["github"]
+    "subdirectory": "apps/web"
   }
 }
 ```
+
+Artifacts then list `api-service` or `web-frontend` in their own `default_in_roots` to join each one.
 
 When auto-detecting, AIR picks the root whose `subdirectory` best matches the target directory's position within the repo.
 
 ## Subagent roots
 
-A root can declare dependencies on other roots via `default_subagent_roots`:
+A root becomes a subagent of another root by listing the parent in its own `default_in_roots` — the same inversion used for every other artifact. To make `web-app` and `data-pipeline` subagents of an `orchestrator` root, declare it on each subagent root:
 
 ```json
 {
   "orchestrator": {
     "name": "orchestrator",
     "description": "Main orchestrator that delegates to specialized agents",
-    "url": "https://github.com/acme/orchestrator.git",
-    "default_subagent_roots": ["web-app", "data-pipeline"],
-    "default_mcp_servers": ["github"],
-    "default_skills": ["orchestrate-deploy"]
+    "url": "https://github.com/acme/orchestrator.git"
+  },
+  "web-app": {
+    "name": "web-app",
+    "description": "Main web application.",
+    "url": "https://github.com/acme/web-app.git",
+    "default_in_roots": ["orchestrator"]
+  },
+  "data-pipeline": {
+    "name": "data-pipeline",
+    "description": "ETL pipeline and data warehouse.",
+    "url": "https://github.com/acme/data-pipeline.git",
+    "default_in_roots": ["orchestrator"]
   }
 }
 ```
 
-By default, both `air start` and `air prepare` merge subagent roots' skills and MCP servers into the parent session and append context about the subagent dependencies to the system prompt. This gives the parent agent awareness of its subagents' capabilities.
+AIR inverts these into `orchestrator`'s computed `default_subagent_roots: ["web-app", "data-pipeline"]`. (A root is never its own subagent.) By default, both `air start` and `air prepare` merge subagent roots' skills and MCP servers into the parent session and append context about the subagent dependencies to the system prompt. This gives the parent agent awareness of its subagents' capabilities.
 
 To opt out of this merging (e.g., when your orchestrator manages subagent composition externally):
 
@@ -157,11 +180,12 @@ Set `user_invocable: false` for roots that should only be used as subagent depen
     "name": "shared-utils",
     "description": "Shared utility functions — subagent only",
     "url": "https://github.com/acme/shared-utils.git",
-    "user_invocable": false,
-    "default_skills": ["lint-fix"]
+    "user_invocable": false
   }
 }
 ```
+
+(The `lint-fix` skill joins this root by listing `shared-utils` in its own `default_in_roots`.)
 
 ## Listing roots
 

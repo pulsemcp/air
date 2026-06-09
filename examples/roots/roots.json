@@ -4,9 +4,6 @@
     "description": "Main web application. Full-stack Rails app with React frontend.",
     "url": "https://github.com/acme/web-app.git",
     "default_branch": "main",
-    "default_mcp_servers": ["github", "postgres-prod"],
-    "default_skills": ["deploy-staging", "initial-pr-review"],
-    "default_plugins": ["code-quality"],
     "user_invocable": true
   },
   "data-pipeline": {
@@ -15,8 +12,6 @@
     "url": "https://github.com/acme/data-pipeline.git",
     "default_branch": "main",
     "subdirectory": "pipeline",
-    "default_mcp_servers": ["github", "analytics"],
-    "default_skills": ["initial-pr-review"],
     "default_runtime": "codex",
     "user_invocable": true
   }

@@ -55,13 +55,13 @@ describe("prepareSession", () => {
           command: "npx",
           args: ["-y", "@mcp/github"],
           env: { TOKEN: "abc" },
+          default_in_roots: ["default"],
         },
       },
       "roots.json": {
         default: {
           name: "default",
           description: "Default root",
-          default_mcp_servers: ["github"],
         },
       },
     });
@@ -97,6 +97,7 @@ describe("prepareSession", () => {
         "my-skill": {
           description: "A test skill",
           path: "skills/my-skill",
+          default_in_roots: ["default"],
         },
       },
       "skills/my-skill/SKILL.md": "# My Skill\nDo the thing.",
@@ -104,7 +105,6 @@ describe("prepareSession", () => {
         default: {
           name: "default",
           description: "Default root",
-          default_skills: ["my-skill"],
         },
       },
     });
@@ -135,14 +135,13 @@ describe("prepareSession", () => {
         roots: ["./roots.json"],
       },
       "mcp.json": {
-        github: { type: "stdio", command: "npx", args: ["github-mcp"] },
+        github: { type: "stdio", command: "npx", args: ["github-mcp"], default_in_roots: ["web-app"] },
         slack: { type: "stdio", command: "npx", args: ["slack-mcp"] },
-        postgres: { type: "stdio", command: "npx", args: ["pg-mcp"] },
+        postgres: { type: "stdio", command: "npx", args: ["pg-mcp"], default_in_roots: ["web-app"] },
       },
       "roots.json": {
         "web-app": {
           description: "Web app root",
-          default_mcp_servers: ["github", "postgres"],
         },
       },
     });
@@ -215,10 +214,12 @@ describe("prepareSession", () => {
         "skill-a": {
           description: "Skill A",
           path: "skills/skill-a",
+          default_in_roots: ["myroot"],
         },
         "skill-b": {
           description: "Skill B",
           path: "skills/skill-b",
+          default_in_roots: ["myroot"],
         },
         "skill-c": {
           description: "Skill C",
@@ -231,7 +232,6 @@ describe("prepareSession", () => {
       "roots.json": {
         myroot: {
           description: "Test root",
-          default_skills: ["skill-a", "skill-b"],
         },
       },
     });
@@ -262,13 +262,12 @@ describe("prepareSession", () => {
         roots: ["./roots.json"],
       },
       "mcp.json": {
-        github: { type: "stdio", command: "npx", args: ["github-mcp"] },
+        github: { type: "stdio", command: "npx", args: ["github-mcp"], default_in_roots: ["myroot"] },
         slack: { type: "stdio", command: "npx", args: ["slack-mcp"] },
       },
       "roots.json": {
         myroot: {
           description: "Test",
-          default_mcp_servers: ["github"],
         },
       },
     });
@@ -337,10 +336,10 @@ describe("prepareSession", () => {
           roots: ["./roots.json"],
         },
         "mcp.json": {
-          server: { type: "stdio", command: "npx", env: { KEY: "value" } },
+          server: { type: "stdio", command: "npx", env: { KEY: "value" }, default_in_roots: ["default"] },
         },
         "roots.json": {
-          default: { name: "default", description: "Default", default_mcp_servers: ["server"] },
+          default: { name: "default", description: "Default" },
         },
         // Local transform that adds a marker env var
         "add-marker.js": `
@@ -378,10 +377,10 @@ export default async function(config, context) {
           roots: ["./roots.json"],
         },
         "mcp.json": {
-          server: { type: "stdio", command: "npx", env: { ORDER: "" } },
+          server: { type: "stdio", command: "npx", env: { ORDER: "" }, default_in_roots: ["default"] },
         },
         "roots.json": {
-          default: { name: "default", description: "Default", default_mcp_servers: ["server"] },
+          default: { name: "default", description: "Default" },
         },
         "first.js": `
 export default async function(config, context) {
@@ -422,10 +421,10 @@ export default async function(config, context) {
           roots: ["./roots.json"],
         },
         "mcp.json": {
-          server: { type: "stdio", command: "npx", env: { TOKEN: "abc" } },
+          server: { type: "stdio", command: "npx", env: { TOKEN: "abc" }, default_in_roots: ["default"] },
         },
         "roots.json": {
-          default: { name: "default", description: "Default", default_mcp_servers: ["server"] },
+          default: { name: "default", description: "Default" },
         },
       });
 
@@ -460,10 +459,11 @@ export default async function(config, context) {
               type: "stdio",
               command: "npx",
               env: { API_KEY: "${SDK_TEST_SECRET}" },
+              default_in_roots: ["default"],
             },
           },
           "roots.json": {
-            default: { name: "default", description: "Default", default_mcp_servers: ["server"] },
+            default: { name: "default", description: "Default" },
           },
         });
 
@@ -500,10 +500,11 @@ export default async function(config, context) {
             type: "stdio",
             command: "npx",
             env: { API_KEY: "${FILE_SECRET}" },
+            default_in_roots: ["default"],
           },
         },
         "roots.json": {
-          default: { name: "default", description: "Default", default_mcp_servers: ["server"] },
+          default: { name: "default", description: "Default" },
         },
         "secrets.json": { FILE_SECRET: "resolved-from-file" },
       });
@@ -545,10 +546,11 @@ export default async function(config, context) {
                 FROM_FILE: "${FILE_KEY}",
                 FROM_ENV: "${SDK_TEST_FALLBACK}",
               },
+              default_in_roots: ["default"],
             },
           },
           "roots.json": {
-            default: { name: "default", description: "Default", default_mcp_servers: ["server"] },
+            default: { name: "default", description: "Default" },
           },
           "secrets.json": { FILE_KEY: "from-file" },
         });
@@ -591,6 +593,7 @@ export default async function(config, context) {
             "notify-hook": {
               description: "Notification hook",
               path: "hooks/notify-hook",
+              default_in_roots: ["default"],
             },
           },
           "hooks/notify-hook/HOOK.json": JSON.stringify({
@@ -605,7 +608,6 @@ export default async function(config, context) {
             default: {
               name: "default",
               description: "Default",
-              default_hooks: ["notify-hook"],
             },
           },
         });
@@ -647,6 +649,7 @@ export default async function(config, context) {
           "file-hook": {
             description: "File hook",
             path: "hooks/file-hook",
+            default_in_roots: ["default"],
           },
         },
         "hooks/file-hook/HOOK.json": JSON.stringify({
@@ -661,7 +664,6 @@ export default async function(config, context) {
           default: {
             name: "default",
             description: "Default",
-            default_hooks: ["file-hook"],
           },
         },
         "secrets.json": { FILE_HOOK_SECRET: "from-secrets-file" },
@@ -704,12 +706,14 @@ export default async function(config, context) {
               type: "stdio",
               command: "npx",
               env: { TOKEN: "${SDK_TEST_DUAL_SECRET}" },
+              default_in_roots: ["default"],
             },
           },
           "hooks.json": {
             "dual-hook": {
               description: "Dual hook",
               path: "hooks/dual-hook",
+              default_in_roots: ["default"],
             },
           },
           "hooks/dual-hook/HOOK.json": JSON.stringify({
@@ -721,8 +725,6 @@ export default async function(config, context) {
             default: {
               name: "default",
               description: "Default",
-              default_mcp_servers: ["server"],
-              default_hooks: ["dual-hook"],
             },
           },
         });
@@ -769,12 +771,13 @@ export default async function(config, context) {
             roots: ["./roots.json"],
           },
           "mcp.json": {
-            server: { type: "stdio", command: "npx" },
+            server: { type: "stdio", command: "npx", default_in_roots: ["default"] },
           },
           "hooks.json": {
             "leak-hook": {
               description: "Leak check",
               path: "hooks/leak-hook",
+              default_in_roots: ["default"],
             },
           },
           "hooks/leak-hook/HOOK.json": JSON.stringify({
@@ -786,8 +789,6 @@ export default async function(config, context) {
             default: {
               name: "default",
               description: "Default",
-              default_mcp_servers: ["server"],
-              default_hooks: ["leak-hook"],
             },
           },
         });
@@ -828,6 +829,7 @@ export default async function(config, context) {
             "settings-hook": {
               description: "Hook with secret in command",
               path: "hooks/settings-hook",
+              default_in_roots: ["default"],
             },
           },
           "hooks/settings-hook/HOOK.json": JSON.stringify({
@@ -839,7 +841,6 @@ export default async function(config, context) {
             default: {
               name: "default",
               description: "Default",
-              default_hooks: ["settings-hook"],
             },
           },
         });
@@ -881,6 +882,7 @@ export default async function(config, context) {
           "file-settings-hook": {
             description: "Hook with file secret in command",
             path: "hooks/file-settings-hook",
+            default_in_roots: ["default"],
           },
         },
         "hooks/file-settings-hook/HOOK.json": JSON.stringify({
@@ -892,7 +894,6 @@ export default async function(config, context) {
           default: {
             name: "default",
             description: "Default",
-            default_hooks: ["file-settings-hook"],
           },
         },
         "secrets.json": { FILE_SETTINGS_SECRET: "file-settings-resolved" },
@@ -934,12 +935,14 @@ export default async function(config, context) {
               type: "stdio",
               command: "npx",
               env: { TOKEN: "${SDK_TEST_BOTH_SECRET}" },
+              default_in_roots: ["default"],
             },
           },
           "hooks.json": {
             "both-hook": {
               description: "Hook for both test",
               path: "hooks/both-hook",
+              default_in_roots: ["default"],
             },
           },
           "hooks/both-hook/HOOK.json": JSON.stringify({
@@ -951,8 +954,6 @@ export default async function(config, context) {
             default: {
               name: "default",
               description: "Default",
-              default_mcp_servers: ["server"],
-              default_hooks: ["both-hook"],
             },
           },
         });
@@ -998,6 +999,7 @@ export default async function(config, context) {
           "custom-hook": {
             description: "Custom hook",
             path: "hooks/custom-hook",
+            default_in_roots: ["default"],
           },
         },
         "hooks/custom-hook/HOOK.json": JSON.stringify({
@@ -1009,7 +1011,6 @@ export default async function(config, context) {
           default: {
             name: "default",
             description: "Default",
-            default_hooks: ["custom-hook"],
           },
         },
         // Custom transform that marks hooks in settings.json
@@ -1082,10 +1083,11 @@ export default async function(config, context) {
             type: "stdio",
             command: "npx",
             env: { TOKEN: "resolved-value" },
+            default_in_roots: ["default"],
           },
         },
         "roots.json": {
-          default: { name: "default", description: "Default", default_mcp_servers: ["server"] },
+          default: { name: "default", description: "Default" },
         },
       });
 
@@ -1112,10 +1114,11 @@ export default async function(config, context) {
             type: "stdio",
             command: "npx",
             env: { TOKEN: "${MISSING_SECRET}" },
+            default_in_roots: ["default"],
           },
         },
         "roots.json": {
-          default: { name: "default", description: "Default", default_mcp_servers: ["server"] },
+          default: { name: "default", description: "Default" },
         },
       });
 
@@ -1143,10 +1146,11 @@ export default async function(config, context) {
             type: "stdio",
             command: "npx",
             env: { A: "${MISSING_A}", B: "${MISSING_B}" },
+            default_in_roots: ["default"],
           },
         },
         "roots.json": {
-          default: { name: "default", description: "Default", default_mcp_servers: ["server"] },
+          default: { name: "default", description: "Default" },
         },
       });
 
@@ -1176,10 +1180,11 @@ export default async function(config, context) {
             headers: {
               Authorization: "Bearer ${NESTED_SECRET}",
             },
+            default_in_roots: ["default"],
           },
         },
         "roots.json": {
-          default: { name: "default", description: "Default", default_mcp_servers: ["server"] },
+          default: { name: "default", description: "Default" },
         },
       });
 
@@ -1207,10 +1212,11 @@ export default async function(config, context) {
             type: "stdio",
             command: "npx",
             args: ["--token", "${ARRAY_SECRET}"],
+            default_in_roots: ["default"],
           },
         },
         "roots.json": {
-          default: { name: "default", description: "Default", default_mcp_servers: ["server"] },
+          default: { name: "default", description: "Default" },
         },
       });
 
@@ -1237,6 +1243,7 @@ export default async function(config, context) {
           "unresolved-hook": {
             description: "Hook with unresolved var",
             path: "hooks/unresolved-hook",
+            default_in_roots: ["default"],
           },
         },
         "hooks/unresolved-hook/HOOK.json": JSON.stringify({
@@ -1248,7 +1255,6 @@ export default async function(config, context) {
           default: {
             name: "default",
             description: "Default",
-            default_hooks: ["unresolved-hook"],
           },
         },
       });
@@ -1277,10 +1283,11 @@ export default async function(config, context) {
             type: "stdio",
             command: "npx",
             env: { TOKEN: "${UNRESOLVED}" },
+            default_in_roots: ["default"],
           },
         },
         "roots.json": {
-          default: { name: "default", description: "Default", default_mcp_servers: ["server"] },
+          default: { name: "default", description: "Default" },
         },
       });
 
@@ -1313,10 +1320,11 @@ export default async function(config, context) {
               type: "stdio",
               command: "npx",
               env: { RESOLVED: "${SDK_TEST_VALIDATED}", MISSING: "${NOT_SET_VAR_12345}" },
+              default_in_roots: ["default"],
             },
           },
           "roots.json": {
-            default: { name: "default", description: "Default", default_mcp_servers: ["server"] },
+            default: { name: "default", description: "Default" },
           },
         });
 

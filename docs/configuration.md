@@ -171,9 +171,8 @@ When you start a session with `--root`, AIR resolves the root's dependencies:
 
 1. Load and merge all artifact arrays from `air.json`
 2. Find the root by name in the merged roots
-3. Resolve `default_mcp_servers` against the merged MCP servers
-4. Resolve `default_skills` against the merged skills
-5. For each skill, resolve its `references` against the merged references
-6. Resolve `default_plugins` against the merged plugins
-7. Resolve `default_hooks` against the merged hooks
-8. Translate everything to the target agent's format
+3. For every artifact (MCP server, skill, plugin, hook, reference) and every subagent root, resolve its `default_in_roots` against the merged roots pool (expanding the `"*"` wildcard to all roots)
+4. Invert those declarations into per-root membership — computing each root's `default_mcp_servers`, `default_skills`, `default_plugins`, `default_hooks`, `default_references`, and `default_subagent_roots`
+5. Select the target root's computed membership arrays
+6. For each member skill, resolve its `references` against the merged references
+7. Translate everything to the target agent's format

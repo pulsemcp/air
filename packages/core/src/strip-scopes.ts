@@ -159,6 +159,8 @@ export function stripScopes(artifacts: ResolvedArtifacts): ResolvedArtifacts {
       next.default_plugins = stripList(entry.default_plugins);
     if (entry.default_hooks !== undefined)
       next.default_hooks = stripList(entry.default_hooks);
+    if (entry.default_references !== undefined)
+      next.default_references = stripList(entry.default_references);
     if (entry.default_subagent_roots !== undefined)
       next.default_subagent_roots = stripList(entry.default_subagent_roots);
     roots[shortnameKey(qualified)] = next;

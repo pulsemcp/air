@@ -91,12 +91,29 @@ export interface SkillEntry {
   description: string;
   path: string;
   references?: string[];
+  /**
+   * Names of roots this skill is injected into by default — or the literal
+   * `"*"` to inject into every resolved root. This is the authored, inverted
+   * membership declaration. `resolveArtifacts` consumes it: the field is
+   * canonicalized, then folded into each root's computed `default_skills`
+   * and removed from the resolved entry.
+   */
+  default_in_roots?: string[];
 }
 
 export interface ReferenceEntry {
   title?: string;
   description: string;
   path: string;
+  /**
+   * Names of roots this reference is associated with by default — or the
+   * literal `"*"` for every resolved root. Folded into each root's computed
+   * `default_references` and removed from the resolved entry. References are
+   * normally pulled in transitively by the skills/hooks that depend on them;
+   * this field declares standalone per-root membership for tooling that reads
+   * the resolved `root.default_references` view.
+   */
+  default_in_roots?: string[];
 }
 
 export interface McpOAuthConfig {
@@ -117,6 +134,12 @@ export interface McpServerEntry {
   url?: string;
   headers?: Record<string, string>;
   oauth?: McpOAuthConfig;
+  /**
+   * Names of roots this MCP server is activated in by default — or the literal
+   * `"*"` for every resolved root. Folded into each root's computed
+   * `default_mcp_servers` and removed from the resolved entry.
+   */
+  default_in_roots?: string[];
 }
 
 export interface PluginAuthor {
@@ -139,6 +162,12 @@ export interface PluginEntry {
   license?: string;
   logo?: string;
   keywords?: string[];
+  /**
+   * Names of roots this plugin is activated in by default — or the literal
+   * `"*"` for every resolved root. Folded into each root's computed
+   * `default_plugins` and removed from the resolved entry.
+   */
+  default_in_roots?: string[];
 }
 
 export interface RootEntry {
@@ -147,10 +176,50 @@ export interface RootEntry {
   url?: string;
   default_branch?: string;
   subdirectory?: string;
+  /**
+   * Authored, inverted membership: names of other roots for which THIS root
+   * acts as a default subagent — or the literal `"*"` for every resolved root
+   * (a root never becomes a subagent of itself). `resolveArtifacts` consumes
+   * this field, folding it into each parent root's computed
+   * `default_subagent_roots`, then removes it from the resolved entry.
+   */
+  default_in_roots?: string[];
+  /**
+   * Computed membership — populated by `resolveArtifacts` from the
+   * `default_in_roots` declared on MCP server artifacts. Not authored on the
+   * root directly. Each value is a qualified MCP server ID (`@scope/id`).
+   */
   default_mcp_servers?: string[];
+  /**
+   * Computed membership — populated by `resolveArtifacts` from the
+   * `default_in_roots` declared on skill artifacts. Not authored on the root
+   * directly. Each value is a qualified skill ID (`@scope/id`).
+   */
   default_skills?: string[];
+  /**
+   * Computed membership — populated by `resolveArtifacts` from the
+   * `default_in_roots` declared on plugin artifacts. Not authored on the root
+   * directly. Each value is a qualified plugin ID (`@scope/id`).
+   */
   default_plugins?: string[];
+  /**
+   * Computed membership — populated by `resolveArtifacts` from the
+   * `default_in_roots` declared on hook artifacts. Not authored on the root
+   * directly. Each value is a qualified hook ID (`@scope/id`).
+   */
   default_hooks?: string[];
+  /**
+   * Computed membership — populated by `resolveArtifacts` from the
+   * `default_in_roots` declared on reference artifacts. Not authored on the
+   * root directly. Each value is a qualified reference ID (`@scope/id`).
+   */
+  default_references?: string[];
+  /**
+   * Computed membership — populated by `resolveArtifacts` from the
+   * `default_in_roots` declared on OTHER root artifacts that name this root.
+   * Not authored on the root directly. Each value is a qualified root ID
+   * (`@scope/id`).
+   */
   default_subagent_roots?: string[];
   user_invocable?: boolean;
 }
@@ -179,6 +248,12 @@ export interface HookEntry {
    * Schema property name (`x-config`).
    */
   "x-config"?: Record<string, unknown>;
+  /**
+   * Names of roots this hook is activated in by default — or the literal
+   * `"*"` for every resolved root. Folded into each root's computed
+   * `default_hooks` and removed from the resolved entry.
+   */
+  default_in_roots?: string[];
 }
 
 // ============================================================
