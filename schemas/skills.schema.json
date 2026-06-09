@@ -44,6 +44,13 @@
             "type": "string"
           },
           "description": "IDs of reference documents this skill depends on. Keeps references DRY across skills."
+        },
+        "default_in_roots": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Names of roots this skill is injected into by default. Use the literal \"*\" to inject into every resolved root. This replaces the legacy default_skills array that lived on root entries — membership is now declared on the artifact."
         }
       },
       "required": ["description", "path"],

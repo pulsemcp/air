@@ -63,8 +63,8 @@ describe("start command — CLI artifact selection flags", () => {
         roots: ["./roots.json"],
       },
       "skills.json": {
-        "skill-a": { description: "Skill A", path: "skills/skill-a" },
-        "skill-b": { description: "Skill B", path: "skills/skill-b" },
+        "skill-a": { description: "Skill A", path: "skills/skill-a", default_in_roots: ["myroot"] },
+        "skill-b": { description: "Skill B", path: "skills/skill-b", default_in_roots: ["myroot"] },
         "skill-c": { description: "Skill C", path: "skills/skill-c" },
       },
       "skills/skill-a/SKILL.md": "# A",
@@ -73,7 +73,6 @@ describe("start command — CLI artifact selection flags", () => {
       "roots.json": {
         myroot: {
           description: "Test root",
-          default_skills: ["skill-a", "skill-b"],
         },
       },
     });
@@ -99,9 +98,9 @@ describe("start command — CLI artifact selection flags", () => {
         roots: ["./roots.json"],
       },
       "skills.json": {
-        "skill-a": { description: "Skill A", path: "skills/skill-a" },
-        "skill-b": { description: "Skill B", path: "skills/skill-b" },
-        "skill-c": { description: "Skill C", path: "skills/skill-c" },
+        "skill-a": { description: "Skill A", path: "skills/skill-a", default_in_roots: ["myroot"] },
+        "skill-b": { description: "Skill B", path: "skills/skill-b", default_in_roots: ["myroot"] },
+        "skill-c": { description: "Skill C", path: "skills/skill-c", default_in_roots: ["myroot"] },
       },
       "skills/skill-a/SKILL.md": "# A",
       "skills/skill-b/SKILL.md": "# B",
@@ -109,7 +108,6 @@ describe("start command — CLI artifact selection flags", () => {
       "roots.json": {
         myroot: {
           description: "Test root",
-          default_skills: ["skill-a", "skill-b", "skill-c"],
         },
       },
     });
@@ -136,17 +134,15 @@ describe("start command — CLI artifact selection flags", () => {
         roots: ["./roots.json"],
       },
       "skills.json": {
-        "skill-a": { description: "Skill A", path: "skills/skill-a" },
+        "skill-a": { description: "Skill A", path: "skills/skill-a", default_in_roots: ["myroot"] },
       },
       "skills/skill-a/SKILL.md": "# A",
       "mcp.json": {
-        github: { type: "stdio", command: "npx", args: ["gh"] },
+        github: { type: "stdio", command: "npx", args: ["gh"], default_in_roots: ["myroot"] },
       },
       "roots.json": {
         myroot: {
           description: "Test",
-          default_skills: ["skill-a"],
-          default_mcp_servers: ["github"],
         },
       },
     });
@@ -171,7 +167,7 @@ describe("start command — CLI artifact selection flags", () => {
         roots: ["./roots.json"],
       },
       "skills.json": {
-        "skill-a": { description: "Skill A", path: "skills/skill-a" },
+        "skill-a": { description: "Skill A", path: "skills/skill-a", default_in_roots: ["myroot"] },
         "skill-b": { description: "Skill B", path: "skills/skill-b" },
       },
       "skills/skill-a/SKILL.md": "# A",
@@ -179,7 +175,6 @@ describe("start command — CLI artifact selection flags", () => {
       "roots.json": {
         myroot: {
           description: "Test",
-          default_skills: ["skill-a"],
         },
       },
     });
@@ -204,19 +199,17 @@ describe("start command — CLI artifact selection flags", () => {
         roots: ["./roots.json"],
       },
       "skills.json": {
-        "skill-a": { description: "Skill A", path: "skills/skill-a" },
+        "skill-a": { description: "Skill A", path: "skills/skill-a", default_in_roots: ["myroot"] },
         "skill-b": { description: "Skill B", path: "skills/skill-b" },
       },
       "skills/skill-a/SKILL.md": "# A",
       "skills/skill-b/SKILL.md": "# B",
       "mcp.json": {
-        github: { type: "stdio", command: "npx", args: ["gh"] },
+        github: { type: "stdio", command: "npx", args: ["gh"], default_in_roots: ["myroot"] },
       },
       "roots.json": {
         myroot: {
           description: "Test",
-          default_skills: ["skill-a"],
-          default_mcp_servers: ["github"],
         },
       },
     });
@@ -249,7 +242,7 @@ describe("start command — CLI artifact selection flags", () => {
       "skills/skill-a/SKILL.md": "# A",
       "skills/skill-b/SKILL.md": "# B",
       "roots.json": {
-        myroot: { description: "Test", default_skills: [] },
+        myroot: { description: "Test" },
       },
     });
 
@@ -278,7 +271,7 @@ describe("start command — CLI artifact selection flags", () => {
       "skills/skill-a/SKILL.md": "# A",
       "skills/skill-b/SKILL.md": "# B",
       "roots.json": {
-        myroot: { description: "Test", default_skills: [] },
+        myroot: { description: "Test" },
       },
     });
 
@@ -302,20 +295,18 @@ describe("start command — CLI artifact selection flags", () => {
         roots: ["./roots.json"],
       },
       "skills.json": {
-        "skill-a": { description: "Skill A", path: "skills/skill-a" },
-        "skill-b": { description: "Skill B", path: "skills/skill-b" },
+        "skill-a": { description: "Skill A", path: "skills/skill-a", default_in_roots: ["myroot"] },
+        "skill-b": { description: "Skill B", path: "skills/skill-b", default_in_roots: ["myroot"] },
       },
       "skills/skill-a/SKILL.md": "# A",
       "skills/skill-b/SKILL.md": "# B",
       "mcp.json": {
-        github: { type: "stdio", command: "npx", args: ["gh"] },
-        slack: { type: "stdio", command: "npx", args: ["slack"] },
+        github: { type: "stdio", command: "npx", args: ["gh"], default_in_roots: ["myroot"] },
+        slack: { type: "stdio", command: "npx", args: ["slack"], default_in_roots: ["myroot"] },
       },
       "roots.json": {
         myroot: {
           description: "Test",
-          default_skills: ["skill-a", "skill-b"],
-          default_mcp_servers: ["github", "slack"],
         },
       },
     });
@@ -346,6 +337,7 @@ describe("start command — CLI artifact selection flags", () => {
         "hook-a": {
           description: "Hook A",
           path: "hooks/hook-a",
+          default_in_roots: ["myroot"],
         },
         "hook-b": {
           description: "Hook B",
@@ -367,6 +359,7 @@ describe("start command — CLI artifact selection flags", () => {
           description: "Plugin A",
           version: "1.0.0",
           author: { name: "Test" },
+          default_in_roots: ["myroot"],
         },
         "plugin-b": {
           description: "Plugin B",
@@ -377,8 +370,6 @@ describe("start command — CLI artifact selection flags", () => {
       "roots.json": {
         myroot: {
           description: "Test",
-          default_hooks: ["hook-a"],
-          default_plugins: ["plugin-a"],
         },
       },
     });
@@ -415,7 +406,6 @@ describe("start command — CLI artifact selection flags", () => {
       "roots.json": {
         myroot: {
           description: "Test",
-          default_skills: [],
         },
       },
     });
@@ -440,13 +430,12 @@ describe("start command — CLI artifact selection flags", () => {
         roots: ["./roots.json"],
       },
       "skills.json": {
-        "skill-a": { description: "Skill A", path: "skills/skill-a" },
+        "skill-a": { description: "Skill A", path: "skills/skill-a", default_in_roots: ["myroot"] },
       },
       "skills/skill-a/SKILL.md": "# A",
       "roots.json": {
         myroot: {
           description: "Test",
-          default_skills: ["skill-a"],
         },
       },
     });
@@ -470,13 +459,12 @@ describe("start command — CLI artifact selection flags", () => {
         roots: ["./roots.json"],
       },
       "skills.json": {
-        "skill-a": { description: "Skill A", path: "skills/skill-a" },
+        "skill-a": { description: "Skill A", path: "skills/skill-a", default_in_roots: ["myroot"] },
       },
       "skills/skill-a/SKILL.md": "# A",
       "roots.json": {
         myroot: {
           description: "Test",
-          default_skills: ["skill-a"],
         },
       },
     });
@@ -498,8 +486,8 @@ describe("start command — CLI artifact selection flags", () => {
         roots: ["./roots.json"],
       },
       "skills.json": {
-        "skill-a": { description: "Skill A", path: "skills/skill-a" },
-        "skill-b": { description: "Skill B", path: "skills/skill-b" },
+        "skill-a": { description: "Skill A", path: "skills/skill-a", default_in_roots: ["myroot"] },
+        "skill-b": { description: "Skill B", path: "skills/skill-b", default_in_roots: ["myroot"] },
         "skill-c": { description: "Skill C", path: "skills/skill-c" },
       },
       "skills/skill-a/SKILL.md": "# A",
@@ -508,7 +496,6 @@ describe("start command — CLI artifact selection flags", () => {
       "roots.json": {
         myroot: {
           description: "Test",
-          default_skills: ["skill-a", "skill-b"],
         },
       },
     });

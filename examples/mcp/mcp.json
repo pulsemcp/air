@@ -7,7 +7,8 @@
     "args": ["-y", "@modelcontextprotocol/server-github@0.6.2"],
     "env": {
       "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PERSONAL_ACCESS_TOKEN}"
-    }
+    },
+    "default_in_roots": ["web-app", "data-pipeline"]
   },
   "postgres-prod": {
     "title": "PostgreSQL - Production (Read-Only)",
@@ -17,7 +18,8 @@
     "args": ["--from", "postgres-mcp==0.3.0", "postgres-mcp", "--access-mode=restricted"],
     "env": {
       "DATABASE_URI": "postgresql://${PG_PROD_USER}:${PG_PROD_PASSWORD}@db.example.com:5432/production?sslmode=require"
-    }
+    },
+    "default_in_roots": ["web-app"]
   },
   "analytics": {
     "title": "Analytics Dashboard",
@@ -26,6 +28,7 @@
     "url": "https://mcp.analytics.example.com/mcp",
     "headers": {
       "Authorization": "Bearer ${ANALYTICS_TOKEN}"
-    }
+    },
+    "default_in_roots": ["data-pipeline"]
   }
 }

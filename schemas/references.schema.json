@@ -37,6 +37,13 @@
         "path": {
           "type": "string",
           "description": "Path to the reference document file (typically Markdown). Either a relative path within the same catalog, or a remote URI handled by an installed catalog provider (e.g. github://owner/repo[@ref]/path/within/repo)."
+        },
+        "default_in_roots": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Names of roots this reference is associated with by default. Use the literal \"*\" to associate it with every resolved root. Note: references are normally pulled in transitively by the skills/hooks that depend on them; this field declares standalone per-root membership for tooling that consumes the resolved root.default_references view."
         }
       },
       "required": ["description", "path"],

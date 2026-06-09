@@ -13,7 +13,8 @@
     "homepage": "https://github.com/acme/air-plugins/tree/main/code-quality",
     "repository": "https://github.com/acme/air-plugins.git",
     "license": "MIT",
-    "keywords": ["linting", "formatting", "eslint", "prettier"]
+    "keywords": ["linting", "formatting", "eslint", "prettier"],
+    "default_in_roots": ["web-app"]
   },
   "deploy-toolkit": {
     "title": "Deployment Toolkit",

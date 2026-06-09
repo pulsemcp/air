@@ -116,7 +116,7 @@ Plugins and primitive artifacts (skills, hooks, MCP servers) are two ways to ach
 
 You can mix both in the same `air.json`. A common pattern is to start with plugins and "eject" individual components when you need to customize them:
 
-1. Start with `"default_plugins": ["code-quality"]`
+1. Activate the plugin in a root by adding `"default_in_roots": ["web-app"]` to the `code-quality` entry in your plugins index
 2. Need to customize the linting rules? Copy the skill out, modify it, add it to your skills index
 3. The local skill overrides the one bundled in the plugin
 

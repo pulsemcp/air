@@ -95,8 +95,6 @@ export function exampleRoot(
     description: `Description for ${name}`,
     url: `https://github.com/test/${name}.git`,
     default_branch: "main",
-    default_mcp_servers: [],
-    default_skills: [],
     user_invocable: true,
     ...overrides,
   };

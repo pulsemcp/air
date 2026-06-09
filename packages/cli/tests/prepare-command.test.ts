@@ -74,10 +74,11 @@ describe("prepare command", () => {
           command: "npx",
           args: ["-y", "@mcp/github"],
           env: { TOKEN: "abc" },
+          default_in_roots: ["default"],
         },
       },
       "roots.json": {
-        default: { name: "default", description: "Default", default_mcp_servers: ["github"] },
+        default: { name: "default", description: "Default" },
       },
     });
 
@@ -113,11 +114,12 @@ describe("prepare command", () => {
         "my-skill": {
           description: "A test skill",
           path: "skills/my-skill",
+          default_in_roots: ["default"],
         },
       },
       "skills/my-skill/SKILL.md": "# My Skill\nDo the thing.",
       "roots.json": {
-        default: { name: "default", description: "Default", default_skills: ["my-skill"] },
+        default: { name: "default", description: "Default" },
       },
     });
 
@@ -150,11 +152,12 @@ describe("prepare command", () => {
         "existing-skill": {
           description: "Catalog version",
           path: "skills/existing-skill",
+          default_in_roots: ["default"],
         },
       },
       "skills/existing-skill/SKILL.md": "# Catalog Version",
       "roots.json": {
-        default: { name: "default", description: "Default", default_skills: ["existing-skill"] },
+        default: { name: "default", description: "Default" },
       },
     });
 
@@ -186,14 +189,13 @@ describe("prepare command", () => {
         roots: ["./roots.json"],
       },
       "mcp.json": {
-        github: { type: "stdio", command: "npx", args: ["github-mcp"] },
+        github: { type: "stdio", command: "npx", args: ["github-mcp"], default_in_roots: ["web-app"] },
         slack: { type: "stdio", command: "npx", args: ["slack-mcp"] },
-        postgres: { type: "stdio", command: "npx", args: ["pg-mcp"] },
+        postgres: { type: "stdio", command: "npx", args: ["pg-mcp"], default_in_roots: ["web-app"] },
       },
       "roots.json": {
         "web-app": {
           description: "Web app root",
-          default_mcp_servers: ["github", "postgres"],
         },
       },
     });
@@ -224,10 +226,12 @@ describe("prepare command", () => {
         "skill-a": {
           description: "Skill A",
           path: "skills/skill-a",
+          default_in_roots: ["myroot"],
         },
         "skill-b": {
           description: "Skill B",
           path: "skills/skill-b",
+          default_in_roots: ["myroot"],
         },
         "skill-c": {
           description: "Skill C",
@@ -240,7 +244,6 @@ describe("prepare command", () => {
       "roots.json": {
         myroot: {
           description: "Test root",
-          default_skills: ["skill-a", "skill-b"],
         },
       },
     });
@@ -273,15 +276,14 @@ describe("prepare command", () => {
         roots: ["./roots.json"],
       },
       "skills.json": {
-        "skill-a": { description: "Skill A", path: "skills/skill-a" },
-        "skill-b": { description: "Skill B", path: "skills/skill-b" },
+        "skill-a": { description: "Skill A", path: "skills/skill-a", default_in_roots: ["myroot"] },
+        "skill-b": { description: "Skill B", path: "skills/skill-b", default_in_roots: ["myroot"] },
       },
       "skills/skill-a/SKILL.md": "# A",
       "skills/skill-b/SKILL.md": "# B",
       "roots.json": {
         myroot: {
           description: "Test",
-          default_skills: ["skill-a", "skill-b"],
         },
       },
     });
@@ -311,19 +313,17 @@ describe("prepare command", () => {
         roots: ["./roots.json"],
       },
       "skills.json": {
-        "skill-a": { description: "Skill A", path: "skills/skill-a" },
+        "skill-a": { description: "Skill A", path: "skills/skill-a", default_in_roots: ["myroot"] },
         "skill-b": { description: "Skill B", path: "skills/skill-b" },
       },
       "skills/skill-a/SKILL.md": "# A",
       "skills/skill-b/SKILL.md": "# B",
       "mcp.json": {
-        github: { type: "stdio", command: "npx", args: ["gh"] },
+        github: { type: "stdio", command: "npx", args: ["gh"], default_in_roots: ["myroot"] },
       },
       "roots.json": {
         myroot: {
           description: "Test",
-          default_skills: ["skill-a"],
-          default_mcp_servers: ["github"],
         },
       },
     });
@@ -358,13 +358,12 @@ describe("prepare command", () => {
         roots: ["./roots.json"],
       },
       "mcp.json": {
-        github: { type: "stdio", command: "npx", args: ["github-mcp"] },
+        github: { type: "stdio", command: "npx", args: ["github-mcp"], default_in_roots: ["myroot"] },
         slack: { type: "stdio", command: "npx", args: ["slack-mcp"] },
       },
       "roots.json": {
         myroot: {
           description: "Test",
-          default_mcp_servers: ["github"],
         },
       },
     });
@@ -397,6 +396,7 @@ describe("prepare command", () => {
           description: "Deploy skill",
           path: "skills/deploy",
           references: ["git-workflow"],
+          default_in_roots: ["default"],
         },
       },
       "references.json": {
@@ -408,7 +408,7 @@ describe("prepare command", () => {
       "skills/deploy/SKILL.md": "# Deploy",
       "references/GIT_WORKFLOW.md": "# Git Workflow\nBranch naming...",
       "roots.json": {
-        default: { name: "default", description: "Default", default_skills: ["deploy"] },
+        default: { name: "default", description: "Default" },
       },
     });
 
@@ -475,23 +475,26 @@ describe("prepare command", () => {
         roots: ["./roots.json"],
       },
       "mcp.json": {
-        "ao-mcp": { type: "stdio", command: "npx", args: ["ao-mcp"] },
-        "pg-prod": { type: "stdio", command: "npx", args: ["pg"] },
-        "web-search": { type: "stdio", command: "npx", args: ["search"] },
+        "ao-mcp": { type: "stdio", command: "npx", args: ["ao-mcp"], default_in_roots: ["server-onboarding"] },
+        "pg-prod": { type: "stdio", command: "npx", args: ["pg"], default_in_roots: ["onboarding-configs"] },
+        "web-search": { type: "stdio", command: "npx", args: ["search"], default_in_roots: ["onboarding-research"] },
         "proctor": { type: "stdio", command: "npx", args: ["proctor"] },
       },
       "skills.json": {
         "onboard-server": {
           description: "Onboard a server",
           path: "skills/onboard-server",
+          default_in_roots: ["server-onboarding"],
         },
         "validate-config": {
           description: "Validate config",
           path: "skills/validate-config",
+          default_in_roots: ["onboarding-configs"],
         },
         "find-source": {
           description: "Find canonical source",
           path: "skills/find-source",
+          default_in_roots: ["onboarding-research"],
         },
       },
       "skills/onboard-server/SKILL.md": "# Onboard Server",
@@ -501,23 +504,18 @@ describe("prepare command", () => {
         "server-onboarding": {
           display_name: "Server Onboarding",
           description: "Onboard MCP servers to PulseMCP",
-          default_mcp_servers: ["ao-mcp"],
-          default_skills: ["onboard-server"],
-          default_subagent_roots: ["onboarding-configs", "onboarding-research"],
         },
         "onboarding-configs": {
           display_name: "Onboarding: Configs",
           description: "Prepare server configs",
-          default_mcp_servers: ["pg-prod"],
-          default_skills: ["validate-config"],
+          default_in_roots: ["server-onboarding"],
           subdirectory: "subagents/configs",
           user_invocable: false,
         },
         "onboarding-research": {
           display_name: "Onboarding: Research",
           description: "Research server sources",
-          default_mcp_servers: ["web-search"],
-          default_skills: ["find-source"],
+          default_in_roots: ["server-onboarding"],
           subdirectory: "subagents/research",
           user_invocable: false,
         },
@@ -563,18 +561,16 @@ describe("prepare command", () => {
         roots: ["./roots.json"],
       },
       "mcp.json": {
-        "ao-mcp": { type: "stdio", command: "npx", args: ["ao-mcp"] },
-        "pg-prod": { type: "stdio", command: "npx", args: ["pg"] },
+        "ao-mcp": { type: "stdio", command: "npx", args: ["ao-mcp"], default_in_roots: ["server-onboarding"] },
+        "pg-prod": { type: "stdio", command: "npx", args: ["pg"], default_in_roots: ["sub-db"] },
       },
       "roots.json": {
         "server-onboarding": {
           description: "Onboard servers",
-          default_mcp_servers: ["ao-mcp"],
-          default_subagent_roots: ["sub-db"],
         },
         "sub-db": {
           description: "DB subagent",
-          default_mcp_servers: ["pg-prod"],
+          default_in_roots: ["server-onboarding"],
         },
       },
     });
@@ -610,17 +606,18 @@ describe("prepare command", () => {
         roots: ["./roots.json"],
       },
       "mcp.json": {
-        github: { type: "stdio", command: "npx", args: ["gh"] },
+        github: { type: "stdio", command: "npx", args: ["gh"], default_in_roots: ["default"] },
       },
       "skills.json": {
         "my-skill": {
           description: "Test",
           path: "skills/my-skill",
+          default_in_roots: ["default"],
         },
       },
       "skills/my-skill/SKILL.md": "# Skill",
       "roots.json": {
-        default: { name: "default", description: "Default", default_mcp_servers: ["github"], default_skills: ["my-skill"] },
+        default: { name: "default", description: "Default" },
       },
     });
 

@@ -202,11 +202,11 @@ describe("validateJson", () => {
       expect(result.valid).toBe(true);
     });
 
-    it("validates root with default_subagent_roots", () => {
+    it("validates root with default_in_roots (subagent membership)", () => {
       const result = validateJson(
         {
           "my-root": exampleRoot("my-root", {
-            default_subagent_roots: ["sub-configs", "sub-research"],
+            default_in_roots: ["platform-orchestrator", "data-pipeline"],
           }),
         },
         "roots"

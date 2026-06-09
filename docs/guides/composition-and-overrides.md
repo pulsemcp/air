@@ -129,7 +129,7 @@ Notes:
 - Each entry must be a qualified ID (`@scope/id`) or a wildcard pattern of the same shape — bare shortnames are rejected with a hard error.
 - An entry — exact or wildcard — that does not match any resolved artifact of its type emits a warning that names both the type and the offending pattern (typo guard, not an error).
 - `exclude` runs after composition, so a catalog you depend on cannot bypass it.
-- If a surviving artifact still references something you excluded (e.g. a plugin's `mcp_servers` or a root's `default_mcp_servers` points at the dropped MCP server), AIR emits a warning naming the consumer and the dropped reference, then resolves the consumer without it. Excluding an artifact never forces you to also rewrite every plugin or root that referenced it.
+- If a surviving artifact still references something you excluded (e.g. a plugin's `mcp_servers` points at the dropped MCP server, or an artifact's `default_in_roots` lists a root you excluded), AIR emits a warning naming the consumer and the dropped reference, then resolves the consumer without it. The same warn-and-drop applies when `default_in_roots` names an unknown root. Excluding an artifact never forces you to also rewrite every plugin or membership declaration that referenced it.
 - Omitting a key means "don't exclude anything of that type."
 
 There is no field-level patch, no "override this one field" knob. If you want a different behavior for a skill, ship a new skill under your own scope.
@@ -149,7 +149,7 @@ Pick the artifact type you intended to drop and move the entry under that key. T
 
 ## Reference syntax
 
-Roots, plugins, and skills frequently reference other artifacts (e.g. a root's `default_skills`, a plugin's `mcp_servers`, a skill's `references`). References accept three forms:
+Artifacts frequently reference other artifacts: a plugin's `mcp_servers` and `skills`, a skill's `references`, and an artifact's `default_in_roots` (the root names it joins). References accept three forms:
 
 | Form | Example | When to use |
 |------|---------|-------------|
@@ -164,9 +164,9 @@ Error: Reference "review" is ambiguous — candidates: @acme/air-org/review,
 @local/review. Use the qualified form to disambiguate.
 ```
 
-A reference to an artifact that does not exist in the resolved set at all — a typo, a not-yet-installed catalog, or an artifact an upstream catalog renamed or removed — does **not** fail resolution. AIR emits a warning naming the consumer, the field, the missing reference, and the available qualified IDs, then drops the dangling reference and continues. A single bad reference (for example a root's `default_skills` pointing at a skill the catalog no longer ships) never blocks the rest of an otherwise-valid config. Ambiguous references are the exception: because they are fixable by qualifying the reference rather than by dropping it, they still hard-fail as shown above.
+A reference to an artifact that does not exist in the resolved set at all — a typo, a not-yet-installed catalog, or an artifact an upstream catalog renamed or removed — does **not** fail resolution. AIR emits a warning naming the consumer, the field, the missing reference, and the available qualified IDs, then drops the dangling reference and continues. A single bad reference (for example a skill's `default_in_roots` pointing at a root the catalog no longer ships) never blocks the rest of an otherwise-valid config. Ambiguous references are the exception: because they are fixable by qualifying the reference rather than by dropping it, they still hard-fail as shown above.
 
-After resolution, root and plugin reference fields are stored in **canonical (qualified) form** so adapters and consumers do not need to re-resolve them.
+After resolution, root and plugin reference fields are stored in **canonical (qualified) form** so adapters and consumers do not need to re-resolve them. This includes the per-root membership arrays (`default_mcp_servers`, `default_skills`, `default_plugins`, `default_hooks`, `default_references`, `default_subagent_roots`) that AIR computes by inverting each artifact's `default_in_roots`.
 
 ### Single-scope universes: `air resolve --no-scope`
 
@@ -397,21 +397,27 @@ Circular plugin references are detected and rejected at resolution time.
 
 ## Subagent root composition
 
-Roots can declare dependencies on other roots via `default_subagent_roots`:
+A root becomes a subagent of another root by listing the parent in its own `default_in_roots` — the same membership inversion used for every other artifact:
 
 ```json
 {
   "orchestrator": {
-    "description": "Main orchestrator agent",
-    "default_subagent_roots": ["web-app", "api-service"],
-    "default_skills": ["orchestrate"]
+    "description": "Main orchestrator agent"
+  },
+  "web-app": {
+    "description": "Web application",
+    "default_in_roots": ["orchestrator"]
+  },
+  "api-service": {
+    "description": "API service",
+    "default_in_roots": ["orchestrator"]
   }
 }
 ```
 
-By default, both `air start` and `air prepare` merge the subagent roots' skills and MCP servers into the parent session. Opt out with `--no-subagent-merge`.
+AIR inverts these into `orchestrator`'s computed `default_subagent_roots: ["web-app", "api-service"]`. By default, both `air start` and `air prepare` merge the subagent roots' skills and MCP servers into the parent session. Opt out with `--no-subagent-merge`.
 
-Subagent root references follow the same short / qualified rules.
+Subagent membership declarations follow the same short / qualified rules.
 
 ## Removing an artifact you don't want
 

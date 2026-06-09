@@ -111,6 +111,13 @@
             "type": "string"
           },
           "description": "Keywords for discovery and categorization."
+        },
+        "default_in_roots": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Names of roots this plugin is activated in by default. Use the literal \"*\" to activate it in every resolved root. This replaces the legacy default_plugins array that lived on root entries — membership is now declared on the artifact."
         }
       },
       "required": ["description"],

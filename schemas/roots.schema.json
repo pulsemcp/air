@@ -46,40 +46,12 @@
           "type": "string",
           "description": "Path within the repository to the root directory (for monorepo setups)."
         },
-        "default_mcp_servers": {
+        "default_in_roots": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "description": "IDs of MCP servers to activate by default for sessions using this root."
-        },
-        "default_skills": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "description": "IDs of skills to make available by default for sessions using this root."
-        },
-        "default_plugins": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "description": "IDs of plugins to activate by default for sessions using this root."
-        },
-        "default_hooks": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "description": "IDs of hooks to activate by default for sessions using this root."
-        },
-        "default_subagent_roots": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "description": "IDs of other roots that this root depends on as subagents. The default CLI behavior merges subagent roots' skills and MCP servers into the parent session and appends subagent metadata to the system prompt. Orchestrators that manage subagent composition externally (e.g., via an MCP server) can opt out with --no-subagent-merge."
+          "description": "Names of other roots for which this root acts as a default subagent. Use the literal \"*\" to make it a subagent of every resolved root (the root never becomes a subagent of itself). The default CLI behavior merges subagent roots' skills and MCP servers into the parent session and appends subagent metadata to the system prompt; orchestrators that manage subagent composition externally can opt out with --no-subagent-merge. This inverts the legacy default_subagent_roots array: membership is now declared on the subagent root rather than on the parent."
         },
         "default_runtime": {
           "type": "string",

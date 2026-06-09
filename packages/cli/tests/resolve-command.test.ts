@@ -73,20 +73,20 @@ describe("resolve command", () => {
           type: "stdio",
           command: "npx",
           args: ["-y", "@mcp/github"],
+          default_in_roots: ["default"],
         },
       },
       "skills.json": {
         "my-skill": {
           description: "Test skill",
           path: "skills/my-skill",
+          default_in_roots: ["default"],
         },
       },
       "skills/my-skill/SKILL.md": "# My Skill",
       "roots.json": {
         default: {
           description: "Default root",
-          default_mcp_servers: ["github"],
-          default_skills: ["my-skill"],
         },
       },
     });
@@ -297,20 +297,20 @@ export default {
             type: "stdio",
             command: "npx",
             args: ["-y", "@mcp/github"],
+            default_in_roots: ["default"],
           },
         },
         "skills.json": {
           deploy: {
             description: "Deploy skill",
             path: "skills/deploy",
+            default_in_roots: ["default"],
           },
         },
         "skills/deploy/SKILL.md": "# Deploy",
         "roots.json": {
           default: {
             description: "Default root",
-            default_mcp_servers: ["github"],
-            default_skills: ["deploy"],
           },
         },
       });

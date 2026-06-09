@@ -103,6 +103,13 @@
         },
         "oauth": {
           "$ref": "#/$defs/OAuthConfiguration"
+        },
+        "default_in_roots": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Names of roots this MCP server is activated in by default. Use the literal \"*\" to activate it in every resolved root. This replaces the legacy default_mcp_servers array that lived on root entries — membership is now declared on the artifact."
         }
       },
       "required": ["type"],

@@ -162,7 +162,7 @@ Mixing these fields causes validation errors.
 When you run `air start` or `air prepare`:
 
 1. AIR resolves all MCP servers from your index files
-2. If a root is active, only servers listed in `default_mcp_servers` are included (unless overridden)
+2. If a root is active, only servers whose `default_in_roots` includes the active root are included — i.e. that root's computed default set (unless overridden)
 3. The adapter translates the AIR format to the agent's native format (e.g., Claude Code's `.mcp.json`)
 4. Transforms run on the output (e.g., secrets injection)
 5. The config file is written to the target directory
