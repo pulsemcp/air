@@ -101,22 +101,22 @@ When you start a session with a root, AIR:
 
 Roots are the primary building block for multi-agent architectures. An orchestrator agent operates on one root, and spawns subagents on other roots — each with its own skills, MCP servers, and scope.
 
-Membership is authored on the artifacts (and on subagent roots) via `default_in_roots`, not on the parent root. A root becomes a default subagent of another root by listing the parent in its own `default_in_roots`. The tree below shows the *effective* membership AIR computes after inverting those declarations — what each root resolves to:
+Membership is authored on the artifacts (and on subagent roots) via `default_in_roots`, not on the parent root. A root becomes a default subagent of another root by listing the parent in its own `default_in_roots`. The tree below shows the *effective* membership AIR computes after inverting those declarations — `(computed)` fields are derived by the resolver, while `(authored)` fields are what you actually write in your indexes:
 
 ```
 Orchestrator root: "pipeline"
-  ├── default_mcp_servers: ["orchestrator-mcp"]     ← can spawn subagents
-  ├── default_skills: ["run-pipeline"]
-  └── default_subagent_roots: ["pipeline-phase-1"]
+  ├── default_mcp_servers: ["orchestrator-mcp"]     ← (computed) can spawn subagents
+  ├── default_skills: ["run-pipeline"]              ← (computed)
+  └── default_subagent_roots: ["pipeline-phase-1"]  ← (computed)
 
 Subagent root: "pipeline-phase-1"
-  ├── default_mcp_servers: ["domain-db"]             ← domain tools only
-  ├── default_skills: ["ingest-data"]
-  ├── default_in_roots: ["pipeline"]                 ← makes it a subagent of "pipeline"
-  └── user_invocable: false                          ← only spawned by orchestrator
+  ├── default_mcp_servers: ["domain-db"]             ← (computed) domain tools only
+  ├── default_skills: ["ingest-data"]                ← (computed)
+  ├── default_in_roots: ["pipeline"]                 ← (authored) makes it a subagent of "pipeline"
+  └── user_invocable: false                          ← (authored) only spawned by orchestrator
 ```
 
-Here `pipeline-phase-1` authors `default_in_roots: ["pipeline"]` in `roots.json`, and AIR computes `pipeline`'s `default_subagent_roots` from it. Likewise, the `orchestrator-mcp` server lists `pipeline` in its `default_in_roots`, and AIR computes `pipeline`'s `default_mcp_servers`. The resolver also computes a `default_references` array per root the same way. Setting `user_invocable: false` on subagent roots signals that they exist to be spawned programmatically, not started directly by users.
+The only membership field you author is `default_in_roots`; every `default_*` array on a root is computed by inverting those declarations. Here `pipeline-phase-1` authors `default_in_roots: ["pipeline"]` in `roots.json`, and AIR computes `pipeline`'s `default_subagent_roots` from it. Likewise, the `orchestrator-mcp` server lists `pipeline` in its `default_in_roots`, and AIR computes `pipeline`'s `default_mcp_servers`. The resolver also computes a `default_references` array per root the same way. Setting `user_invocable: false` on subagent roots signals that they exist to be spawned programmatically, not started directly by users.
 
 AIR resolves the config for each root independently. The orchestration logic — deciding execution order, passing data, handling failures — lives in the orchestration platform, not in AIR. See [Orchestration & Multi-Agent Patterns](orchestration.md) for detailed patterns.
 

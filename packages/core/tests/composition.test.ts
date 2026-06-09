@@ -671,6 +671,118 @@ describe("composition", () => {
     expect(dropWarns[0]).toMatch(/@local\/legacy/);
   });
 
+  it('default_in_roots wildcard "*" lands the artifact in every root', async () => {
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        skills: ["./skills.json"],
+        roots: ["./roots.json"],
+      },
+      "skills.json": {
+        lint: exampleSkill("lint", { default_in_roots: ["*"] }),
+        deploy: exampleSkill("deploy", { default_in_roots: ["web"] }),
+      },
+      "roots.json": {
+        web: exampleRoot("web"),
+        api: exampleRoot("api"),
+        infra: exampleRoot("infra"),
+      },
+    });
+    cleanup = c;
+
+    const artifacts = await resolveArtifacts(join(dir, "air.json"));
+
+    // The wildcard skill is a default in every root...
+    expect(artifacts.roots["@local/web"].default_skills).toContain(
+      "@local/lint",
+    );
+    expect(artifacts.roots["@local/api"].default_skills).toEqual([
+      "@local/lint",
+    ]);
+    expect(artifacts.roots["@local/infra"].default_skills).toEqual([
+      "@local/lint",
+    ]);
+    // ...while the explicitly-scoped skill only lands in its named root.
+    expect(artifacts.roots["@local/web"].default_skills).toEqual([
+      "@local/deploy",
+      "@local/lint",
+    ]);
+    expect(artifacts.roots["@local/api"].default_skills).not.toContain(
+      "@local/deploy",
+    );
+    // The authored wildcard is consumed — it does not survive on the entry.
+    expect(
+      (artifacts.skills["@local/lint"] as { default_in_roots?: string[] })
+        .default_in_roots,
+    ).toBeUndefined();
+  });
+
+  it('a root with default_in_roots "*" is a default subagent of every OTHER root, never itself', async () => {
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        roots: ["./roots.json"],
+      },
+      "roots.json": {
+        shared: exampleRoot("shared", { default_in_roots: ["*"] }),
+        web: exampleRoot("web"),
+        api: exampleRoot("api"),
+      },
+    });
+    cleanup = c;
+
+    const artifacts = await resolveArtifacts(join(dir, "air.json"));
+
+    // The wildcard root is a default subagent of the other roots...
+    expect(artifacts.roots["@local/web"].default_subagent_roots).toEqual([
+      "@local/shared",
+    ]);
+    expect(artifacts.roots["@local/api"].default_subagent_roots).toEqual([
+      "@local/shared",
+    ]);
+    // ...but never of itself.
+    expect(
+      artifacts.roots["@local/shared"].default_subagent_roots,
+    ).toBeUndefined();
+  });
+
+  it("legacy per-root default_* fields warn loudly and are ignored", async () => {
+    const warnings: string[] = [];
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        skills: ["./skills.json"],
+        roots: ["./roots.json"],
+      },
+      "skills.json": {
+        deploy: exampleSkill("deploy"),
+      },
+      "roots.json": {
+        web: {
+          ...exampleRoot("web"),
+          // Legacy authoring shape — should be warned about and dropped.
+          default_skills: ["deploy"],
+        },
+      },
+    });
+    cleanup = c;
+
+    const artifacts = await resolveArtifacts(join(dir, "air.json"), {
+      onWarning: (m) => warnings.push(m),
+    });
+
+    // The legacy field is ignored: deploy declared no `default_in_roots`, so
+    // the root ends up with no computed membership.
+    expect(artifacts.roots["@local/web"].default_skills).toBeUndefined();
+
+    const legacyWarns = warnings.filter((w) =>
+      w.includes("legacy membership field"),
+    );
+    expect(legacyWarns).toHaveLength(1);
+    expect(legacyWarns[0]).toMatch(/default_skills/);
+    expect(legacyWarns[0]).toMatch(/default_in_roots/);
+  });
+
   it("excluded child plugin referenced by another plugin's plugins[] warns and is dropped before expandPlugins runs", async () => {
     const warnings: string[] = [];
     const { dir, cleanup: c } = createTempAirDir({
