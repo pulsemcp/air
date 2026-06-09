@@ -78,6 +78,12 @@ The wildcard `"*"` means "all roots" — e.g. `default_in_roots: ["*"]` on a per
 
 During resolution, AIR inverts every artifact's `default_in_roots` into per-root membership: it computes each root's `default_mcp_servers`, `default_skills`, `default_plugins`, `default_hooks`, `default_references`, and `default_subagent_roots`. These computed arrays are what the rest of AIR consumes and what shows up in `air resolve` output.
 
+> **Upgrading from a pre-0.12.0 config?** Root entries used to carry these
+> `default_*` membership arrays directly. They are now declared on the artifacts
+> via `default_in_roots`, and legacy root-side arrays are ignored with a
+> deprecation warning. See the
+> [migration guide](migrating-to-default-in-roots.md).
+
 ## Using roots with air start
 
 Specify a root to scope the session:

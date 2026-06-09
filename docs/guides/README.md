@@ -23,6 +23,7 @@ For detailed reference documentation, see the [docs/](../) directory.
 - **[Design Document](../design.md)** — Canonical user scenarios and design decisions behind AIR's composition rules, override semantics, scope identity, and extension architecture.
 - **[Extensions System](extensions.md)** — How adapter, provider, and transform extensions work. Install, configure, and build on the extension pipeline.
 - **[Roots and Multi-Root Setups](roots.md)** — Organize agent configurations across repositories and teams with roots.
+- **[Migrating to `default_in_roots` (0.12.0)](migrating-to-default-in-roots.md)** — Move root membership from root-side `default_*` arrays onto each artifact's `default_in_roots` field.
 - **[Hooks](hooks.md)** — Automate actions around agent lifecycle events with shell-command hooks.
 - **[References](references.md)** — Share reference documents across skills to keep documentation DRY.
 - **[Composition and Overrides](composition-and-overrides.md)** — Layer multiple catalogs and per-type indexes with scoped identity, additive composition, and `exclude`-based removal.
