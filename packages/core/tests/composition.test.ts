@@ -746,7 +746,7 @@ describe("composition", () => {
     ).toBeUndefined();
   });
 
-  it("legacy per-root default_* fields warn loudly and are ignored", async () => {
+  it("legacy per-root default_* fields are ignored without warning (hard switch)", async () => {
     const warnings: string[] = [];
     const { dir, cleanup: c } = createTempAirDir({
       "air.json": {
@@ -760,7 +760,8 @@ describe("composition", () => {
       "roots.json": {
         web: {
           ...exampleRoot("web"),
-          // Legacy authoring shape — should be warned about and dropped.
+          // Legacy authoring shape — no longer read. It is unconditionally
+          // overwritten by the computed (empty) membership, with no warning.
           default_skills: ["deploy"],
         },
       },
@@ -771,16 +772,12 @@ describe("composition", () => {
       onWarning: (m) => warnings.push(m),
     });
 
-    // The legacy field is ignored: deploy declared no `default_in_roots`, so
-    // the root ends up with no computed membership.
+    // The legacy field is dropped: deploy declared no `default_in_roots`, so the
+    // root ends up with no computed membership.
     expect(artifacts.roots["@local/web"].default_skills).toBeUndefined();
 
-    const legacyWarns = warnings.filter((w) =>
-      w.includes("legacy membership field"),
-    );
-    expect(legacyWarns).toHaveLength(1);
-    expect(legacyWarns[0]).toMatch(/default_skills/);
-    expect(legacyWarns[0]).toMatch(/default_in_roots/);
+    // Hard switch: no deprecation warning is emitted for the legacy field.
+    expect(warnings).toEqual([]);
   });
 
   it("excluded child plugin referenced by another plugin's plugins[] warns and is dropped before expandPlugins runs", async () => {

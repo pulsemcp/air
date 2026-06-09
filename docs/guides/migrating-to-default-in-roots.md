@@ -113,25 +113,27 @@ use the wildcard `default_in_roots: ["*"]` instead of listing each one.
 5. Run `air validate` and then `air resolve` to confirm each root's computed
    membership matches what you had before.
 
-## How to tell if you still have legacy files
+## This is a hard switch — legacy fields are silently ignored
 
-A root that still carries any `default_*` membership array resolves with a **loud
-deprecation warning**, and that array is **ignored** (not honored):
+> **⚠️ There is no deprecation period and no warning.** AIR 0.12.0 does not read
+> root-side `default_*` membership arrays at all. A root that still authors them
+> resolves with **no** membership (the fields are unconditionally overwritten by
+> the computed inverse, which is empty until you add `default_in_roots` to the
+> artifacts). Nothing fails and nothing warns — the root just comes up empty.
 
+Because legacy files still pass schema validation (the schemas keep
+`additionalProperties: true`), `air validate` will **not** flag them either. To
+find roots that haven't been migrated, run `air resolve` and check whether each
+root's computed `default_*` arrays are present and correct:
+
+```bash
+air resolve    # if a root that used to carry members now resolves with empty or
+               # missing default_* arrays, its membership has not been migrated yet
 ```
-Root "web-app" declares legacy membership field(s) default_skills,
-default_mcp_servers. These are ignored — declare membership on each artifact via
-"default_in_roots" (use "*" for all roots) instead. See docs/guides/roots.md.
-```
 
-(Only these five fields are recognized as legacy membership arrays:
-`default_skills`, `default_mcp_servers`, `default_plugins`, `default_hooks`,
-`default_subagent_roots` — listed in that order in the warning.)
-
-Legacy files still pass schema validation (the schemas keep
-`additionalProperties: true`), so `air validate` will **not** flag them — only
-resolution warns. Run `air resolve` (or start a session) and watch for the warning
-above to find roots that still need migrating.
+This silent behavior is deliberate (a clean break, since AIR is pre-1.0). Migrate
+every `default_*` array off your roots in one pass and verify with `air resolve`
+before shipping.
 
 ## Verifying the migration
 

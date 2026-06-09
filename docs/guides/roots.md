@@ -80,8 +80,9 @@ During resolution, AIR inverts every artifact's `default_in_roots` into per-root
 
 > **Upgrading from a pre-0.12.0 config?** Root entries used to carry these
 > `default_*` membership arrays directly. They are now declared on the artifacts
-> via `default_in_roots`, and legacy root-side arrays are ignored with a
-> deprecation warning. See the
+> via `default_in_roots`. This is a hard switch: legacy root-side arrays are no
+> longer read at all (silently ignored), so a root that still authors them
+> resolves with **no** membership. See the
 > [migration guide](migrating-to-default-in-roots.md).
 
 ## Using roots with air start

@@ -798,26 +798,10 @@ function canonicalizeReferences(
       const next: RootEntry = { ...owner.entry };
       // Membership is inverted: a root now declares which OTHER roots it is a
       // default subagent of via `default_in_roots`. The legacy per-root
-      // `default_*` arrays are no longer authored here — warn loudly if a
-      // catalog still carries them so authors migrate, then drop them (they
-      // are overwritten by the computed membership below regardless).
-      const legacy = LEGACY_ROOT_MEMBERSHIP_FIELDS.filter((f) => {
-        const v = (owner.entry as unknown as Record<string, unknown>)[f];
-        // Only warn for arrays that actually carry membership intent — an
-        // empty leftover array means "nothing", which is already the default.
-        return Array.isArray(v) && v.length > 0;
-      });
-      if (legacy.length > 0) {
-        warnings.push(
-          `Root "${ownerLabel}" declares legacy membership field(s) ` +
-            `${legacy.join(", ")}. These are ignored — declare membership on ` +
-            `each artifact via "default_in_roots" (use "*" for all roots) ` +
-            `instead. See docs/guides/roots.md.`
-        );
-        for (const f of legacy) {
-          delete (next as unknown as Record<string, unknown>)[f];
-        }
-      }
+      // `default_*` membership arrays are no longer authored here — they are not
+      // read at all (a hard switch, no deprecation period). Any such leftover
+      // array is unconditionally overwritten by the computed membership in
+      // `computeRootMembership` below, so it has no effect.
       next.default_in_roots = resolveInRoots(
         next.default_in_roots,
         scope,
@@ -853,19 +837,6 @@ function canonicalizeReferences(
 
   return result;
 }
-
-/**
- * Legacy per-root membership fields that used to be authored on root entries.
- * Their meaning is now inverted onto the artifacts via `default_in_roots`;
- * resolution warns when a catalog still carries them and ignores their values.
- */
-const LEGACY_ROOT_MEMBERSHIP_FIELDS = [
-  "default_skills",
-  "default_mcp_servers",
-  "default_plugins",
-  "default_hooks",
-  "default_subagent_roots",
-] as const;
 
 /**
  * Derive each root's membership arrays from the `default_in_roots` field
