@@ -106,7 +106,10 @@ const TRANSIENT_GIT_ERROR_PATTERNS: RegExp[] = [
   /remote: Internal Server Error/i,
   /The requested URL returned error: 5\d\d/i,
   /unable to access .* 5\d\d/i,
-  /TLS/i,
+  // A TLS *connection* that drops mid-transfer is transient; deterministic TLS
+  // problems (cert verification failures, etc.) phrase differently and are not
+  // matched here, so we don't pointlessly retry them.
+  /TLS connection/i,
   /SSL_ERROR/i,
   /gnutls_handshake/i,
 ];
