@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.13.0] - 2026-06-10
+## [0.12.1] - 2026-06-10
 
 ### Fixed
 - **`@pulsemcp/air-provider-github` — catalog `git clone`/`fetch` are now bounded by a hard wall-clock timeout and retried with backoff, so a transient github.com hiccup no longer fails (or indefinitely hangs) every consumer of `air prepare`.** The provider shells out to git to materialize `github://` catalog repos. Previously those invocations went through `execFileSync` with **no bounding timeout and no retry**, which produced two production failure modes: (1) a transient TLS stall / `ETIMEDOUT` / connection reset made git exit non-zero and the whole `air prepare` failed, even though a retry seconds later would have succeeded; and (2) a half-open HTTPS connection that never sends a TCP reset made git's `fetch-pack` hang forever with no output and no recovery, wedging the session. Both modes were amplified by a post-deploy clone stampede when many sessions resolved the same catalog at once. The fix adds a new `git.ts` module with two primitives the provider now routes every git call through:
