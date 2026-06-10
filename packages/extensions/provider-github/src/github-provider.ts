@@ -1,4 +1,3 @@
-import { execFileSync } from "child_process";
 import {
   existsSync,
   mkdirSync,
@@ -15,6 +14,15 @@ import type {
   CacheFreshnessWarning,
   CacheRefreshResult,
 } from "@pulsemcp/air-core";
+import {
+  CLONE_TIMEOUT_MS,
+  defaultGitLogger,
+  GIT_STALL_ENV,
+  GitLogger,
+  LOCAL_GIT_TIMEOUT_MS,
+  runGit,
+  withGitRetry,
+} from "./git.js";
 
 export interface GitHubUri {
   owner: string;
@@ -46,6 +54,12 @@ export interface GitHubProviderOptions {
    * merging those sources and calling `configure({ gitProtocol })`.
    */
   gitProtocol?: GitProtocol;
+  /**
+   * Sink for clone retry/timeout diagnostics. Defaults to writing to stderr.
+   * Injectable for tests and for hosts that route logs elsewhere. Lines are
+   * token-redacted before they reach this logger.
+   */
+  logger?: GitLogger;
 }
 
 const DEFAULT_GIT_PROTOCOL: GitProtocol = "ssh";
@@ -202,6 +216,7 @@ export class GitHubCatalogProvider implements CatalogProvider {
   scheme = "github";
   private token: string | undefined;
   private gitProtocol: GitProtocol;
+  private baseLogger: GitLogger;
 
   constructor(options?: GitHubProviderOptions) {
     this.token = options?.token || process.env.AIR_GITHUB_TOKEN;
@@ -209,6 +224,21 @@ export class GitHubCatalogProvider implements CatalogProvider {
       options?.gitProtocol ?? process.env.AIR_GIT_PROTOCOL,
       DEFAULT_GIT_PROTOCOL
     );
+    this.baseLogger = options?.logger ?? defaultGitLogger;
+  }
+
+  /**
+   * A logger that strips the GitHub token from every line before emitting it.
+   * The clone URL embeds the token for HTTPS auth, and that URL appears in git
+   * error messages (and our own retry diagnostics), so redact before logging.
+   */
+  private get logger(): GitLogger {
+    const token = this.token;
+    const base = this.baseLogger;
+    return {
+      info: (message) => base.info(redactToken(message, token)),
+      warn: (message) => base.warn(redactToken(message, token)),
+    };
   }
 
   /**
@@ -349,22 +379,24 @@ export class GitHubCatalogProvider implements CatalogProvider {
       if (!existsSync(resolve(cloneDir, ".git"))) continue;
 
       try {
-        const localSha = execFileSync("git", ["rev-parse", "HEAD"], {
-          cwd: cloneDir,
-          encoding: "utf-8",
-          stdio: "pipe",
-          timeout: 10000,
-        }).trim();
+        const localSha = (
+          await runGit(["rev-parse", "HEAD"], {
+            cwd: cloneDir,
+            env: GIT_STALL_ENV,
+            timeoutMs: LOCAL_GIT_TIMEOUT_MS,
+          })
+        ).stdout.trim();
 
         const lsRemoteArgs = ref === "HEAD"
           ? ["ls-remote", "origin", "HEAD"]
           : ["ls-remote", "origin", ref];
-        const lsOutput = execFileSync("git", lsRemoteArgs, {
-          cwd: cloneDir,
-          encoding: "utf-8",
-          stdio: "pipe",
-          timeout: 15000,
-        }).trim();
+        const lsOutput = (
+          await runGit(lsRemoteArgs, {
+            cwd: cloneDir,
+            env: GIT_STALL_ENV,
+            timeoutMs: CLONE_TIMEOUT_MS,
+          })
+        ).stdout.trim();
 
         if (!lsOutput) continue;
 
@@ -441,37 +473,39 @@ export class GitHubCatalogProvider implements CatalogProvider {
 
           try {
             // Get current SHA before fetch
-            const beforeSha = execFileSync("git", ["rev-parse", "HEAD"], {
-              cwd: cloneDir,
-              encoding: "utf-8",
-              stdio: "pipe",
-              timeout: 10000,
-            }).trim();
+            const beforeSha = (
+              await runGit(["rev-parse", "HEAD"], {
+                cwd: cloneDir,
+                env: GIT_STALL_ENV,
+                timeoutMs: LOCAL_GIT_TIMEOUT_MS,
+              })
+            ).stdout.trim();
 
             // Fetch latest
             const fetchArgs = ref === "HEAD"
               ? ["fetch", "--depth", "1", "origin"]
               : ["fetch", "--depth", "1", "origin", ref];
-            execFileSync("git", fetchArgs, {
+            await runGit(fetchArgs, {
               cwd: cloneDir,
-              stdio: "pipe",
-              timeout: 60000,
+              env: GIT_STALL_ENV,
+              timeoutMs: CLONE_TIMEOUT_MS,
             });
 
             // Reset to fetched commit
             const resetRef = ref === "HEAD" ? "origin/HEAD" : "FETCH_HEAD";
-            execFileSync("git", ["reset", "--hard", resetRef], {
+            await runGit(["reset", "--hard", resetRef], {
               cwd: cloneDir,
-              stdio: "pipe",
-              timeout: 10000,
+              env: GIT_STALL_ENV,
+              timeoutMs: LOCAL_GIT_TIMEOUT_MS,
             });
 
-            const afterSha = execFileSync("git", ["rev-parse", "HEAD"], {
-              cwd: cloneDir,
-              encoding: "utf-8",
-              stdio: "pipe",
-              timeout: 10000,
-            }).trim();
+            const afterSha = (
+              await runGit(["rev-parse", "HEAD"], {
+                cwd: cloneDir,
+                env: GIT_STALL_ENV,
+                timeoutMs: LOCAL_GIT_TIMEOUT_MS,
+              })
+            ).stdout.trim();
 
             if (afterSha !== beforeSha) {
               results.push({
@@ -562,39 +596,55 @@ export class GitHubCatalogProvider implements CatalogProvider {
       const tmpDir = mkdtempSync(`${cloneDir}.tmp-`);
 
       try {
-        if (isImmutableRef(ref)) {
-          // `git clone --branch <sha>` does not work — git treats --branch as
-          // a ref name lookup. For commit SHAs we init + fetch + checkout so
-          // the SHA-pinned cache is content-addressed and immutable.
-          execFileSync("git", ["init", "--quiet", tmpDir], {
-            stdio: "pipe",
-            timeout: 30_000,
-          });
-          execFileSync("git", ["remote", "add", "origin", repoUrl], {
-            cwd: tmpDir,
-            stdio: "pipe",
-            timeout: 10_000,
-          });
-          execFileSync(
-            "git",
-            ["fetch", "--depth", "1", "origin", ref],
-            { cwd: tmpDir, stdio: "pipe", timeout: 60_000 }
-          );
-          execFileSync("git", ["checkout", "--quiet", "FETCH_HEAD"], {
-            cwd: tmpDir,
-            stdio: "pipe",
-            timeout: 10_000,
-          });
-        } else {
-          // git clone refuses a non-empty target; mkdtempSync gave us an
-          // empty directory which git accepts.
-          const args =
-            ref === "HEAD"
-              ? ["clone", "--depth", "1", repoUrl, tmpDir]
-              : ["clone", "--depth", "1", "--branch", ref, repoUrl, tmpDir];
+        // The whole clone-into-tmp is the retried unit: a transient github.com
+        // failure (ETIMEDOUT, TLS stall, 5xx) or a watchdog-killed hang retries
+        // from a clean empty tmp dir with backoff. Local steps (init, checkout)
+        // are not transient, so a failure there raises immediately. The bounded
+        // timeout on each git call kills the whole process group on deadline, so
+        // a half-open connection during fetch-pack can't hang the clone forever.
+        await withGitRetry(
+          async () => {
+            // Start each attempt from a clean, empty tmp dir — git clone refuses
+            // a non-empty target, and a prior attempt may have left partial state.
+            if (existsSync(tmpDir)) {
+              rmSync(tmpDir, { recursive: true, force: true });
+            }
+            mkdirSync(tmpDir, { recursive: true });
 
-          execFileSync("git", args, { stdio: "pipe", timeout: 60_000 });
-        }
+            if (isImmutableRef(ref)) {
+              // `git clone --branch <sha>` does not work — git treats --branch as
+              // a ref name lookup. For commit SHAs we init + fetch + checkout so
+              // the SHA-pinned cache is content-addressed and immutable.
+              await runGit(["init", "--quiet", tmpDir], {
+                env: GIT_STALL_ENV,
+                timeoutMs: LOCAL_GIT_TIMEOUT_MS,
+              });
+              await runGit(["remote", "add", "origin", repoUrl], {
+                cwd: tmpDir,
+                env: GIT_STALL_ENV,
+                timeoutMs: LOCAL_GIT_TIMEOUT_MS,
+              });
+              await runGit(["fetch", "--depth", "1", "origin", ref], {
+                cwd: tmpDir,
+                env: GIT_STALL_ENV,
+                timeoutMs: CLONE_TIMEOUT_MS,
+              });
+              await runGit(["checkout", "--quiet", "FETCH_HEAD"], {
+                cwd: tmpDir,
+                env: GIT_STALL_ENV,
+                timeoutMs: LOCAL_GIT_TIMEOUT_MS,
+              });
+            } else {
+              const args =
+                ref === "HEAD"
+                  ? ["clone", "--depth", "1", repoUrl, tmpDir]
+                  : ["clone", "--depth", "1", "--branch", ref, repoUrl, tmpDir];
+
+              await runGit(args, { env: GIT_STALL_ENV, timeoutMs: CLONE_TIMEOUT_MS });
+            }
+          },
+          { logger: this.logger, label: `${owner}/${repo}@${ref}` }
+        );
 
         // Atomic publish: readers only ever see a complete clone at
         // cloneDir, never a half-populated one.
