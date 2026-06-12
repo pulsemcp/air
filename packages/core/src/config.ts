@@ -108,6 +108,120 @@ async function resolveEntryPaths<T>(
 }
 
 /**
+ * Plugin manifest fields the externalized body may supply. The owning
+ * plugins.json entry is the authoritative registry layer; any of these fields
+ * declared inline on the entry take precedence over the manifest.
+ * `description`, `path`, and `default_in_roots` are deliberately absent — they
+ * belong to the index entry, not the externalized body.
+ */
+const PLUGIN_MANIFEST_FIELDS = [
+  "title",
+  "version",
+  "skills",
+  "mcp_servers",
+  "hooks",
+  "plugins",
+  "author",
+  "homepage",
+  "repository",
+  "license",
+  "logo",
+  "keywords",
+] as const;
+
+/** Plugin manifest fields that must be arrays of strings when present. */
+const PLUGIN_MANIFEST_REF_FIELDS = [
+  "skills",
+  "mcp_servers",
+  "hooks",
+  "plugins",
+] as const;
+
+/**
+ * Hydrate plugin entries that externalize their body into a manifest.
+ *
+ * When a plugin entry declares a `path`, the plugin's body lives at
+ * `<path>/.plugin/plugin.json` — AIR's vendor-neutral analog of the Open
+ * Plugins manifest. This lets `plugins.json` stay a lightweight registry
+ * (description + path + default_in_roots) while the bundled artifact references
+ * (skills, mcp_servers, hooks, plugins) and distribution metadata live with the
+ * plugin.
+ *
+ * `path` is already absolute here (resolved by {@link resolveEntryPaths}); the
+ * manifest is read from the local filesystem, so remote (github://) plugins
+ * incur no extra fetch — the path points into the provider's local cache.
+ *
+ * Merge precedence: fields the index entry declares inline win; manifest fields
+ * only fill gaps. This composes a single plugin's split definition and is not
+ * cross-catalog later-wins. Manifest reference arrays stay bare shortnames so
+ * they qualify under the contribution's scope during canonicalization.
+ */
+function hydratePluginManifests(
+  entries: Record<string, unknown>,
+  source: string
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(entries)) {
+    const entry = value as Record<string, unknown>;
+    if (typeof entry.path !== "string") {
+      out[key] = entry;
+      continue;
+    }
+
+    const manifestPath = resolve(entry.path, ".plugin", "plugin.json");
+    if (!existsSync(manifestPath)) {
+      throw new Error(
+        `Plugin "${key}" (from ${source}) declares path "${entry.path}" but no ` +
+          `manifest was found at ${manifestPath}. Expected a .plugin/plugin.json file.`
+      );
+    }
+
+    let manifest: unknown;
+    try {
+      manifest = JSON.parse(readFileSync(manifestPath, "utf-8"));
+    } catch (err) {
+      throw new Error(
+        `Plugin "${key}" (from ${source}) has an unparseable manifest at ` +
+          `${manifestPath}: ${(err as Error).message}`
+      );
+    }
+    if (
+      typeof manifest !== "object" ||
+      manifest === null ||
+      Array.isArray(manifest)
+    ) {
+      throw new Error(
+        `Plugin "${key}" manifest at ${manifestPath} must be a JSON object.`
+      );
+    }
+    const manifestObj = stripSchema(manifest as Record<string, unknown>);
+
+    const merged: Record<string, unknown> = { ...entry };
+    for (const field of PLUGIN_MANIFEST_FIELDS) {
+      if (field in manifestObj && !(field in entry)) {
+        merged[field] = manifestObj[field];
+      }
+    }
+
+    for (const field of PLUGIN_MANIFEST_REF_FIELDS) {
+      const v = merged[field];
+      if (
+        v !== undefined &&
+        (!Array.isArray(v) || v.some((x) => typeof x !== "string"))
+      ) {
+        throw new Error(
+          `Plugin "${key}" field "${field}" must be an array of strings ` +
+            `(resolved from ${manifestPath}).`
+        );
+      }
+    }
+
+    out[key] = merged;
+  }
+  return out;
+}
+
+/**
  * One contribution of artifacts coming from a single catalog source. Each
  * source carries the scope its entries should be qualified under.
  */
@@ -156,12 +270,18 @@ async function loadContributions<T>(
     }
 
     const entries = stripSchema(data) as Record<string, T>;
-    const resolved = await resolveEntryPaths(
+    let resolved = await resolveEntryPaths(
       entries,
       sourceDir,
       providers,
       artifactType
     );
+    if (artifactType === "plugins") {
+      resolved = hydratePluginManifests(
+        resolved as Record<string, unknown>,
+        p
+      ) as Record<string, T>;
+    }
     contributions.push({ scope, source: p, entries: resolved });
   }
 

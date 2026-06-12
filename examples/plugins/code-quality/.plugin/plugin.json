@@ -1,0 +1,18 @@
+{
+  "$schema": "../../../../schemas/plugin-manifest.schema.json",
+  "name": "code-quality",
+  "title": "Code Quality Suite",
+  "description": "Linting, formatting, and static analysis tools bundled with coding standards skills",
+  "version": "1.2.0",
+  "skills": ["lint-fix", "format-check"],
+  "mcp_servers": ["eslint-server"],
+  "hooks": ["lint-pre-commit"],
+  "author": {
+    "name": "Acme Engineering",
+    "url": "https://github.com/acme"
+  },
+  "homepage": "https://github.com/acme/air-plugins/tree/main/code-quality",
+  "repository": "https://github.com/acme/air-plugins.git",
+  "license": "MIT",
+  "keywords": ["linting", "formatting", "eslint", "prettier"]
+}

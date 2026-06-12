@@ -39,12 +39,16 @@
           "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+([-+][a-zA-Z0-9._-]+)?$",
           "description": "Semantic version of the plugin (e.g., '1.0.0')."
         },
+        "path": {
+          "type": "string",
+          "description": "Path to the plugin directory containing a .plugin/plugin.json manifest. Either a relative path within the same catalog, or a remote URI handled by an installed catalog provider (e.g. github://owner/repo[@ref]/path). When set, the manifest supplies the plugin's bundled artifact references (skills, mcp_servers, hooks, plugins) and distribution metadata (author, version, homepage, repository, license, logo, keywords, title). Any of those fields declared inline on this entry take precedence over the manifest, letting the index stay a lightweight registry of name + description + path (+ default_in_roots)."
+        },
         "skills": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "description": "IDs of skills bundled by this plugin. Must reference skill IDs defined in skills.json indexes."
+          "description": "IDs of skills bundled by this plugin. Must reference skill IDs defined in skills.json indexes. May be declared here inline, or externalized into the .plugin/plugin.json manifest referenced by path."
         },
         "mcp_servers": {
           "type": "array",
