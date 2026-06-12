@@ -151,6 +151,15 @@ export interface PluginAuthor {
 export interface PluginEntry {
   title?: string;
   description: string;
+  /**
+   * Path to the plugin directory containing a `.plugin/plugin.json` manifest.
+   * Relative to the index file's directory, or a provider URI (e.g.
+   * `github://owner/repo[@ref]/path`). When set, `resolveArtifacts` loads the
+   * manifest and merges its fields (skills, mcp_servers, hooks, plugins, and
+   * distribution metadata) into this entry — fields declared inline here take
+   * precedence. Resolved to an absolute local path at resolution time.
+   */
+  path?: string;
   version?: string;
   skills?: string[];
   mcp_servers?: string[];

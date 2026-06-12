@@ -26,7 +26,8 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 100,
-          "description": "Human-readable display name for the plugin."
+          "deprecated": true,
+          "description": "DEPRECATED (v0.13.0): declare in the .plugin/plugin.json manifest referenced by `path` instead. Inline plugin bodies are slated for removal — see https://github.com/pulsemcp/air/issues/157. Human-readable display name for the plugin."
         },
         "description": {
           "type": "string",
@@ -37,39 +38,49 @@
         "version": {
           "type": "string",
           "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+([-+][a-zA-Z0-9._-]+)?$",
-          "description": "Semantic version of the plugin (e.g., '1.0.0')."
+          "deprecated": true,
+          "description": "DEPRECATED (v0.13.0): declare in the .plugin/plugin.json manifest referenced by `path` instead. Inline plugin bodies are slated for removal — see https://github.com/pulsemcp/air/issues/157. Semantic version of the plugin (e.g., '1.0.0')."
+        },
+        "path": {
+          "type": "string",
+          "description": "Path to the plugin directory containing a .plugin/plugin.json manifest. Either a relative path within the same catalog, or a remote URI handled by an installed catalog provider (e.g. github://owner/repo[@ref]/path). When set, the manifest supplies the plugin's bundled artifact references (skills, mcp_servers, hooks, plugins) and distribution metadata (author, version, homepage, repository, license, logo, keywords, title). Any of those fields declared inline on this entry take precedence over the manifest, letting the index stay a lightweight registry of name + description + path (+ default_in_roots)."
         },
         "skills": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "description": "IDs of skills bundled by this plugin. Must reference skill IDs defined in skills.json indexes."
+          "deprecated": true,
+          "description": "DEPRECATED (v0.13.0): declare in the .plugin/plugin.json manifest referenced by `path` instead. Inline plugin bodies are slated for removal — see https://github.com/pulsemcp/air/issues/157. IDs of skills bundled by this plugin. Must reference skill IDs defined in skills.json indexes."
         },
         "mcp_servers": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "description": "IDs of MCP servers bundled by this plugin. Must reference server IDs defined in mcp.json indexes."
+          "deprecated": true,
+          "description": "DEPRECATED (v0.13.0): declare in the .plugin/plugin.json manifest referenced by `path` instead. Inline plugin bodies are slated for removal — see https://github.com/pulsemcp/air/issues/157. IDs of MCP servers bundled by this plugin. Must reference server IDs defined in mcp.json indexes."
         },
         "hooks": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "description": "IDs of hooks bundled by this plugin. Must reference hook IDs defined in hooks.json indexes."
+          "deprecated": true,
+          "description": "DEPRECATED (v0.13.0): declare in the .plugin/plugin.json manifest referenced by `path` instead. Inline plugin bodies are slated for removal — see https://github.com/pulsemcp/air/issues/157. IDs of hooks bundled by this plugin. Must reference hook IDs defined in hooks.json indexes."
         },
         "plugins": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "description": "IDs of other plugins to compose into this plugin. Referenced plugins' primitives (skills, mcp_servers, hooks) are recursively expanded and merged with this plugin's direct declarations. Circular references are rejected at resolution time."
+          "deprecated": true,
+          "description": "DEPRECATED (v0.13.0): declare in the .plugin/plugin.json manifest referenced by `path` instead. Inline plugin bodies are slated for removal — see https://github.com/pulsemcp/air/issues/157. IDs of other plugins to compose into this plugin. Referenced plugins' primitives (skills, mcp_servers, hooks) are recursively expanded and merged with this plugin's direct declarations. Circular references are rejected at resolution time."
         },
         "author": {
           "type": "object",
-          "description": "Plugin author information.",
+          "deprecated": true,
+          "description": "DEPRECATED (v0.13.0): declare in the .plugin/plugin.json manifest referenced by `path` instead. Inline plugin bodies are slated for removal — see https://github.com/pulsemcp/air/issues/157. Plugin author information.",
           "properties": {
             "name": {
               "type": "string",
@@ -91,26 +102,31 @@
         "homepage": {
           "type": "string",
           "format": "uri",
-          "description": "URL to the plugin's homepage or documentation."
+          "deprecated": true,
+          "description": "DEPRECATED (v0.13.0): declare in the .plugin/plugin.json manifest referenced by `path` instead. Inline plugin bodies are slated for removal — see https://github.com/pulsemcp/air/issues/157. URL to the plugin's homepage or documentation."
         },
         "repository": {
           "type": "string",
-          "description": "URL or identifier for the plugin's source repository."
+          "deprecated": true,
+          "description": "DEPRECATED (v0.13.0): declare in the .plugin/plugin.json manifest referenced by `path` instead. Inline plugin bodies are slated for removal — see https://github.com/pulsemcp/air/issues/157. URL or identifier for the plugin's source repository."
         },
         "license": {
           "type": "string",
-          "description": "SPDX license identifier (e.g., 'MIT', 'Apache-2.0')."
+          "deprecated": true,
+          "description": "DEPRECATED (v0.13.0): declare in the .plugin/plugin.json manifest referenced by `path` instead. Inline plugin bodies are slated for removal — see https://github.com/pulsemcp/air/issues/157. SPDX license identifier (e.g., 'MIT', 'Apache-2.0')."
         },
         "logo": {
           "type": "string",
-          "description": "Path or URL to the plugin's logo image."
+          "deprecated": true,
+          "description": "DEPRECATED (v0.13.0): declare in the .plugin/plugin.json manifest referenced by `path` instead. Inline plugin bodies are slated for removal — see https://github.com/pulsemcp/air/issues/157. Path or URL to the plugin's logo image."
         },
         "keywords": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "description": "Keywords for discovery and categorization."
+          "deprecated": true,
+          "description": "DEPRECATED (v0.13.0): declare in the .plugin/plugin.json manifest referenced by `path` instead. Inline plugin bodies are slated for removal — see https://github.com/pulsemcp/air/issues/157. Keywords for discovery and categorization."
         },
         "default_in_roots": {
           "type": "array",
