@@ -5,29 +5,11 @@
     "default_in_roots": ["web-app"]
   },
   "deploy-toolkit": {
-    "title": "Deployment Toolkit",
     "description": "End-to-end deployment skills, hooks, and CI/CD MCP server for staging and production environments",
-    "version": "2.0.1",
-    "skills": ["deploy-staging", "deploy-production"],
-    "mcp_servers": ["ci-cd"],
-    "hooks": ["pre-deploy-check", "post-deploy-notify"],
-    "author": {
-      "name": "Acme Platform Team"
-    },
-    "license": "Apache-2.0",
-    "keywords": ["deploy", "ci-cd", "staging", "production"]
+    "path": "./deploy-toolkit"
   },
   "full-stack-dev": {
-    "title": "Full-Stack Developer Suite",
     "description": "Everything for full-stack development: code quality, deployment, and monitoring",
-    "version": "1.0.0",
-    "plugins": ["code-quality", "deploy-toolkit"],
-    "skills": ["monitor-logs"],
-    "mcp_servers": ["observability-server"],
-    "author": {
-      "name": "Acme Engineering"
-    },
-    "license": "MIT",
-    "keywords": ["full-stack", "all-in-one"]
+    "path": "./full-stack-dev"
   }
 }

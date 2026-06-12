@@ -158,12 +158,30 @@ const PLUGIN_MANIFEST_REF_FIELDS = [
  */
 function hydratePluginManifests(
   entries: Record<string, unknown>,
-  source: string
+  source: string,
+  warnings: string[]
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(entries)) {
     const entry = value as Record<string, unknown>;
     if (typeof entry.path !== "string") {
+      // Deprecated since v0.13.0: a plugin that declares its body (skills,
+      // mcp_servers, hooks, version, author, …) inline on the index entry
+      // instead of externalizing it into a <path>/.plugin/plugin.json manifest.
+      // Tracked for removal in https://github.com/pulsemcp/air/issues/157.
+      const inlineBody = PLUGIN_MANIFEST_FIELDS.filter((f) => f in entry);
+      if (inlineBody.length > 0) {
+        warnings.push(
+          `Plugin "${key}" (from ${source}) declares its body inline ` +
+            `(${inlineBody.join(", ")}) instead of referencing a ` +
+            `.plugin/plugin.json manifest via "path". Inline plugin bodies are ` +
+            `deprecated as of v0.13.0 and will be removed in a future release ` +
+            `(https://github.com/pulsemcp/air/issues/157). Move these fields ` +
+            `into "<plugin-dir>/.plugin/plugin.json" and set "path" to the ` +
+            `plugin directory; keep description, path, and default_in_roots on ` +
+            `the index entry.`
+        );
+      }
       out[key] = entry;
       continue;
     }
@@ -243,7 +261,8 @@ async function loadContributions<T>(
   paths: { path: string; scope: string }[],
   baseDir: string,
   providers: CatalogProvider[],
-  artifactType: string
+  artifactType: string,
+  warnings: string[]
 ): Promise<ArtifactContribution<T>[]> {
   const contributions: ArtifactContribution<T>[] = [];
 
@@ -279,7 +298,8 @@ async function loadContributions<T>(
     if (artifactType === "plugins") {
       resolved = hydratePluginManifests(
         resolved as Record<string, unknown>,
-        p
+        p,
+        warnings
       ) as Record<string, T>;
     }
     contributions.push({ scope, source: p, entries: resolved });
@@ -1355,7 +1375,13 @@ export async function resolveArtifacts(
 
   async function load<T>(type: ArtifactType): Promise<Record<string, T>> {
     const paths = pathsFor(type);
-    const contributions = await loadContributions<T>(paths, baseDir, providers, type);
+    const contributions = await loadContributions<T>(
+      paths,
+      baseDir,
+      providers,
+      type,
+      warnings
+    );
     const { merged, sources } = mergeContributions<T>(contributions, type);
     sourcesByType[type] = sources;
     return merged;

@@ -248,6 +248,76 @@ describe("plugin manifest hydration", () => {
     ]);
   });
 
+  it("warns when a plugin declares its body inline instead of via path", async () => {
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        skills: ["./skills.json"],
+        plugins: ["./plugins.json"],
+      },
+      "skills.json": { lint: exampleSkill("lint") },
+      "plugins.json": {
+        "dev-tools": {
+          description: "Developer tooling",
+          version: "1.0.0",
+          skills: ["lint"],
+        },
+      },
+    });
+    cleanup = c;
+
+    const warnings: string[] = [];
+    await resolveArtifacts(join(dir, "air.json"), {
+      onWarning: (m) => warnings.push(m),
+    });
+
+    const deprecation = warnings.find((w) =>
+      /Plugin "dev-tools".*deprecated as of v0\.13\.0/s.test(w),
+    );
+    expect(deprecation).toBeDefined();
+    // The warning names the offending inline fields and points at the issue.
+    expect(deprecation).toMatch(/version/);
+    expect(deprecation).toMatch(/skills/);
+    expect(deprecation).toMatch(/issues\/157/);
+  });
+
+  it("does not warn when a manifest-backed plugin overrides fields inline", async () => {
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        skills: ["./skills.json"],
+        plugins: ["./plugins.json"],
+      },
+      "skills.json": {
+        lint: exampleSkill("lint"),
+        deploy: exampleSkill("deploy"),
+      },
+      "plugins.json": {
+        "dev-tools": {
+          description: "Developer tooling",
+          // Inline override on top of a manifest is the sanctioned new feature,
+          // not the deprecated inline-only form — it must stay quiet.
+          version: "9.9.9",
+          path: "./plugins/dev-tools",
+        },
+      },
+      "plugins/dev-tools/.plugin/plugin.json": {
+        version: "1.0.0",
+        skills: ["lint"],
+      },
+    });
+    cleanup = c;
+
+    const warnings: string[] = [];
+    await resolveArtifacts(join(dir, "air.json"), {
+      onWarning: (m) => warnings.push(m),
+    });
+
+    expect(
+      warnings.find((w) => /deprecated as of v0\.13\.0/.test(w)),
+    ).toBeUndefined();
+  });
+
   it("expands plugin-to-plugin references sourced from a manifest", async () => {
     const { dir, cleanup: c } = createTempAirDir({
       "air.json": {

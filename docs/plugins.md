@@ -78,7 +78,9 @@ At resolution time, `resolveArtifacts` reads the manifest and merges its fields 
 - **`name` is informational.** The authoritative plugin ID is the `plugins.json` entry key; a `name` in the manifest is accepted for Open Plugins compatibility but ignored for identity.
 - **Errors are loud.** A missing `<path>/.plugin/plugin.json`, unparseable JSON, or a reference field that isn't an array of strings fails resolution with a diagnostic that names the plugin.
 
-Externalizing the body is optional and fully backward-compatible: a plugin may declare everything inline (no `path`), externalize everything (thin index + manifest), or mix the two.
+> **Deprecation (v0.13.0).** Declaring a plugin's body **inline** on the `plugins.json` entry with no `path` — putting `skills`, `mcp_servers`, `hooks`, `plugins`, `version`, `author`, and the other distribution fields directly on the index record — is deprecated. `resolveArtifacts` emits a warning naming each affected plugin and the fields to move, and the form is slated for removal in a future release ([pulsemcp/air#157](https://github.com/pulsemcp/air/issues/157)). Migrate by moving the body into `<plugin-dir>/.plugin/plugin.json` and pointing the entry at it with `path`; keep `description`, `path`, and `default_in_roots` on the index record. Inline fields layered **on top of** a `path` (overriding individual manifest fields) are **not** deprecated — that is the sanctioned override path and stays quiet.
+
+During the deprecation window all three forms still resolve: a plugin may declare everything inline (no `path`, **deprecated**), externalize everything (thin index + manifest, **recommended**), or set `path` and override individual fields inline (**supported**).
 
 ### Plugin Composition
 
@@ -139,7 +141,7 @@ After resolution, `full-stack-dev` expands to:
 | `logo` | No | Path or URL to the plugin's logo image. |
 | `keywords` | No | Keywords for discovery and categorization. |
 
-The `title`, `version`, `skills`, `mcp_servers`, `hooks`, `plugins`, `author`, `homepage`, `repository`, `license`, `logo`, and `keywords` fields may be declared inline on the entry **or** externalized into the `.plugin/plugin.json` manifest referenced by `path`. `description`, `path`, and `default_in_roots` always live on the index entry.
+The `title`, `version`, `skills`, `mcp_servers`, `hooks`, `plugins`, `author`, `homepage`, `repository`, `license`, `logo`, and `keywords` fields belong in the `.plugin/plugin.json` manifest referenced by `path`. Declaring them inline on the entry without a `path` is **deprecated as of v0.13.0** (see the deprecation note under [Externalizing the Body](#externalizing-the-body-pluginpluginjson)); declaring them inline to override individual manifest fields remains supported. `description`, `path`, and `default_in_roots` always live on the index entry.
 
 ## Translation Layers
 
