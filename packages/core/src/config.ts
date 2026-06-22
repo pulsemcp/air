@@ -28,6 +28,21 @@ import {
   type QualifiedId,
 } from "./scope.js";
 
+/**
+ * A structural/configuration problem with the air.json itself — e.g. a catalog
+ * URI whose scheme has no installed provider extension. These are author
+ * mistakes that must fail loudly: unlike a single catalog's malformed *content*
+ * (a parse/validation problem, which per-source isolation degrades to a
+ * warning), a misconfigured air.json should not silently drop whole catalogs.
+ * The per-source isolation in {@link loadContributions} re-throws this class.
+ */
+export class CatalogConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CatalogConfigError";
+  }
+}
+
 function loadJsonFile(filePath: string): Record<string, unknown> {
   if (!existsSync(filePath)) {
     return {};
@@ -84,14 +99,14 @@ async function resolveEntryPaths<T>(
       if (scheme) {
         const provider = providers.find((prov) => prov.scheme === scheme);
         if (!provider) {
-          throw new Error(
+          throw new CatalogConfigError(
             `No catalog provider registered for scheme "${scheme}://" ` +
               `referenced by ${artifactType} "${key}" path "${e.path}". ` +
               `Install an extension that handles this scheme.`
           );
         }
         if (!provider.resolveCatalogDir) {
-          throw new Error(
+          throw new CatalogConfigError(
             `Provider for "${scheme}://" cannot resolve directory paths — ` +
               `it lacks resolveCatalogDir(). Upgrade the provider extension ` +
               `or replace the URI with a vendored relative path.`
@@ -186,57 +201,85 @@ function hydratePluginManifests(
       continue;
     }
 
-    const manifestPath = resolve(entry.path, ".plugin", "plugin.json");
-    if (!existsSync(manifestPath)) {
-      throw new Error(
-        `Plugin "${key}" (from ${source}) declares path "${entry.path}" but no ` +
-          `manifest was found at ${manifestPath}. Expected a .plugin/plugin.json file.`
-      );
-    }
-
-    let manifest: unknown;
+    // Hydration of a single plugin is isolated: a missing, unparseable, or
+    // invalid manifest degrades to a warning and drops *only* this plugin,
+    // rather than aborting resolution of every other plugin and catalog. This
+    // matters during the inline→manifest migration window (issue #157): a
+    // half-migrated catalog (path set before the manifest lands, or a malformed
+    // manifest) must not break `prepare` for sessions that don't even use it.
     try {
-      manifest = JSON.parse(readFileSync(manifestPath, "utf-8"));
+      out[key] = hydratePluginFromManifest(key, entry, source);
     } catch (err) {
-      throw new Error(
-        `Plugin "${key}" (from ${source}) has an unparseable manifest at ` +
-          `${manifestPath}: ${(err as Error).message}`
+      warnings.push(
+        `Plugin "${key}" (from ${source}) could not be hydrated from its ` +
+          `.plugin/plugin.json manifest and was dropped: ${(err as Error).message} ` +
+          `Other plugins and catalogs are unaffected.`
       );
     }
-    if (
-      typeof manifest !== "object" ||
-      manifest === null ||
-      Array.isArray(manifest)
-    ) {
-      throw new Error(
-        `Plugin "${key}" manifest at ${manifestPath} must be a JSON object.`
-      );
-    }
-    const manifestObj = stripSchema(manifest as Record<string, unknown>);
-
-    const merged: Record<string, unknown> = { ...entry };
-    for (const field of PLUGIN_MANIFEST_FIELDS) {
-      if (field in manifestObj && !(field in entry)) {
-        merged[field] = manifestObj[field];
-      }
-    }
-
-    for (const field of PLUGIN_MANIFEST_REF_FIELDS) {
-      const v = merged[field];
-      if (
-        v !== undefined &&
-        (!Array.isArray(v) || v.some((x) => typeof x !== "string"))
-      ) {
-        throw new Error(
-          `Plugin "${key}" field "${field}" must be an array of strings ` +
-            `(resolved from ${manifestPath}).`
-        );
-      }
-    }
-
-    out[key] = merged;
   }
   return out;
+}
+
+/**
+ * Read and merge a single plugin's externalized manifest body. Throws on a
+ * missing/unparseable/invalid manifest; the caller isolates that failure to
+ * the offending plugin so it cannot abort the whole resolve.
+ */
+function hydratePluginFromManifest(
+  key: string,
+  entry: Record<string, unknown>,
+  source: string
+): Record<string, unknown> {
+  const path = entry.path as string;
+  const manifestPath = resolve(path, ".plugin", "plugin.json");
+  if (!existsSync(manifestPath)) {
+    throw new Error(
+      `Plugin "${key}" (from ${source}) declares path "${path}" but no ` +
+        `manifest was found at ${manifestPath}. Expected a .plugin/plugin.json file.`
+    );
+  }
+
+  let manifest: unknown;
+  try {
+    manifest = JSON.parse(readFileSync(manifestPath, "utf-8"));
+  } catch (err) {
+    throw new Error(
+      `Plugin "${key}" (from ${source}) has an unparseable manifest at ` +
+        `${manifestPath}: ${(err as Error).message}`
+    );
+  }
+  if (
+    typeof manifest !== "object" ||
+    manifest === null ||
+    Array.isArray(manifest)
+  ) {
+    throw new Error(
+      `Plugin "${key}" manifest at ${manifestPath} must be a JSON object.`
+    );
+  }
+  const manifestObj = stripSchema(manifest as Record<string, unknown>);
+
+  const merged: Record<string, unknown> = { ...entry };
+  for (const field of PLUGIN_MANIFEST_FIELDS) {
+    if (field in manifestObj && !(field in entry)) {
+      merged[field] = manifestObj[field];
+    }
+  }
+
+  for (const field of PLUGIN_MANIFEST_REF_FIELDS) {
+    const v = merged[field];
+    if (
+      v !== undefined &&
+      (!Array.isArray(v) || v.some((x) => typeof x !== "string"))
+    ) {
+      throw new Error(
+        `Plugin "${key}" field "${field}" must be an array of strings ` +
+          `(resolved from ${manifestPath}).`
+      );
+    }
+  }
+
+  return merged;
 }
 
 /**
@@ -267,42 +310,63 @@ async function loadContributions<T>(
   const contributions: ArtifactContribution<T>[] = [];
 
   for (const { path: p, scope } of paths) {
-    const scheme = getScheme(p);
-    let data: Record<string, unknown>;
-    let sourceDir: string;
+    // Per-source isolation: a single index that fails to load, parse, or
+    // resolve (unreachable catalog, malformed JSON, bad path) is surfaced as a
+    // warning and skipped, rather than aborting resolution of every other
+    // catalog. This is the composition-level backstop for the same resilience
+    // goal as per-plugin manifest hydration: one catalog's parse/validation
+    // problem must not break `prepare` for sessions that don't even use it.
+    // Composition correctness (duplicate qualified IDs) is enforced later in
+    // mergeContributions and stays a hard error — this catch never reaches it.
+    try {
+      const scheme = getScheme(p);
+      let data: Record<string, unknown>;
+      let sourceDir: string;
 
-    if (scheme) {
-      const provider = providers.find((prov) => prov.scheme === scheme);
-      if (!provider) {
-        throw new Error(
-          `No catalog provider registered for scheme "${scheme}://" (path: ${p}). ` +
-            `Install an extension that handles this scheme.`
-        );
+      if (scheme) {
+        const provider = providers.find((prov) => prov.scheme === scheme);
+        if (!provider) {
+          throw new CatalogConfigError(
+            `No catalog provider registered for scheme "${scheme}://" (path: ${p}). ` +
+              `Install an extension that handles this scheme.`
+          );
+        }
+        data = await provider.resolve(p, baseDir);
+        // Use provider's resolveSourceDir if available, otherwise fall back to baseDir
+        sourceDir = provider.resolveSourceDir?.(p) ?? baseDir;
+      } else {
+        const resolvedPath = resolve(baseDir, p);
+        data = loadJsonFile(resolvedPath);
+        sourceDir = dirname(resolvedPath);
       }
-      data = await provider.resolve(p, baseDir);
-      // Use provider's resolveSourceDir if available, otherwise fall back to baseDir
-      sourceDir = provider.resolveSourceDir?.(p) ?? baseDir;
-    } else {
-      const resolvedPath = resolve(baseDir, p);
-      data = loadJsonFile(resolvedPath);
-      sourceDir = dirname(resolvedPath);
-    }
 
-    const entries = stripSchema(data) as Record<string, T>;
-    let resolved = await resolveEntryPaths(
-      entries,
-      sourceDir,
-      providers,
-      artifactType
-    );
-    if (artifactType === "plugins") {
-      resolved = hydratePluginManifests(
-        resolved as Record<string, unknown>,
-        p,
-        warnings
-      ) as Record<string, T>;
+      const entries = stripSchema(data) as Record<string, T>;
+      let resolved = await resolveEntryPaths(
+        entries,
+        sourceDir,
+        providers,
+        artifactType
+      );
+      if (artifactType === "plugins") {
+        resolved = hydratePluginManifests(
+          resolved as Record<string, unknown>,
+          p,
+          warnings
+        ) as Record<string, T>;
+      }
+      contributions.push({ scope, source: p, entries: resolved });
+    } catch (err) {
+      // A misconfigured air.json (catalog scheme with no installed provider)
+      // is an author mistake, not a single catalog's content problem — fail
+      // loudly rather than silently dropping whole catalogs.
+      if (err instanceof CatalogConfigError) throw err;
+      warnings.push(
+        `Skipping ${artifactType} index "${p}": ${(err as Error).message} ` +
+          `This source's ${artifactType} will be unavailable, but the rest of ` +
+          `resolution continues — one catalog's parse/validation problem does ` +
+          `not abort the whole prepare.`
+      );
     }
-    contributions.push({ scope, source: p, entries: resolved });
   }
 
   return contributions;
