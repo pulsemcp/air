@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { join } from "path";
-import { resolveArtifacts } from "../src/config.js";
+import { resolveArtifacts, CatalogConfigError } from "../src/config.js";
 import { createTempAirDir, exampleSkill, exampleMcpStdio } from "./helpers.js";
 
 let cleanup: (() => void) | undefined;
@@ -469,5 +469,29 @@ describe("plugin manifest hydration", () => {
         /Skipping plugins index ".*broken\/plugins\.json"/s.test(w),
       ),
     ).toBeDefined();
+  });
+
+  it("hard-fails (does not warn-and-skip) when a plugins source's URI scheme has no provider", async () => {
+    // A catalog URI whose scheme has no installed provider is an author mistake,
+    // not a single source's content problem. Per-source isolation must NOT
+    // swallow it into a warning — it re-throws CatalogConfigError so a whole
+    // explicitly-listed catalog can never silently vanish. This guards the one
+    // deliberate exception the resilience design hinges on.
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        plugins: ["s3://no-such-bucket/plugins.json"],
+      },
+    });
+    cleanup = c;
+
+    const warnings: string[] = [];
+    await expect(
+      resolveArtifacts(join(dir, "air.json"), {
+        onWarning: (m) => warnings.push(m),
+      }),
+    ).rejects.toBeInstanceOf(CatalogConfigError);
+    // It threw rather than degrading to a "Skipping ..." warning.
+    expect(warnings.find((w) => /Skipping plugins index/.test(w))).toBeUndefined();
   });
 });

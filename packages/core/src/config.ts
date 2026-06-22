@@ -717,13 +717,17 @@ async function resolveCatalogRoot(
 
   const provider = providers.find((prov) => prov.scheme === scheme);
   if (!provider) {
-    throw new Error(
+    // Same author-misconfiguration class as the per-type-array path in
+    // resolveEntryPaths/loadContributions: an explicitly-listed catalog whose
+    // scheme has no provider must fail loudly, not be silently dropped. Use
+    // CatalogConfigError so a consumer catching it sees the catalogs[] form too.
+    throw new CatalogConfigError(
       `No catalog provider registered for scheme "${scheme}://" (catalog: ${catalog}). ` +
         `Install an extension that handles this scheme.`
     );
   }
   if (!provider.resolveCatalogDir) {
-    throw new Error(
+    throw new CatalogConfigError(
       `Provider for "${scheme}://" does not support catalog discovery — ` +
         `it lacks resolveCatalogDir(). Upgrade the provider extension or ` +
         `reference its artifact indexes via explicit per-type arrays.`
