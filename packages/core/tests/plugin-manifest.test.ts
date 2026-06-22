@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { join } from "path";
-import { resolveArtifacts } from "../src/config.js";
+import { resolveArtifacts, CatalogConfigError } from "../src/config.js";
 import { createTempAirDir, exampleSkill, exampleMcpStdio } from "./helpers.js";
 
 let cleanup: (() => void) | undefined;
@@ -170,7 +170,11 @@ describe("plugin manifest hydration", () => {
     ]);
   });
 
-  it("throws a clear error when the manifest is missing", async () => {
+  // A broken manifest must not abort resolution: during the inline→manifest
+  // migration window (issue #157) a half-migrated or malformed plugin should
+  // degrade to a warning and drop only that plugin, never fail `prepare` for
+  // sessions that don't even use it.
+  it("warns and drops a plugin (does not throw) when its manifest is missing", async () => {
     const { dir, cleanup: c } = createTempAirDir({
       "air.json": { name: "test", plugins: ["./plugins.json"] },
       "plugins.json": {
@@ -182,12 +186,20 @@ describe("plugin manifest hydration", () => {
     });
     cleanup = c;
 
-    await expect(resolveArtifacts(join(dir, "air.json"))).rejects.toThrow(
-      /Plugin "dev-tools".*no manifest was found.*\.plugin\/plugin\.json/s,
-    );
+    const warnings: string[] = [];
+    const artifacts = await resolveArtifacts(join(dir, "air.json"), {
+      onWarning: (m) => warnings.push(m),
+    });
+
+    expect(artifacts.plugins["@local/dev-tools"]).toBeUndefined();
+    expect(
+      warnings.find((w) =>
+        /Plugin "dev-tools".*dropped.*no manifest was found/s.test(w),
+      ),
+    ).toBeDefined();
   });
 
-  it("throws when the manifest is not valid JSON", async () => {
+  it("warns and drops a plugin (does not throw) when its manifest is not valid JSON", async () => {
     const { dir, cleanup: c } = createTempAirDir({
       "air.json": { name: "test", plugins: ["./plugins.json"] },
       "plugins.json": {
@@ -200,12 +212,20 @@ describe("plugin manifest hydration", () => {
     });
     cleanup = c;
 
-    await expect(resolveArtifacts(join(dir, "air.json"))).rejects.toThrow(
-      /Plugin "dev-tools".*unparseable manifest/s,
-    );
+    const warnings: string[] = [];
+    const artifacts = await resolveArtifacts(join(dir, "air.json"), {
+      onWarning: (m) => warnings.push(m),
+    });
+
+    expect(artifacts.plugins["@local/dev-tools"]).toBeUndefined();
+    expect(
+      warnings.find((w) =>
+        /Plugin "dev-tools".*dropped.*unparseable manifest/s.test(w),
+      ),
+    ).toBeDefined();
   });
 
-  it("throws when a manifest reference field is not an array of strings", async () => {
+  it("warns and drops a plugin (does not throw) when a manifest reference field is not an array of strings", async () => {
     const { dir, cleanup: c } = createTempAirDir({
       "air.json": { name: "test", plugins: ["./plugins.json"] },
       "plugins.json": {
@@ -220,9 +240,19 @@ describe("plugin manifest hydration", () => {
     });
     cleanup = c;
 
-    await expect(resolveArtifacts(join(dir, "air.json"))).rejects.toThrow(
-      /Plugin "dev-tools" field "skills" must be an array of strings/,
-    );
+    const warnings: string[] = [];
+    const artifacts = await resolveArtifacts(join(dir, "air.json"), {
+      onWarning: (m) => warnings.push(m),
+    });
+
+    expect(artifacts.plugins["@local/dev-tools"]).toBeUndefined();
+    expect(
+      warnings.find((w) =>
+        /dropped.*Plugin "dev-tools" field "skills" must be an array of strings/s.test(
+          w,
+        ),
+      ),
+    ).toBeDefined();
   });
 
   it("leaves fully-inline plugin entries (no path) untouched", async () => {
@@ -267,7 +297,10 @@ describe("plugin manifest hydration", () => {
     cleanup = c;
 
     const warnings: string[] = [];
-    await resolveArtifacts(join(dir, "air.json"), {
+    // Resolution must SUCCEED during the deprecation window — the inline body
+    // is still honored, only warned about. (Regression guard for issue #157:
+    // a deprecated-but-supported format must never abort `prepare`.)
+    const artifacts = await resolveArtifacts(join(dir, "air.json"), {
       onWarning: (m) => warnings.push(m),
     });
 
@@ -279,6 +312,12 @@ describe("plugin manifest hydration", () => {
     expect(deprecation).toMatch(/version/);
     expect(deprecation).toMatch(/skills/);
     expect(deprecation).toMatch(/issues\/157/);
+    // The inline plugin is still resolved (warned, not dropped) and its inline
+    // body is honored.
+    expect(artifacts.plugins["@local/dev-tools"]).toBeDefined();
+    expect(artifacts.plugins["@local/dev-tools"].skills).toEqual([
+      "@local/lint",
+    ]);
   });
 
   it("does not warn when a manifest-backed plugin overrides fields inline", async () => {
@@ -352,5 +391,107 @@ describe("plugin manifest hydration", () => {
       "@local/lint",
       "@local/deploy",
     ]);
+  });
+
+  it("isolates a broken plugin manifest — sibling plugins in the same index still resolve", async () => {
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        skills: ["./skills.json"],
+        plugins: ["./plugins.json"],
+      },
+      "skills.json": { lint: exampleSkill("lint") },
+      "plugins.json": {
+        // Broken: declares a manifest path, but no manifest file exists.
+        broken: {
+          description: "Half-migrated plugin",
+          path: "./plugins/broken",
+        },
+        // Healthy sibling in the same index file.
+        good: {
+          description: "Healthy plugin",
+          path: "./plugins/good",
+        },
+      },
+      "plugins/good/.plugin/plugin.json": {
+        skills: ["lint"],
+      },
+    });
+    cleanup = c;
+
+    const warnings: string[] = [];
+    const artifacts = await resolveArtifacts(join(dir, "air.json"), {
+      onWarning: (m) => warnings.push(m),
+    });
+
+    // The broken plugin is dropped with a warning; the healthy one survives.
+    expect(artifacts.plugins["@local/broken"]).toBeUndefined();
+    expect(artifacts.plugins["@local/good"]).toBeDefined();
+    expect(artifacts.plugins["@local/good"].skills).toEqual(["@local/lint"]);
+    expect(
+      warnings.find((w) => /Plugin "broken".*dropped/s.test(w)),
+    ).toBeDefined();
+  });
+
+  it("isolates a malformed catalog index — other indexes still resolve a multi-source prepare", async () => {
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        skills: ["./skills.json"],
+        // Two plugin sources: one is malformed JSON, the other is healthy.
+        plugins: ["./broken/plugins.json", "./good/plugins.json"],
+      },
+      "skills.json": { lint: exampleSkill("lint") },
+      "broken/plugins.json": "{ not valid json at all",
+      "good/plugins.json": {
+        "dev-tools": {
+          description: "Developer tooling",
+          skills: ["lint"],
+        },
+      },
+    });
+    cleanup = c;
+
+    const warnings: string[] = [];
+    const artifacts = await resolveArtifacts(join(dir, "air.json"), {
+      onWarning: (m) => warnings.push(m),
+    });
+
+    // The malformed index is skipped with a warning; the healthy catalog's
+    // plugin still resolves. One catalog's parse problem does not abort the
+    // whole prepare.
+    expect(artifacts.plugins["@local/dev-tools"]).toBeDefined();
+    expect(artifacts.plugins["@local/dev-tools"].skills).toEqual([
+      "@local/lint",
+    ]);
+    expect(
+      warnings.find((w) =>
+        /Skipping plugins index ".*broken\/plugins\.json"/s.test(w),
+      ),
+    ).toBeDefined();
+  });
+
+  it("hard-fails (does not warn-and-skip) when a plugins source's URI scheme has no provider", async () => {
+    // A catalog URI whose scheme has no installed provider is an author mistake,
+    // not a single source's content problem. Per-source isolation must NOT
+    // swallow it into a warning — it re-throws CatalogConfigError so a whole
+    // explicitly-listed catalog can never silently vanish. This guards the one
+    // deliberate exception the resilience design hinges on.
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        plugins: ["s3://no-such-bucket/plugins.json"],
+      },
+    });
+    cleanup = c;
+
+    const warnings: string[] = [];
+    await expect(
+      resolveArtifacts(join(dir, "air.json"), {
+        onWarning: (m) => warnings.push(m),
+      }),
+    ).rejects.toBeInstanceOf(CatalogConfigError);
+    // It threw rather than degrading to a "Skipping ..." warning.
+    expect(warnings.find((w) => /Skipping plugins index/.test(w))).toBeUndefined();
   });
 });

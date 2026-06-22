@@ -47,6 +47,7 @@ export {
   expandPlugins,
   emptyArtifacts,
   configureProviders,
+  CatalogConfigError,
 } from "./config.js";
 export type { ResolveOptions } from "./config.js";
 
