@@ -3,6 +3,7 @@ import { resolve, join } from "path";
 import {
   mkdirSync,
   writeFileSync,
+  readFileSync,
   rmSync,
   existsSync,
 } from "fs";
@@ -36,6 +37,17 @@ function createTemp(files: Record<string, unknown>): string {
     );
   }
   return dir;
+}
+
+/** Write a fake installed package into `<prefix>/node_modules/<name>`. */
+function installFake(prefix: string, name: string, version: string): void {
+  const pkgDir = join(prefix, "node_modules", name);
+  mkdirSync(pkgDir, { recursive: true });
+  writeFileSync(
+    join(pkgDir, "package.json"),
+    JSON.stringify({ name, version, type: "module", main: "index.js" })
+  );
+  writeFileSync(join(pkgDir, "index.js"), "export default {};\n");
 }
 
 describe("installExtensions", () => {
@@ -149,24 +161,26 @@ describe("installExtensions", () => {
     expect(result.alreadyInstalled).toEqual(["vitest"]);
   });
 
-  it("detects already-installed scoped package with version suffix", async () => {
-    // The monorepo has @pulsemcp/air-core in node_modules.
-    // Even with a version suffix, isPackageInstalled should strip it.
+  it("detects already-installed scoped package with a satisfied version suffix", async () => {
+    const prefix = createTemp({});
+    installFake(prefix, "@pulsemcp/air-provider-github", "0.13.1");
     const catalog = createTemp({
       "air.json": {
         name: "test",
-        extensions: ["@pulsemcp/air-core@0.0.9"],
+        extensions: ["@pulsemcp/air-provider-github@~0.13.0"],
       },
     });
 
-    const monorepoRoot = resolve(__dirname, "../../..");
     const result = await installExtensions({
       config: join(catalog, "air.json"),
-      prefix: monorepoRoot,
+      prefix,
     });
 
-    expect(result.alreadyInstalled).toEqual(["@pulsemcp/air-core@0.0.9"]);
+    expect(result.alreadyInstalled).toEqual([
+      "@pulsemcp/air-provider-github@~0.13.0",
+    ]);
     expect(result.installed).toEqual([]);
+    expect(result.mismatched).toEqual([]);
   });
 
   it("skips non-string entries in extensions array", async () => {
@@ -259,4 +273,133 @@ describe("installExtensions", () => {
     expect(second.alreadyInstalled).toEqual(["@pulsemcp/air-provider-github"]);
     expect(second.installed).toEqual([]);
   }, 60000);
+  describe("version-aware installed check", () => {
+    it("reinstalls a stale tree that package.json pins to a newer range (issue #131)", async () => {
+      // The exact starting state from issue #131: a 0.0.25 tree that the old
+      // existence-only check happily reported as "Already installed", plus the
+      // ~0.13.0 constraint `air upgrade` writes into <prefix>/package.json.
+      const prefix = createTemp({
+        "package.json": {
+          name: "air-extensions",
+          private: true,
+          dependencies: { "@pulsemcp/air-provider-github": "~0.13.0" },
+        },
+      });
+      installFake(prefix, "@pulsemcp/air-provider-github", "0.0.25");
+      const catalog = createTemp({
+        "air.json": {
+          name: "test",
+          extensions: ["@pulsemcp/air-provider-github"],
+        },
+      });
+
+      const result = await installExtensions({
+        config: join(catalog, "air.json"),
+        prefix,
+      });
+
+      expect(result.mismatched).toEqual([
+        {
+          specifier: "@pulsemcp/air-provider-github",
+          packageName: "@pulsemcp/air-provider-github",
+          installedVersion: "0.0.25",
+          requiredRange: "~0.13.0",
+          source: "package.json",
+        },
+      ]);
+      expect(result.installed).toEqual(["@pulsemcp/air-provider-github"]);
+      expect(result.alreadyInstalled).toEqual([]);
+
+      // npm was asked for the manifest's range, so the tree now satisfies it.
+      const installed = JSON.parse(
+        readFileSync(
+          join(
+            prefix,
+            "node_modules",
+            "@pulsemcp",
+            "air-provider-github",
+            "package.json"
+          ),
+          "utf-8"
+        )
+      );
+      expect(installed.version).toMatch(/^0\.13\./);
+    }, 60000);
+
+    it("keeps existence-only behaviour when no range is declared anywhere", async () => {
+      const prefix = createTemp({});
+      installFake(prefix, "@pulsemcp/air-provider-github", "0.0.25");
+      const catalog = createTemp({
+        "air.json": {
+          name: "test",
+          extensions: ["@pulsemcp/air-provider-github"],
+        },
+      });
+
+      const result = await installExtensions({
+        config: join(catalog, "air.json"),
+        prefix,
+      });
+
+      expect(result.alreadyInstalled).toEqual([
+        "@pulsemcp/air-provider-github",
+      ]);
+      expect(result.installed).toEqual([]);
+      expect(result.mismatched).toEqual([]);
+    });
+
+    it("does not reinstall on a range it cannot model", async () => {
+      const prefix = createTemp({
+        "package.json": {
+          name: "air-extensions",
+          private: true,
+          dependencies: { "@pulsemcp/air-provider-github": ">=0.1.0 <1.0.0" },
+        },
+      });
+      installFake(prefix, "@pulsemcp/air-provider-github", "0.0.25");
+      const catalog = createTemp({
+        "air.json": {
+          name: "test",
+          extensions: ["@pulsemcp/air-provider-github"],
+        },
+      });
+
+      const result = await installExtensions({
+        config: join(catalog, "air.json"),
+        prefix,
+      });
+
+      expect(result.alreadyInstalled).toEqual([
+        "@pulsemcp/air-provider-github",
+      ]);
+      expect(result.installed).toEqual([]);
+    });
+
+    it("does not reinstall when the installed version satisfies the manifest range", async () => {
+      const prefix = createTemp({
+        "package.json": {
+          name: "air-extensions",
+          private: true,
+          dependencies: { "@pulsemcp/air-provider-github": "~0.13.0" },
+        },
+      });
+      installFake(prefix, "@pulsemcp/air-provider-github", "0.13.9");
+      const catalog = createTemp({
+        "air.json": {
+          name: "test",
+          extensions: ["@pulsemcp/air-provider-github"],
+        },
+      });
+
+      const result = await installExtensions({
+        config: join(catalog, "air.json"),
+        prefix,
+      });
+
+      expect(result.alreadyInstalled).toEqual([
+        "@pulsemcp/air-provider-github",
+      ]);
+      expect(result.installed).toEqual([]);
+    });
+  });
 });

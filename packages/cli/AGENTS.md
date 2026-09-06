@@ -1,6 +1,6 @@
 # @pulsemcp/air-cli
 
-The CLI for the AIR framework. A thin wrapper around `@pulsemcp/air-sdk` that provides `validate`, `list`, `init`, `start`, `prepare`, `install`, and `upgrade` commands. Most business logic is delegated to the SDK; `upgrade` is a self-contained CLI utility that runs `npm install -g @pulsemcp/air-cli@latest`.
+The CLI for the AIR framework. A thin wrapper around `@pulsemcp/air-sdk` that provides `validate`, `list`, `init`, `start`, `prepare`, `install`, and `upgrade` commands. All business logic is delegated to the SDK. `upgrade` shells out to `npm install -g @pulsemcp/air-cli@latest` itself, then delegates the extension-lockstep step to the SDK's `upgradeExtensions()`.
 
 ## Folder Hierarchy
 
@@ -15,7 +15,7 @@ packages/cli/
 │       ├── start.ts          # Start an agent session
 │       ├── prepare.ts        # Prepare a directory for an agent session
 │       ├── install.ts        # Install extension packages from air.json
-│       └── upgrade.ts        # Upgrade the CLI to the latest version
+│       └── upgrade.ts        # Upgrade the CLI, and its extensions in lockstep
 ├── tests/                    # CLI command tests (spawn process, check output)
 └── package.json
 ```
