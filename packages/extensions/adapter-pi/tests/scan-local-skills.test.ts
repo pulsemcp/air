@@ -105,10 +105,11 @@ describe("scanLocalSkills (pi)", () => {
     cleanup.push(dir);
     const skillsDir = join(dir, ".pi", "skills");
     mkdirSync(join(skillsDir, "trailing"), { recursive: true });
-    // Closing `---` on its own line, then a heading and more body text.
+    // Closing `---` on its own line, then a heading and a body line that looks
+    // like a frontmatter pair — it must not reach the map.
     writeFileSync(
       join(skillsDir, "trailing", "SKILL.md"),
-      "---\ndescription: Trailing body\n---\n# Heading\nmore text"
+      "---\ndescription: Trailing body\n---\n# Heading\ndescription: LEAKED"
     );
 
     const result = scanLocalSkills(dir);
@@ -124,11 +125,12 @@ describe("scanLocalSkills (pi)", () => {
     // returns what it parsed rather than discarding the whole block.
     writeFileSync(
       join(skillsDir, "unclosed", "SKILL.md"),
-      "---\ndescription: Unclosed\nno closing delimiter"
+      "---\ntitle: Unclosed Title\ndescription: Unclosed\nno closing delimiter"
     );
 
     const result = scanLocalSkills(dir);
     expect(result[0].description).toBe("Unclosed");
+    expect(result[0].title).toBe("Unclosed Title");
   });
 
   it("strips matching quotes from frontmatter values", () => {
