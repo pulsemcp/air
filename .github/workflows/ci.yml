@@ -53,6 +53,7 @@ jobs:
       - name: Type check all packages
         run: |
           npx tsc --noEmit -p packages/core/tsconfig.json
+          npx tsc --noEmit -p packages/core/tsconfig.test.json
           for dir in packages/extensions/*/; do
             npx tsc --noEmit -p "${dir%/}/tsconfig.json"
           done

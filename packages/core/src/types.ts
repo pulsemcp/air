@@ -186,6 +186,19 @@ export interface RootEntry {
   default_branch?: string;
   subdirectory?: string;
   /**
+   * Authored: the agent runtime to use for sessions and subagents spawned
+   * under this root. When omitted, downstream consumers resolve it to the
+   * default runtime `"claude_code"`.
+   *
+   * Deliberately an open `string` rather than a union of known runtimes — the
+   * schema lists common values (`claude_code`, `codex`, `pi`, `opencode`,
+   * `amp`, `gemini`, `github_copilot`) as `examples`, not an `enum`, so a new
+   * coding agent needs neither a schema nor a type change. Core carries the
+   * value through opaquely and never interprets it; knowing what a particular
+   * runtime means is the consumer's job.
+   */
+  default_runtime?: string;
+  /**
    * Authored, inverted membership: names of other roots for which THIS root
    * acts as a default subagent — or the literal `"*"` for every resolved root
    * (a root never becomes a subagent of itself). `resolveArtifacts` consumes

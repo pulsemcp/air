@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { validateJson } from "../src/validator.js";
+import type { RootEntry } from "../src/types.js";
 import {
   exampleSkill,
   exampleMcpStdio,
@@ -258,6 +259,37 @@ describe("validateJson", () => {
         "roots"
       );
       expect(result.valid).toBe(false);
+    });
+
+    // Type-level companion to the three schema tests above. The schema and the
+    // `RootEntry` interface are two halves of one contract, and only the schema
+    // half is exercised at runtime — so this test asserts the TypeScript half by
+    // compiling rather than by running. It is type-checked by
+    // `tsc --noEmit -p packages/core/tsconfig.test.json`, which CI runs; if
+    // `RootEntry` ever drops `default_runtime` again, or narrows it to a union
+    // of the suggested values, that command fails.
+    it("exposes default_runtime on the RootEntry type as an open string", () => {
+      // A runtime identifier a downstream consumer recognizes, typed as a plain
+      // `string`. Assigning it fails to compile if the field is narrowed to a
+      // union of the schema's `examples` — the open-field contract in type form.
+      const fromDownstream: string = "some-future-agent";
+      const authored: RootEntry = {
+        description: "A root that runs under a non-Claude runtime",
+        default_runtime: fromDownstream,
+      };
+
+      // The original defect: this read did not compile, because `RootEntry`
+      // had no `default_runtime` at all.
+      const runtime: string | undefined = authored.default_runtime;
+      expect(runtime).toBe("some-future-agent");
+
+      // The value a TypeScript consumer can now read must also satisfy the
+      // schema — the two halves agree.
+      const result = validateJson(
+        { "my-root": exampleRoot("my-root", { default_runtime: runtime }) },
+        "roots"
+      );
+      expect(result.valid).toBe(true);
     });
   });
 
