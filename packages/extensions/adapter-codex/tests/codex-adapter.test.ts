@@ -28,6 +28,21 @@ function readConfig(dir: string): Record<string, any> {
   return parseToml(readFileSync(path, "utf-8")) as Record<string, any>;
 }
 
+/**
+ * Resolve a fixture *source* path inside the test's own unique temp dir.
+ *
+ * Fixture sources must never live in a sibling of the temp dir. The old
+ * `join(dir, "..", "skills", "deploy")` pattern resolved to the same
+ * `<tmpdir>/skills/deploy` for every test file, so vitest's parallel workers
+ * all wrote there and clobbered each other's content between write and read.
+ * The `__src__/` prefix keeps sources unique per test, cleaned up by the
+ * `afterEach` rmSync, and clear of the trees the adapter itself reads or
+ * writes (.codex/ and .agents/).
+ */
+function srcPath(dir: string, ...segments: string[]): string {
+  return join(dir, "__src__", ...segments);
+}
+
 describe("CodexAdapter", () => {
   const adapter = new CodexAdapter();
 
@@ -757,7 +772,7 @@ describe("CodexAdapter", () => {
     it("injects skills into .agents/skills/", async () => {
       const dir = createTempDir();
 
-      const skillSrcDir = join(dir, "..", "skills", "deploy");
+      const skillSrcDir = srcPath(dir, "skills", "deploy");
       mkdirSync(skillSrcDir, { recursive: true });
       writeFileSync(
         join(skillSrcDir, "SKILL.md"),
@@ -787,11 +802,11 @@ describe("CodexAdapter", () => {
     it("copies skill references into a references/ subdir", async () => {
       const dir = createTempDir();
 
-      const skillSrcDir = join(dir, "..", "skills", "deploy");
+      const skillSrcDir = srcPath(dir, "skills", "deploy");
       mkdirSync(skillSrcDir, { recursive: true });
       writeFileSync(join(skillSrcDir, "SKILL.md"), "# Deploy");
 
-      const refSrcDir = join(dir, "..", "references");
+      const refSrcDir = srcPath(dir, "references");
       mkdirSync(refSrcDir, { recursive: true });
       writeFileSync(join(refSrcDir, "RUNBOOK.md"), "# Runbook");
 
@@ -833,7 +848,7 @@ describe("CodexAdapter", () => {
       mkdirSync(localSkillDir, { recursive: true });
       writeFileSync(join(localSkillDir, "SKILL.md"), "# Local Deploy");
 
-      const skillSrcDir = join(dir, "..", "skills", "deploy");
+      const skillSrcDir = srcPath(dir, "skills", "deploy");
       mkdirSync(skillSrcDir, { recursive: true });
       writeFileSync(join(skillSrcDir, "SKILL.md"), "# Catalog Deploy");
 
@@ -872,7 +887,7 @@ describe("CodexAdapter", () => {
       it("injects a path-based hook and registers it under the mapped event", async () => {
         const dir = createTempDir();
 
-        const hookSrcDir = join(dir, "..", "hooks", "guard");
+        const hookSrcDir = srcPath(dir, "hooks", "guard");
         mkdirSync(hookSrcDir, { recursive: true });
         writeFileSync(
           join(hookSrcDir, "HOOK.json"),
@@ -917,7 +932,7 @@ describe("CodexAdapter", () => {
       it("maps PascalCase Codex event names as identity", async () => {
         const dir = createTempDir();
 
-        const hookSrcDir = join(dir, "..", "hooks", "on-start");
+        const hookSrcDir = srcPath(dir, "hooks", "on-start");
         mkdirSync(hookSrcDir, { recursive: true });
         writeFileSync(
           join(hookSrcDir, "HOOK.json"),
@@ -941,7 +956,7 @@ describe("CodexAdapter", () => {
       it("warns and skips a hook with an unrecognized event", async () => {
         const dir = createTempDir();
 
-        const hookSrcDir = join(dir, "..", "hooks", "weird");
+        const hookSrcDir = srcPath(dir, "hooks", "weird");
         mkdirSync(hookSrcDir, { recursive: true });
         writeFileSync(
           join(hookSrcDir, "HOOK.json"),
@@ -968,7 +983,7 @@ describe("CodexAdapter", () => {
       it("re-registers a previously AIR-managed hook whose directory already exists", async () => {
         const dir = createTempDir();
 
-        const hookSrcDir = join(dir, "..", "hooks", "guard");
+        const hookSrcDir = srcPath(dir, "hooks", "guard");
         mkdirSync(hookSrcDir, { recursive: true });
         writeFileSync(
           join(hookSrcDir, "HOOK.json"),
@@ -1002,7 +1017,7 @@ describe("CodexAdapter", () => {
       it("passes timeout_seconds through as timeout", async () => {
         const dir = createTempDir();
 
-        const hookSrcDir = join(dir, "..", "hooks", "slow");
+        const hookSrcDir = srcPath(dir, "hooks", "slow");
         mkdirSync(hookSrcDir, { recursive: true });
         writeFileSync(
           join(hookSrcDir, "HOOK.json"),
@@ -1057,14 +1072,14 @@ describe("CodexAdapter", () => {
 
     describe("manifest reconciliation", () => {
       function writeSkillSrc(dir: string, id: string): string {
-        const src = join(dir, "..", `src-${id}`, "skills", id);
+        const src = srcPath(dir, `src-${id}`, "skills", id);
         mkdirSync(src, { recursive: true });
         writeFileSync(join(src, "SKILL.md"), `---\nname: ${id}\n---\n# ${id}`);
         return resolve(src);
       }
 
       function writeHookSrc(dir: string, id: string, command: string): string {
-        const src = join(dir, "..", `src-${id}`, "hooks", id);
+        const src = srcPath(dir, `src-${id}`, "hooks", id);
         mkdirSync(src, { recursive: true });
         writeFileSync(
           join(src, "HOOK.json"),
@@ -1165,11 +1180,11 @@ describe("CodexAdapter", () => {
         const dir = createTempDir();
         const artifacts = emptyArtifacts();
 
-        const skillSrc = join(dir, "..", "skills", "deploy");
+        const skillSrc = srcPath(dir, "skills", "deploy");
         mkdirSync(skillSrc, { recursive: true });
         writeFileSync(join(skillSrc, "SKILL.md"), "# Deploy");
 
-        const hookSrc = join(dir, "..", "hooks", "guard");
+        const hookSrc = srcPath(dir, "hooks", "guard");
         mkdirSync(hookSrc, { recursive: true });
         writeFileSync(
           join(hookSrc, "HOOK.json"),
@@ -1243,7 +1258,7 @@ describe("CodexAdapter", () => {
         const dir = createTempDir();
         const artifacts = emptyArtifacts();
 
-        const hookSrc = join(dir, "..", "hooks", "guard");
+        const hookSrc = srcPath(dir, "hooks", "guard");
         mkdirSync(hookSrc, { recursive: true });
         writeFileSync(
           join(hookSrc, "HOOK.json"),
