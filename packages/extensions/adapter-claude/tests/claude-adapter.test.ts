@@ -24,6 +24,21 @@ function emptyArtifacts(): ResolvedArtifacts {
   };
 }
 
+/**
+ * Resolve a fixture *source* path inside the test's own unique temp dir.
+ *
+ * Fixture sources must never live in a sibling of the temp dir — the old
+ * `join(dir, "..", "skills", "deploy")` pattern resolved to `<tmpdir>/skills/
+ * deploy` for every test file, so vitest's parallel workers all wrote to the
+ * same path and clobbered each other's content between write and read.
+ * The `__src__/` prefix keeps sources unique per test, cleaned up by the
+ * `afterEach` rmSync, and clear of the trees the adapter itself reads or
+ * writes (.claude/).
+ */
+function srcPath(dir: string, ...segments: string[]): string {
+  return join(dir, "__src__", ...segments);
+}
+
 describe("ClaudeAdapter", () => {
   const adapter = new ClaudeAdapter();
 
@@ -454,7 +469,7 @@ describe("ClaudeAdapter", () => {
       const dir = createTempDir();
 
       // Create a skill source directory
-      const skillSrcDir = join(dir, "..", "skills", "deploy");
+      const skillSrcDir = srcPath(dir, "skills", "deploy");
       mkdirSync(skillSrcDir, { recursive: true });
       writeFileSync(
         join(skillSrcDir, "SKILL.md"),
@@ -485,12 +500,12 @@ describe("ClaudeAdapter", () => {
       const dir = createTempDir();
 
       // Skill source
-      const skillSrcDir = join(dir, "..", "skills", "deploy");
+      const skillSrcDir = srcPath(dir, "skills", "deploy");
       mkdirSync(skillSrcDir, { recursive: true });
       writeFileSync(join(skillSrcDir, "SKILL.md"), "# Deploy");
 
       // Reference source
-      const refSrcDir = join(dir, "..", "references");
+      const refSrcDir = srcPath(dir, "references");
       mkdirSync(refSrcDir, { recursive: true });
       writeFileSync(
         join(refSrcDir, "GIT_WORKFLOW.md"),
@@ -537,7 +552,7 @@ describe("ClaudeAdapter", () => {
       writeFileSync(join(localSkillDir, "SKILL.md"), "# Local version");
 
       // Catalog skill source
-      const catalogSkillDir = join(dir, "..", "skills", "deploy");
+      const catalogSkillDir = srcPath(dir, "skills", "deploy");
       mkdirSync(catalogSkillDir, { recursive: true });
       writeFileSync(join(catalogSkillDir, "SKILL.md"), "# Catalog version");
 
@@ -742,7 +757,7 @@ describe("ClaudeAdapter", () => {
         const dir = createTempDir();
         const artifacts = emptyArtifacts();
 
-        const bogusSkillPath = join(dir, "..", "this-skill-dir-does-not-exist");
+        const bogusSkillPath = srcPath(dir, "this-skill-dir-does-not-exist");
         artifacts.skills["@reframe/missing-skill"] = {
           description: "Skill with bogus path",
           path: resolve(bogusSkillPath),
@@ -776,7 +791,7 @@ describe("ClaudeAdapter", () => {
 
         artifacts.skills["@reframe/missing-skill"] = {
           description: "Skill with bogus path",
-          path: resolve(dir, "..", "no-such-skill"),
+          path: srcPath(dir, "no-such-skill"),
         };
 
         const root: RootEntry = {
@@ -796,7 +811,7 @@ describe("ClaudeAdapter", () => {
         const dir = createTempDir();
         const artifacts = emptyArtifacts();
 
-        const bogusHookPath = join(dir, "..", "this-hook-dir-does-not-exist");
+        const bogusHookPath = srcPath(dir, "this-hook-dir-does-not-exist");
         artifacts.hooks["@reframe/missing-hook"] = {
           description: "Hook with bogus path",
           path: resolve(bogusHookPath),
@@ -830,7 +845,7 @@ describe("ClaudeAdapter", () => {
 
         artifacts.hooks["@reframe/missing-hook"] = {
           description: "Hook with bogus path",
-          path: resolve(dir, "..", "no-such-hook"),
+          path: srcPath(dir, "no-such-hook"),
         };
 
         const root: RootEntry = {
@@ -849,7 +864,7 @@ describe("ClaudeAdapter", () => {
       it("still materializes a skill whose path is valid (no regression)", async () => {
         const dir = createTempDir();
 
-        const skillSrcDir = join(dir, "..", "skills", "good-skill");
+        const skillSrcDir = srcPath(dir, "skills", "good-skill");
         mkdirSync(skillSrcDir, { recursive: true });
         writeFileSync(join(skillSrcDir, "SKILL.md"), "# Good");
 
@@ -875,7 +890,7 @@ describe("ClaudeAdapter", () => {
       it("still materializes a hook whose path is valid (no regression)", async () => {
         const dir = createTempDir();
 
-        const hookSrcDir = join(dir, "..", "hooks", "good-hook");
+        const hookSrcDir = srcPath(dir, "hooks", "good-hook");
         mkdirSync(hookSrcDir, { recursive: true });
         writeFileSync(
           join(hookSrcDir, "HOOK.json"),
@@ -910,7 +925,7 @@ describe("ClaudeAdapter", () => {
         const artifacts = emptyArtifacts();
 
         // Valid skill alongside a missing one.
-        const goodSkillDir = join(dir, "..", "skills", "good-skill");
+        const goodSkillDir = srcPath(dir, "skills", "good-skill");
         mkdirSync(goodSkillDir, { recursive: true });
         writeFileSync(join(goodSkillDir, "SKILL.md"), "# Good");
         artifacts.skills["@local/good-skill"] = {
@@ -919,11 +934,11 @@ describe("ClaudeAdapter", () => {
         };
         artifacts.skills["@reframe/missing-skill"] = {
           description: "Skill with bogus path",
-          path: resolve(dir, "..", "no-such-skill"),
+          path: srcPath(dir, "no-such-skill"),
         };
 
         // Valid hook alongside a missing one.
-        const goodHookDir = join(dir, "..", "hooks", "good-hook");
+        const goodHookDir = srcPath(dir, "hooks", "good-hook");
         mkdirSync(goodHookDir, { recursive: true });
         writeFileSync(
           join(goodHookDir, "HOOK.json"),
@@ -935,7 +950,7 @@ describe("ClaudeAdapter", () => {
         };
         artifacts.hooks["@reframe/missing-hook"] = {
           description: "Hook with bogus path",
-          path: resolve(dir, "..", "no-such-hook"),
+          path: srcPath(dir, "no-such-hook"),
         };
 
         const root: RootEntry = {
@@ -970,7 +985,7 @@ describe("ClaudeAdapter", () => {
         // Run 1: source dir exists, AIR materializes the skill normally.
         const dir = createTempDir();
 
-        const skillSrcDir = join(dir, "..", "skills", "ephemeral-skill");
+        const skillSrcDir = srcPath(dir, "skills", "ephemeral-skill");
         mkdirSync(skillSrcDir, { recursive: true });
         writeFileSync(join(skillSrcDir, "SKILL.md"), "# Ephemeral");
 
@@ -1020,12 +1035,12 @@ describe("ClaudeAdapter", () => {
         artifacts.mcp["@local/slack"] = { type: "stdio", command: "slack" };
 
         // Parent skill source
-        const parentSkillDir = join(dir, "..", "skills", "deploy");
+        const parentSkillDir = srcPath(dir, "skills", "deploy");
         mkdirSync(parentSkillDir, { recursive: true });
         writeFileSync(join(parentSkillDir, "SKILL.md"), "# Deploy");
 
         // Subagent skill source
-        const subSkillDir = join(dir, "..", "skills", "validate");
+        const subSkillDir = srcPath(dir, "skills", "validate");
         mkdirSync(subSkillDir, { recursive: true });
         writeFileSync(join(subSkillDir, "SKILL.md"), "# Validate");
 
@@ -1071,7 +1086,7 @@ describe("ClaudeAdapter", () => {
 
         // Materialize a real on-disk skill so prepareSession doesn't reject a
         // bogus path — this test only cares about the subagent context output.
-        const findSourceDir = join(dir, "..", "skills", "find-source");
+        const findSourceDir = srcPath(dir, "skills", "find-source");
         mkdirSync(findSourceDir, { recursive: true });
         writeFileSync(join(findSourceDir, "SKILL.md"), "# Find source");
 
@@ -1238,8 +1253,8 @@ describe("ClaudeAdapter", () => {
         const artifacts = emptyArtifacts();
 
         // Create real skill source directories
-        const parentSkillSrc = join(dir, "..", "skills-src", "parent-skill");
-        const subSkillSrc = join(dir, "..", "skills-src", "sub-skill");
+        const parentSkillSrc = srcPath(dir, "skills-src", "parent-skill");
+        const subSkillSrc = srcPath(dir, "skills-src", "sub-skill");
         mkdirSync(parentSkillSrc, { recursive: true });
         mkdirSync(subSkillSrc, { recursive: true });
         writeFileSync(join(parentSkillSrc, "SKILL.md"), "# Parent");
@@ -1276,7 +1291,7 @@ describe("ClaudeAdapter", () => {
         artifacts.mcp["@local/github"] = { type: "stdio", command: "gh" };
         artifacts.mcp["@local/postgres"] = { type: "stdio", command: "psql" };
 
-        const parentSkillSrc = join(dir, "..", "skills-src2", "parent-skill");
+        const parentSkillSrc = srcPath(dir, "skills-src2", "parent-skill");
         mkdirSync(parentSkillSrc, { recursive: true });
         writeFileSync(join(parentSkillSrc, "SKILL.md"), "# Parent");
         artifacts.skills["@local/parent-skill"] = { description: "Parent", path: resolve(parentSkillSrc) };
@@ -1326,7 +1341,7 @@ describe("ClaudeAdapter", () => {
         const dir = createTempDir();
 
         // Create a hook source directory with HOOK.json and a script
-        const hookSrcDir = join(dir, "..", "hooks", "lint-pre-commit");
+        const hookSrcDir = srcPath(dir, "hooks", "lint-pre-commit");
         mkdirSync(hookSrcDir, { recursive: true });
         writeFileSync(
           join(hookSrcDir, "HOOK.json"),
@@ -1368,7 +1383,7 @@ describe("ClaudeAdapter", () => {
         );
 
         // Catalog hook source
-        const catalogHookDir = join(dir, "..", "hooks", "my-hook");
+        const catalogHookDir = srcPath(dir, "hooks", "my-hook");
         mkdirSync(catalogHookDir, { recursive: true });
         writeFileSync(
           join(catalogHookDir, "HOOK.json"),
@@ -1401,11 +1416,11 @@ describe("ClaudeAdapter", () => {
         const dir = createTempDir();
 
         // Create two hook sources
-        const hookADir = join(dir, "..", "hooks", "hook-a");
+        const hookADir = srcPath(dir, "hooks", "hook-a");
         mkdirSync(hookADir, { recursive: true });
         writeFileSync(join(hookADir, "HOOK.json"), JSON.stringify({ event: "pre_commit", command: "a" }));
 
-        const hookBDir = join(dir, "..", "hooks", "hook-b");
+        const hookBDir = srcPath(dir, "hooks", "hook-b");
         mkdirSync(hookBDir, { recursive: true });
         writeFileSync(join(hookBDir, "HOOK.json"), JSON.stringify({ event: "post_commit", command: "b" }));
 
@@ -1429,12 +1444,12 @@ describe("ClaudeAdapter", () => {
         const dir = createTempDir();
 
         // Hook source
-        const hookSrcDir = join(dir, "..", "hooks", "my-hook");
+        const hookSrcDir = srcPath(dir, "hooks", "my-hook");
         mkdirSync(hookSrcDir, { recursive: true });
         writeFileSync(join(hookSrcDir, "HOOK.json"), JSON.stringify({ event: "pre_commit", command: "lint" }));
 
         // Reference source
-        const refSrcDir = join(dir, "..", "references");
+        const refSrcDir = srcPath(dir, "references");
         mkdirSync(refSrcDir, { recursive: true });
         writeFileSync(join(refSrcDir, "CODE_STANDARDS.md"), "# Code Standards");
 
@@ -1481,7 +1496,7 @@ describe("ClaudeAdapter", () => {
         artifacts.mcp["@local/github"] = { type: "stdio", command: "gh" };
         artifacts.mcp["@local/slack"] = { type: "stdio", command: "slack" };
 
-        const skillSrcDir = join(dir, "..", "skills", "deploy");
+        const skillSrcDir = srcPath(dir, "skills", "deploy");
         mkdirSync(skillSrcDir, { recursive: true });
         writeFileSync(join(skillSrcDir, "SKILL.md"), "# Deploy");
         artifacts.skills["@local/deploy"] = {
@@ -1490,7 +1505,7 @@ describe("ClaudeAdapter", () => {
           path: resolve(skillSrcDir),
         };
 
-        const hookSrcDir = join(dir, "..", "hooks", "my-hook");
+        const hookSrcDir = srcPath(dir, "hooks", "my-hook");
         mkdirSync(hookSrcDir, { recursive: true });
         writeFileSync(join(hookSrcDir, "HOOK.json"), JSON.stringify({ event: "pre_commit" }));
         artifacts.hooks["@local/my-hook"] = {
@@ -1524,7 +1539,7 @@ describe("ClaudeAdapter", () => {
         const artifacts = emptyArtifacts();
         artifacts.mcp["@local/github"] = { type: "stdio", command: "gh" };
 
-        const skillSrcDir = join(dir, "..", "skills", "deploy");
+        const skillSrcDir = srcPath(dir, "skills", "deploy");
         mkdirSync(skillSrcDir, { recursive: true });
         writeFileSync(join(skillSrcDir, "SKILL.md"), "# Deploy");
         artifacts.skills["@local/deploy"] = {
@@ -1553,7 +1568,7 @@ describe("ClaudeAdapter", () => {
         artifacts.mcp["@local/github"] = { type: "stdio", command: "gh" };
         artifacts.mcp["@local/slack"] = { type: "stdio", command: "slack" };
 
-        const skillSrcDir = join(dir, "..", "skills", "deploy");
+        const skillSrcDir = srcPath(dir, "skills", "deploy");
         mkdirSync(skillSrcDir, { recursive: true });
         writeFileSync(join(skillSrcDir, "SKILL.md"), "# Deploy");
         artifacts.skills["@local/deploy"] = {
@@ -1577,11 +1592,11 @@ describe("ClaudeAdapter", () => {
         const dir = createTempDir();
 
         // Create two hook sources
-        const hookADir = join(dir, "..", "hooks", "hook-a");
+        const hookADir = srcPath(dir, "hooks", "hook-a");
         mkdirSync(hookADir, { recursive: true });
         writeFileSync(join(hookADir, "HOOK.json"), JSON.stringify({ event: "pre_commit", command: "a" }));
 
-        const hookBDir = join(dir, "..", "hooks", "hook-b");
+        const hookBDir = srcPath(dir, "hooks", "hook-b");
         mkdirSync(hookBDir, { recursive: true });
         writeFileSync(join(hookBDir, "HOOK.json"), JSON.stringify({ event: "post_commit", command: "b" }));
 
@@ -1608,7 +1623,7 @@ describe("ClaudeAdapter", () => {
       it("respects hookOverrides even without root defaults", async () => {
         const dir = createTempDir();
 
-        const hookDir = join(dir, "..", "hooks", "hook-a");
+        const hookDir = srcPath(dir, "hooks", "hook-a");
         mkdirSync(hookDir, { recursive: true });
         writeFileSync(join(hookDir, "HOOK.json"), JSON.stringify({ event: "pre_commit", command: "a" }));
 
@@ -1664,7 +1679,7 @@ describe("ClaudeAdapter", () => {
       it("empty hookOverrides activates no hooks even with root defaults", async () => {
         const dir = createTempDir();
 
-        const hookDir = join(dir, "..", "hooks", "hook-a");
+        const hookDir = srcPath(dir, "hooks", "hook-a");
         mkdirSync(hookDir, { recursive: true });
         writeFileSync(join(hookDir, "HOOK.json"), JSON.stringify({ event: "pre_commit", command: "a" }));
 
@@ -1739,7 +1754,7 @@ describe("ClaudeAdapter", () => {
       it("registers a copied hook in .claude/settings.json", async () => {
         const dir = createTempDir();
 
-        const hookSrcDir = join(dir, "..", "hooks", "session-audit");
+        const hookSrcDir = srcPath(dir, "hooks", "session-audit");
         mkdirSync(hookSrcDir, { recursive: true });
         writeFileSync(
           join(hookSrcDir, "HOOK.json"),
@@ -1786,7 +1801,7 @@ describe("ClaudeAdapter", () => {
         const artifacts = emptyArtifacts();
         for (const [i, [airEvent]] of eventMappings.entries()) {
           const hookId = `hook-${i}`;
-          const hookSrcDir = join(dir, "..", "hooks", hookId);
+          const hookSrcDir = srcPath(dir, "hooks", hookId);
           mkdirSync(hookSrcDir, { recursive: true });
           writeFileSync(
             join(hookSrcDir, "HOOK.json"),
@@ -1819,14 +1834,14 @@ describe("ClaudeAdapter", () => {
       it("appends multiple hooks targeting the same Claude Code event", async () => {
         const dir = createTempDir();
 
-        const hookADir = join(dir, "..", "hooks", "hook-a");
+        const hookADir = srcPath(dir, "hooks", "hook-a");
         mkdirSync(hookADir, { recursive: true });
         writeFileSync(
           join(hookADir, "HOOK.json"),
           JSON.stringify({ event: "pre_tool_call", command: "lint" })
         );
 
-        const hookBDir = join(dir, "..", "hooks", "hook-b");
+        const hookBDir = srcPath(dir, "hooks", "hook-b");
         mkdirSync(hookBDir, { recursive: true });
         writeFileSync(
           join(hookBDir, "HOOK.json"),
@@ -1867,7 +1882,7 @@ describe("ClaudeAdapter", () => {
           })
         );
 
-        const hookSrcDir = join(dir, "..", "hooks", "my-hook");
+        const hookSrcDir = srcPath(dir, "hooks", "my-hook");
         mkdirSync(hookSrcDir, { recursive: true });
         writeFileSync(
           join(hookSrcDir, "HOOK.json"),
@@ -1898,7 +1913,7 @@ describe("ClaudeAdapter", () => {
       it("carries through matcher field from HOOK.json", async () => {
         const dir = createTempDir();
 
-        const hookSrcDir = join(dir, "..", "hooks", "bash-guard");
+        const hookSrcDir = srcPath(dir, "hooks", "bash-guard");
         mkdirSync(hookSrcDir, { recursive: true });
         writeFileSync(
           join(hookSrcDir, "HOOK.json"),
@@ -1922,7 +1937,7 @@ describe("ClaudeAdapter", () => {
       it("carries through timeout_seconds as timeout", async () => {
         const dir = createTempDir();
 
-        const hookSrcDir = join(dir, "..", "hooks", "slow-hook");
+        const hookSrcDir = srcPath(dir, "hooks", "slow-hook");
         mkdirSync(hookSrcDir, { recursive: true });
         writeFileSync(
           join(hookSrcDir, "HOOK.json"),
@@ -1946,7 +1961,7 @@ describe("ClaudeAdapter", () => {
       it("combines command and args into a single command string", async () => {
         const dir = createTempDir();
 
-        const hookSrcDir = join(dir, "..", "hooks", "lint-hook");
+        const hookSrcDir = srcPath(dir, "hooks", "lint-hook");
         mkdirSync(hookSrcDir, { recursive: true });
         writeFileSync(
           join(hookSrcDir, "HOOK.json"),
@@ -1970,7 +1985,7 @@ describe("ClaudeAdapter", () => {
       it("resolves relative command paths to hook install directory anchored with $CLAUDE_PROJECT_DIR", async () => {
         const dir = createTempDir();
 
-        const hookSrcDir = join(dir, "..", "hooks", "notify");
+        const hookSrcDir = srcPath(dir, "hooks", "notify");
         mkdirSync(hookSrcDir, { recursive: true });
         writeFileSync(
           join(hookSrcDir, "HOOK.json"),
@@ -2008,7 +2023,7 @@ describe("ClaudeAdapter", () => {
       it("skips hooks with unknown AIR events", async () => {
         const dir = createTempDir();
 
-        const hookSrcDir = join(dir, "..", "hooks", "unknown-event-hook");
+        const hookSrcDir = srcPath(dir, "hooks", "unknown-event-hook");
         mkdirSync(hookSrcDir, { recursive: true });
         writeFileSync(
           join(hookSrcDir, "HOOK.json"),
@@ -2049,7 +2064,7 @@ describe("ClaudeAdapter", () => {
         );
 
         // Catalog hook source
-        const catalogHookDir = join(dir, "..", "hooks", "local-hook");
+        const catalogHookDir = srcPath(dir, "hooks", "local-hook");
         mkdirSync(catalogHookDir, { recursive: true });
         writeFileSync(
           join(catalogHookDir, "HOOK.json"),
@@ -2075,14 +2090,14 @@ describe("ClaudeAdapter", () => {
       it("skips pre_commit and post_commit events (no direct Claude Code equivalent)", async () => {
         const dir = createTempDir();
 
-        const hookADir = join(dir, "..", "hooks", "pre-commit-hook");
+        const hookADir = srcPath(dir, "hooks", "pre-commit-hook");
         mkdirSync(hookADir, { recursive: true });
         writeFileSync(
           join(hookADir, "HOOK.json"),
           JSON.stringify({ event: "pre_commit", command: "lint" })
         );
 
-        const hookBDir = join(dir, "..", "hooks", "post-commit-hook");
+        const hookBDir = srcPath(dir, "hooks", "post-commit-hook");
         mkdirSync(hookBDir, { recursive: true });
         writeFileSync(
           join(hookBDir, "HOOK.json"),
@@ -2110,7 +2125,7 @@ describe("ClaudeAdapter", () => {
       it("shell-escapes args containing spaces or metacharacters", async () => {
         const dir = createTempDir();
 
-        const hookSrcDir = join(dir, "..", "hooks", "complex-hook");
+        const hookSrcDir = srcPath(dir, "hooks", "complex-hook");
         mkdirSync(hookSrcDir, { recursive: true });
         writeFileSync(
           join(hookSrcDir, "HOOK.json"),
@@ -2141,7 +2156,7 @@ describe("ClaudeAdapter", () => {
       it("skips hooks with malformed HOOK.json", async () => {
         const dir = createTempDir();
 
-        const hookSrcDir = join(dir, "..", "hooks", "bad-json-hook");
+        const hookSrcDir = srcPath(dir, "hooks", "bad-json-hook");
         mkdirSync(hookSrcDir, { recursive: true });
         writeFileSync(join(hookSrcDir, "HOOK.json"), "{ invalid json }");
 
@@ -2167,7 +2182,7 @@ describe("ClaudeAdapter", () => {
       it("skips hooks with missing command field in HOOK.json", async () => {
         const dir = createTempDir();
 
-        const hookSrcDir = join(dir, "..", "hooks", "no-cmd-hook");
+        const hookSrcDir = srcPath(dir, "hooks", "no-cmd-hook");
         mkdirSync(hookSrcDir, { recursive: true });
         writeFileSync(
           join(hookSrcDir, "HOOK.json"),
@@ -2211,7 +2226,7 @@ describe("ClaudeAdapter", () => {
         const artifacts = emptyArtifacts();
         for (const [i, [airEvent]] of eventMappings.entries()) {
           const hookId = `snake-${i}`;
-          const hookSrcDir = join(dir, "..", "hooks", hookId);
+          const hookSrcDir = srcPath(dir, "hooks", hookId);
           mkdirSync(hookSrcDir, { recursive: true });
           writeFileSync(
             join(hookSrcDir, "HOOK.json"),
@@ -2261,7 +2276,7 @@ describe("ClaudeAdapter", () => {
         const artifacts = emptyArtifacts();
         for (const [i, event] of events.entries()) {
           const hookId = `pascal-${i}`;
-          const hookSrcDir = join(dir, "..", "hooks", hookId);
+          const hookSrcDir = srcPath(dir, "hooks", hookId);
           mkdirSync(hookSrcDir, { recursive: true });
           writeFileSync(
             join(hookSrcDir, "HOOK.json"),
@@ -2298,7 +2313,7 @@ describe("ClaudeAdapter", () => {
         // silently dropped before the AIR_TO_CLAUDE_EVENT map was expanded.
         const dir = createTempDir();
 
-        const hookSrcDir = join(dir, "..", "hooks", "agent-transcript-capture");
+        const hookSrcDir = srcPath(dir, "hooks", "agent-transcript-capture");
         mkdirSync(join(hookSrcDir, "dist"), { recursive: true });
         writeFileSync(
           join(hookSrcDir, "HOOK.json"),
@@ -2342,7 +2357,7 @@ describe("ClaudeAdapter", () => {
       it("warns when HOOK.json declares an unrecognized event", async () => {
         const dir = createTempDir();
 
-        const hookSrcDir = join(dir, "..", "hooks", "weird-hook");
+        const hookSrcDir = srcPath(dir, "hooks", "weird-hook");
         mkdirSync(hookSrcDir, { recursive: true });
         writeFileSync(
           join(hookSrcDir, "HOOK.json"),
@@ -2382,7 +2397,7 @@ describe("ClaudeAdapter", () => {
       it("rewrites hook-relative args paths to project-root form", async () => {
         const dir = createTempDir();
 
-        const hookSrcDir = join(dir, "..", "hooks", "capture");
+        const hookSrcDir = srcPath(dir, "hooks", "capture");
         mkdirSync(join(hookSrcDir, "dist"), { recursive: true });
         writeFileSync(
           join(hookSrcDir, "HOOK.json"),
@@ -2425,7 +2440,7 @@ describe("ClaudeAdapter", () => {
       it("rewrites explicit ./ args even without a path separator", async () => {
         const dir = createTempDir();
 
-        const hookSrcDir = join(dir, "..", "hooks", "explicit-arg");
+        const hookSrcDir = srcPath(dir, "hooks", "explicit-arg");
         mkdirSync(hookSrcDir, { recursive: true });
         writeFileSync(
           join(hookSrcDir, "HOOK.json"),
@@ -2465,7 +2480,7 @@ describe("ClaudeAdapter", () => {
       it("does not rewrite args that are not hook-relative paths", async () => {
         const dir = createTempDir();
 
-        const hookSrcDir = join(dir, "..", "hooks", "no-rewrite");
+        const hookSrcDir = srcPath(dir, "hooks", "no-rewrite");
         mkdirSync(hookSrcDir, { recursive: true });
         writeFileSync(
           join(hookSrcDir, "HOOK.json"),
@@ -2507,7 +2522,7 @@ describe("ClaudeAdapter", () => {
       it("does not rewrite bare command names even when a same-named file exists in the hook dir", async () => {
         const dir = createTempDir();
 
-        const hookSrcDir = join(dir, "..", "hooks", "bare-collision");
+        const hookSrcDir = srcPath(dir, "hooks", "bare-collision");
         mkdirSync(hookSrcDir, { recursive: true });
         // Create a file named "lint-staged" in the hook dir to prove the
         // path-like guard (not just existsSync) is what prevents rewriting.
@@ -2552,7 +2567,7 @@ describe("ClaudeAdapter", () => {
         // invocation time regardless of cwd.
         const dir = createTempDir();
 
-        const hookSrcDir = join(dir, "..", "hooks", "agent-transcript-capture");
+        const hookSrcDir = srcPath(dir, "hooks", "agent-transcript-capture");
         mkdirSync(join(hookSrcDir, "dist"), { recursive: true });
         writeFileSync(
           join(hookSrcDir, "HOOK.json"),
@@ -2600,7 +2615,7 @@ describe("ClaudeAdapter", () => {
         // command stays inside the double quotes.
         const dir = createTempDir();
 
-        const hookSrcDir = join(dir, "..", "hooks", "weird-paths");
+        const hookSrcDir = srcPath(dir, "hooks", "weird-paths");
         // A filename containing $ and ` — characters that bash would
         // otherwise interpret inside double quotes (variable expansion and
         // command substitution).
@@ -2652,7 +2667,7 @@ describe("ClaudeAdapter", () => {
         // and must be anchored the same way as args paths.
         const dir = createTempDir();
 
-        const hookSrcDir = join(dir, "..", "hooks", "explicit-cmd");
+        const hookSrcDir = srcPath(dir, "hooks", "explicit-cmd");
         mkdirSync(hookSrcDir, { recursive: true });
         writeFileSync(
           join(hookSrcDir, "HOOK.json"),
@@ -2722,11 +2737,11 @@ describe("ClaudeAdapter", () => {
       it("merges plugin skills into session", async () => {
         const dir = createTempDir();
 
-        const skillSrcDir = join(dir, "..", "skills-plugin", "lint-fix");
+        const skillSrcDir = srcPath(dir, "skills-plugin", "lint-fix");
         mkdirSync(skillSrcDir, { recursive: true });
         writeFileSync(join(skillSrcDir, "SKILL.md"), "# Lint Fix");
 
-        const parentSkillSrc = join(dir, "..", "skills-plugin", "deploy");
+        const parentSkillSrc = srcPath(dir, "skills-plugin", "deploy");
         mkdirSync(parentSkillSrc, { recursive: true });
         writeFileSync(join(parentSkillSrc, "SKILL.md"), "# Deploy");
 
@@ -2755,7 +2770,7 @@ describe("ClaudeAdapter", () => {
       it("merges plugin hooks into session", async () => {
         const dir = createTempDir();
 
-        const hookSrcDir = join(dir, "..", "hooks-plugin", "lint-pre-commit");
+        const hookSrcDir = srcPath(dir, "hooks-plugin", "lint-pre-commit");
         mkdirSync(hookSrcDir, { recursive: true });
         writeFileSync(
           join(hookSrcDir, "HOOK.json"),
@@ -2937,14 +2952,14 @@ describe("ClaudeAdapter", () => {
       // write → load → diff → cleanup.
 
       function writeSkillSrc(dir: string, id: string): string {
-        const src = join(dir, "..", `src-${id}`, "skills", id);
+        const src = srcPath(dir, `src-${id}`, "skills", id);
         mkdirSync(src, { recursive: true });
         writeFileSync(join(src, "SKILL.md"), `---\nname: ${id}\n---\n# ${id}`);
         return resolve(src);
       }
 
       function writeHookSrc(dir: string, id: string, command: string): string {
-        const src = join(dir, "..", `src-${id}`, "hooks", id);
+        const src = srcPath(dir, `src-${id}`, "hooks", id);
         mkdirSync(src, { recursive: true });
         writeFileSync(
           join(src, "HOOK.json"),
@@ -3220,14 +3235,14 @@ describe("ClaudeAdapter", () => {
 
     describe("cleanSession", () => {
       function writeSkillSrc(dir: string, id: string): string {
-        const src = join(dir, "..", `src-${id}`, "skills", id);
+        const src = srcPath(dir, `src-${id}`, "skills", id);
         mkdirSync(src, { recursive: true });
         writeFileSync(join(src, "SKILL.md"), `---\nname: ${id}\n---\n# ${id}`);
         return resolve(src);
       }
 
       function writeHookSrc(dir: string, id: string, command: string): string {
-        const src = join(dir, "..", `src-${id}`, "hooks", id);
+        const src = srcPath(dir, `src-${id}`, "hooks", id);
         mkdirSync(src, { recursive: true });
         writeFileSync(
           join(src, "HOOK.json"),

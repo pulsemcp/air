@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { execFileSync } from "child_process";
 import { existsSync, rmSync } from "fs";
 import { resolve } from "path";
@@ -541,10 +541,25 @@ describe("GitHubCatalogProvider", () => {
 
 describe("GitHubCatalogProvider — git protocol", () => {
   // These tests don't hit the network — they only verify URL construction,
-  // so they're safe to run without SSH keys or tokens.
+  // so they're safe to run without SSH keys or tokens. They must also be safe
+  // to run *with* one: several assert a token-less HTTPS URL, and the provider
+  // reads AIR_GITHUB_TOKEN from the ambient environment, so unset it for the
+  // duration of this block rather than inheriting whatever the machine has.
+
+  let originalToken: string | undefined;
+
+  beforeEach(() => {
+    originalToken = process.env.AIR_GITHUB_TOKEN;
+    delete process.env.AIR_GITHUB_TOKEN;
+  });
 
   afterEach(() => {
     delete process.env.AIR_GIT_PROTOCOL;
+    if (originalToken === undefined) {
+      delete process.env.AIR_GITHUB_TOKEN;
+    } else {
+      process.env.AIR_GITHUB_TOKEN = originalToken;
+    }
   });
 
   it("defaults to SSH when no protocol is configured", () => {
