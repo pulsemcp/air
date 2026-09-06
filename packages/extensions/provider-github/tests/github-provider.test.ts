@@ -382,11 +382,7 @@ describe("GitHubCatalogProvider", () => {
     ).rejects.toThrow(/Catalog path not found/);
   }, 30000);
 
-  // TODO(#138): unskip after PR #137 (fix/examples-path-resolution) merges into main.
-  // These tests resolve paths against live `pulsemcp/air@main`; until the
-  // flattened examples/hooks/ layout lands on main, the paths below don't
-  // exist in the clone.
-  it.skip("resolveCatalogDir resolves a hook directory path at the default branch", async () => {
+  it("resolveCatalogDir resolves a hook directory path at the default branch", async () => {
     // Same call shape used by core when a hook entry's `path` is a github:// URI.
     const catalogDir = await provider.resolveCatalogDir(
       "github://pulsemcp/air/examples/hooks/notify-session-start"
@@ -395,7 +391,7 @@ describe("GitHubCatalogProvider", () => {
     expect(catalogDir).toContain("examples/hooks/notify-session-start");
   }, 30000);
 
-  it.skip("resolveCatalogDir caches by branch ref — repeat calls share a clone", async () => {
+  it("resolveCatalogDir caches by branch ref — repeat calls share a clone", async () => {
     const dirA = await provider.resolveCatalogDir(
       "github://pulsemcp/air@main/examples/hooks"
     );
