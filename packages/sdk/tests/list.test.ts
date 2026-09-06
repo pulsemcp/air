@@ -165,6 +165,55 @@ describe("listArtifacts", () => {
     expect(result.entries["@local/git-workflow"]).toBeDefined();
   });
 
+  it("loads extensions and passes providers to resolveArtifacts", async () => {
+    const mockExtensionCode = `
+export default {
+  name: "mock-provider",
+  provider: {
+    scheme: "mock",
+    async resolve(uri) {
+      return {
+        "remote-skill": {
+          description: "Skill from a remote catalog",
+          path: "./skills/remote",
+        },
+      };
+    },
+  },
+};
+`;
+    const catalog = createTemp({
+      "air.json": {
+        name: "test",
+        extensions: ["./mock-provider.mjs"],
+        skills: ["mock://some-org/some-repo/skills.json"],
+      },
+      "mock-provider.mjs": mockExtensionCode,
+    });
+
+    const result = await listArtifacts("skills", {
+      config: join(catalog, "air.json"),
+    });
+
+    expect(result.entries["@local/remote-skill"]).toBeDefined();
+    expect(result.artifacts.skills["@local/remote-skill"]).toBeDefined();
+  });
+
+  it("still fails for a scheme no declared extension handles", async () => {
+    const catalog = createTemp({
+      "air.json": {
+        name: "test",
+        skills: ["unregistered://some-org/some-repo/skills.json"],
+      },
+    });
+
+    await expect(
+      listArtifacts("skills", { config: join(catalog, "air.json") })
+    ).rejects.toThrow(
+      'No catalog provider registered for scheme "unregistered://"'
+    );
+  });
+
   it("throws for invalid artifact type", async () => {
     await expect(listArtifacts("invalid")).rejects.toThrow(
       "Unknown artifact type"
