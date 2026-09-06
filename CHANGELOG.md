@@ -23,6 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   Resolves [#107](https://github.com/pulsemcp/air/issues/107).
 
+### Fixed
+- **`@pulsemcp/air-core` — the `RootEntry` TypeScript interface now declares `default_runtime`.** The field has been in `roots.schema.json` since 0.6.0, and `validateJson` has accepted and validated it ever since, but the interface was never updated to match — so a TypeScript consumer reading `root.default_runtime` off the published `.d.ts` got `error TS2339: Property 'default_runtime' does not exist on type 'RootEntry'`, and authoring it in a `RootEntry` literal got `TS2353`. The schema half and the type half of the contract have now converged. It is typed as an open `string` rather than a union of the schema's suggested values, matching the schema's deliberate use of `examples` instead of `enum`: any runtime identifier a downstream consumer recognizes is accepted, so a new coding agent still requires neither a schema nor a type change. Core carries the value through opaquely — `resolveArtifacts` and `stripScopes` preserve it unchanged, and core never branches on what a particular runtime means.
+
+  Also closed the gap that let the drift go unnoticed since 0.6.0: `packages/core/tsconfig.json` excludes `tests`, and vitest transpiles without type checking, so no CI job ever type-checked core's test files and a type-level regression test would have been inert. A new `packages/core/tsconfig.test.json` covers `src` + `tests` and now runs both in CI's type-check step and from `npm run lint -w packages/core`.
+
+  Resolves [#147](https://github.com/pulsemcp/air/issues/147).
+
 ## [0.13.1] - 2026-06-22
 
 ### Fixed

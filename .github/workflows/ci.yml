@@ -52,6 +52,10 @@ jobs:
 
       - name: Type check all packages
         run: |
+          # tsconfig.json checks the published surface and is the only thing
+          # enforcing its rootDir; tsconfig.test.json additionally covers
+          # tests/, which tsconfig.json excludes. src/ is checked twice on
+          # purpose — dropping either run loses one of those guarantees.
           npx tsc --noEmit -p packages/core/tsconfig.json
           npx tsc --noEmit -p packages/core/tsconfig.test.json
           for dir in packages/extensions/*/; do
