@@ -387,8 +387,15 @@ describe("GitHubCatalogProvider", () => {
     const catalogDir = await provider.resolveCatalogDir(
       "github://pulsemcp/air/examples/hooks/notify-session-start"
     );
-    expect(existsSync(catalogDir)).toBe(true);
-    expect(catalogDir).toContain("examples/hooks/notify-session-start");
+    expect(catalogDir).toBe(
+      resolve(
+        getClonePath("pulsemcp", "air", "HEAD"),
+        "examples/hooks/notify-session-start"
+      )
+    );
+    // A HOOK.json inside the hook's own directory is what distinguishes the
+    // flattened examples/hooks/<id>/ layout from the pre-#137 one.
+    expect(existsSync(resolve(catalogDir, "HOOK.json"))).toBe(true);
   }, 30000);
 
   it("resolveCatalogDir caches by branch ref — repeat calls share a clone", async () => {
