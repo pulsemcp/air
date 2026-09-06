@@ -6,6 +6,8 @@ import {
   readdirSync,
   renameSync,
   rmSync,
+  statSync,
+  writeFileSync,
 } from "fs";
 import { resolve, dirname } from "path";
 import lockfile from "proper-lockfile";
@@ -190,11 +192,21 @@ export function getClonePath(owner: string, repo: string, ref: string): string {
 }
 
 /**
- * Redact tokens from a string to prevent leaking credentials in logs.
+ * Redact credentials from a string to prevent leaking them in logs.
+ *
+ * Two passes, because the current token is not the only credential that can
+ * appear: an HTTPS clone persists `https://<token>@github.com/...` in the
+ * clone's `.git/config`, so git echoes *that* URL — which may embed a token
+ * rotated out of this process's environment — in `unable to access` errors.
+ * Strip any URL userinfo as well as the token we know about.
  */
 function redactToken(text: string, token?: string): string {
-  if (!token) return text;
-  return text.replaceAll(token, "***");
+  const withoutUrlAuth = text.replace(
+    /(\bhttps?:\/\/)[^/@\s]+@/gi,
+    "$1***@"
+  );
+  if (!token) return withoutUrlAuth;
+  return withoutUrlAuth.replaceAll(token, "***");
 }
 
 /**
@@ -206,11 +218,129 @@ function isImmutableRef(ref: string): boolean {
 }
 
 /**
+ * How long a cached clone of a *mutable* ref (`HEAD` or a branch name) is
+ * served without re-consulting the remote. Past this age, the next
+ * `resolve()` / `resolveCatalogDir()` for that ref fetches and hard-resets the
+ * clone before serving it, so a long-lived process — or a machine that resolved
+ * the same catalog hours ago — stops serving an indefinitely stale snapshot.
+ *
+ * Full-SHA refs are content-addressed and can never change upstream, so they
+ * are never refreshed regardless of age.
+ */
+export const DEFAULT_MUTABLE_REF_TTL_MS = 5 * 60_000;
+
+/**
+ * Filename of the refresh stamp, written inside the clone's `.git` directory.
+ * It lives under `.git` rather than in the working tree for two reasons: core
+ * walks the working tree looking for artifact indexes and must not see a file
+ * this provider invented, and `git reset --hard` only rewrites *tracked* paths
+ * (plus git's own metadata — index, refs, reflogs), so an untracked file under
+ * `.git` survives its own refresh.
+ */
+const FETCH_STAMP_FILE = "air-last-fetch";
+
+/** Lock-acquisition budget while another process clones (~2 min at 250 ms). */
+const CLONE_LOCK_RETRIES = 480;
+
+/**
+ * Lock-acquisition budget for a TTL refresh (~5 s at 250 ms). Deliberately far
+ * shorter than the clone budget: the refresh path already holds a usable clone,
+ * so waiting out someone else's slow clone is pure loss — better to serve the
+ * cached bytes and try again next TTL window.
+ */
+const REFRESH_LOCK_RETRIES = 20;
+
+/**
+ * Wall-clock cap (ms) for the fetch performed by a *read-path* TTL refresh.
+ * Much tighter than {@link CLONE_TIMEOUT_MS}, which bounds a clone the caller
+ * cannot proceed without. Here the fallback — the clone we already have — is
+ * already correct, so a resolve must not stall a full minute on a captive
+ * portal or a packet-dropping firewall just to learn nothing changed.
+ */
+export const REFRESH_FETCH_TIMEOUT_MS = 15_000;
+
+/**
+ * Effective TTL for mutable-ref clones. Read per call rather than at module
+ * load so an operator (or a test) can set `AIR_GIT_CACHE_TTL_MS` after import.
+ * `0` is honored and means "always refresh"; a negative or unparseable value
+ * falls back to the default.
+ */
+export function getMutableRefTtlMs(): number {
+  const raw = process.env.AIR_GIT_CACHE_TTL_MS;
+  if (raw === undefined) return DEFAULT_MUTABLE_REF_TTL_MS;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed >= 0
+    ? parsed
+    : DEFAULT_MUTABLE_REF_TTL_MS;
+}
+
+/** Absolute path of the refresh stamp for a clone. */
+function fetchStampPath(cloneDir: string): string {
+  return resolve(cloneDir, ".git", FETCH_STAMP_FILE);
+}
+
+/**
+ * Record "the remote was consulted for this clone just now". Best-effort — on
+ * a read-only cache directory the write fails and we simply re-check next time.
+ */
+function writeFetchStamp(cloneDir: string, now: number = Date.now()): void {
+  try {
+    writeFileSync(fetchStampPath(cloneDir), `${now}\n`, "utf-8");
+  } catch {
+    // Non-fatal: a missing stamp only costs an extra freshness check.
+  }
+}
+
+/**
+ * Epoch-ms of the last remote consultation for a clone, or `undefined` if it
+ * cannot be determined. Falls back to the mtime of `.git` — which is when the
+ * clone landed — so clones written by versions of this provider that predate
+ * the stamp are aged correctly instead of looking brand new.
+ */
+function readFetchStamp(cloneDir: string): number | undefined {
+  try {
+    const parsed = Number.parseInt(
+      readFileSync(fetchStampPath(cloneDir), "utf-8").trim(),
+      10
+    );
+    if (Number.isFinite(parsed)) return parsed;
+  } catch {
+    // Fall through to the `.git` mtime.
+  }
+  try {
+    return statSync(resolve(cloneDir, ".git")).mtimeMs;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Whether a mutable-ref clone is past its TTL and should be refreshed before
+ * being served. An indeterminate or future-dated age counts as stale:
+ * refreshing costs one bounded fetch, whereas guessing "fresh" silently serves
+ * a snapshot of unbounded age, which is the bug this exists to prevent.
+ */
+function isCloneStale(
+  cloneDir: string,
+  ttlMs: number = getMutableRefTtlMs()
+): boolean {
+  const stampedAt = readFetchStamp(cloneDir);
+  if (stampedAt === undefined) return true;
+  const age = Date.now() - stampedAt;
+  if (age < 0) return true;
+  return age >= ttlMs;
+}
+
+/**
  * GitHub catalog provider — resolves github:// URIs by cloning the
  * repository locally (shallow clone) and reading files from the clone.
  *
  * Clones are cached at ~/.air/cache/github/{owner}/{repo}/{ref}/.
- * Subsequent resolves for the same repo+ref reuse the existing clone.
+ * Subsequent resolves for the same repo+ref reuse the existing clone. For
+ * mutable refs (`HEAD`, branch names) that reuse is bounded by
+ * {@link DEFAULT_MUTABLE_REF_TTL_MS}: past the TTL the clone is fetched and
+ * hard-reset onto the current remote tip before being served. Full-SHA refs
+ * are immutable and are reused forever.
  */
 export class GitHubCatalogProvider implements CatalogProvider {
   scheme = "github";
@@ -355,6 +485,13 @@ export class GitHubCatalogProvider implements CatalogProvider {
    * Check freshness of cached clones for the given URIs.
    * Compares local HEAD SHA against remote for mutable refs.
    * Skips URIs with no local clone or immutable refs (full SHAs).
+   *
+   * This is a *read-only* report and stays that way — the SDK calls it to
+   * surface warnings, and a "check" that hard-reset working trees would be a
+   * trap. The actual refreshing lives on the paths that mutate a clone:
+   * {@link refreshCache} (`air update`) and the TTL refresh inside
+   * `ensureClone`, both of which go through the same `fetchAndReset` under the
+   * same lock.
    */
   async checkFreshness(uris: string[]): Promise<CacheFreshnessWarning[]> {
     // De-duplicate by owner/repo/ref so we only check each clone once
@@ -379,13 +516,7 @@ export class GitHubCatalogProvider implements CatalogProvider {
       if (!existsSync(resolve(cloneDir, ".git"))) continue;
 
       try {
-        const localSha = (
-          await runGit(["rev-parse", "HEAD"], {
-            cwd: cloneDir,
-            env: GIT_STALL_ENV,
-            timeoutMs: LOCAL_GIT_TIMEOUT_MS,
-          })
-        ).stdout.trim();
+        const localSha = await this.readHeadSha(cloneDir);
 
         const lsRemoteArgs = ref === "HEAD"
           ? ["ls-remote", "origin", "HEAD"]
@@ -472,40 +603,13 @@ export class GitHubCatalogProvider implements CatalogProvider {
           }
 
           try {
-            // Get current SHA before fetch
-            const beforeSha = (
-              await runGit(["rev-parse", "HEAD"], {
-                cwd: cloneDir,
-                env: GIT_STALL_ENV,
-                timeoutMs: LOCAL_GIT_TIMEOUT_MS,
-              })
-            ).stdout.trim();
-
-            // Fetch latest
-            const fetchArgs = ref === "HEAD"
-              ? ["fetch", "--depth", "1", "origin"]
-              : ["fetch", "--depth", "1", "origin", ref];
-            await runGit(fetchArgs, {
-              cwd: cloneDir,
-              env: GIT_STALL_ENV,
-              timeoutMs: CLONE_TIMEOUT_MS,
-            });
-
-            // Reset to fetched commit
-            const resetRef = ref === "HEAD" ? "origin/HEAD" : "FETCH_HEAD";
-            await runGit(["reset", "--hard", resetRef], {
-              cwd: cloneDir,
-              env: GIT_STALL_ENV,
-              timeoutMs: LOCAL_GIT_TIMEOUT_MS,
-            });
-
-            const afterSha = (
-              await runGit(["rev-parse", "HEAD"], {
-                cwd: cloneDir,
-                env: GIT_STALL_ENV,
-                timeoutMs: LOCAL_GIT_TIMEOUT_MS,
-              })
-            ).stdout.trim();
+            // Under the clone lock, so an `air update` sweep can never
+            // interleave its fetch+reset with a concurrent clone or TTL
+            // refresh of the same directory.
+            const { before: beforeSha, after: afterSha } =
+              await this.withCloneLock(cloneDir, CLONE_LOCK_RETRIES, () =>
+                this.fetchAndReset(cloneDir, ref)
+              );
 
             if (afterSha !== beforeSha) {
               results.push({
@@ -529,10 +633,11 @@ export class GitHubCatalogProvider implements CatalogProvider {
   }
 
   /**
-   * Ensure the repository is cloned locally. Concurrent callers are
-   * serialized by an advisory file lock and the clone itself lands via
-   * a temp-dir-then-rename dance — so readers either see no `.git` and
-   * trigger their own clone, or a complete clone, never a partial one.
+   * Ensure the repository is cloned locally, and — for mutable refs — that the
+   * clone is no older than the TTL. Concurrent callers are serialized by an
+   * advisory file lock and the clone itself lands via a temp-dir-then-rename
+   * dance, so readers either see no `.git` and trigger their own clone, or a
+   * complete clone, never a partial one.
    *
    * Returns the path to the clone directory.
    */
@@ -547,37 +652,20 @@ export class GitHubCatalogProvider implements CatalogProvider {
     // land via tmp-dir-then-rename, the presence of `.git` implies the
     // working tree is complete.
     if (existsSync(resolve(cloneDir, ".git"))) {
+      // A full SHA is content-addressed: the clone is correct forever and the
+      // short-circuit is unconditional. A mutable ref (`HEAD`, a branch) can
+      // move upstream, so reuse is bounded by the TTL.
+      if (!isImmutableRef(ref) && isCloneStale(cloneDir)) {
+        await this.refreshStaleClone(owner, repo, ref, cloneDir);
+      }
       return cloneDir;
     }
 
-    // Make sure the parent directory exists so the lock file has a home.
-    mkdirSync(dirname(cloneDir), { recursive: true });
-
-    // Serialize check-and-clone across processes. `realpath: false` lets us
-    // lock a path that does not yet exist — proper-lockfile creates a
-    // sibling `.lock` directory as the cross-process mutex.
-    const release = await lockfile.lock(cloneDir, {
-      realpath: false,
-      // Wait up to ~2 minutes (480 × 250 ms) for another process to finish
-      // cloning. With factor: 1, each retry sleeps minTimeout — the exponential
-      // backoff is disabled so waits stay predictable and tight.
-      retries: {
-        retries: 480,
-        minTimeout: 250,
-        maxTimeout: 1000,
-        factor: 1,
-      },
-      // Reclaim the lock if the holder crashed and never released it.
-      // Significantly longer than the clone timeout below so we don't steal
-      // from a slow-but-healthy clone, even on a sluggish filesystem where
-      // proper-lockfile's mtime refresh (every stale/2) might lag.
-      stale: 180_000,
-    });
-
-    try {
+    // Serialize check-and-clone across processes.
+    await this.withCloneLock(cloneDir, CLONE_LOCK_RETRIES, async () => {
       // Re-check under the lock: another process may have won the race.
       if (existsSync(resolve(cloneDir, ".git"))) {
-        return cloneDir;
+        return;
       }
 
       // Clean up any debris from a crashed clone (e.g., a partial cloneDir
@@ -646,6 +734,11 @@ export class GitHubCatalogProvider implements CatalogProvider {
           { logger: this.logger, label: `${owner}/${repo}@${ref}` }
         );
 
+        // Start the TTL clock before publishing, so there is no window in
+        // which a clone is visible without a stamp (which would read as
+        // "indeterminate age" and trigger a pointless immediate refresh).
+        writeFetchStamp(tmpDir);
+
         // Atomic publish: readers only ever see a complete clone at
         // cloneDir, never a half-populated one.
         renameSync(tmpDir, cloneDir);
@@ -681,18 +774,192 @@ export class GitHubCatalogProvider implements CatalogProvider {
             `  Error: ${msg}`
         );
       }
+    });
+
+    return cloneDir;
+  }
+
+  /**
+   * Run `fn` while holding the advisory file lock for `cloneDir`.
+   *
+   * This is the single critical section for every mutation of a cache entry:
+   * the initial clone, the TTL refresh on the read path, and `air update`'s
+   * `refreshCache()` all take *this* lock on *this* path. A fetch+reset can
+   * therefore never interleave with another process's clone or reset of the
+   * same directory.
+   *
+   * It is a filesystem mutex, not a reentrant one — never call a method that
+   * takes this lock from inside `fn`.
+   */
+  private async withCloneLock<T>(
+    cloneDir: string,
+    retries: number,
+    fn: () => Promise<T>
+  ): Promise<T> {
+    // Make sure the parent directory exists so the lock file has a home.
+    mkdirSync(dirname(cloneDir), { recursive: true });
+
+    // `realpath: false` lets us lock a path that does not yet exist —
+    // proper-lockfile creates a sibling `.lock` directory as the
+    // cross-process mutex.
+    const release = await lockfile.lock(cloneDir, {
+      realpath: false,
+      // With factor: 1, each retry sleeps minTimeout — the exponential
+      // backoff is disabled so waits stay predictable and tight.
+      retries: {
+        retries,
+        minTimeout: 250,
+        maxTimeout: 1000,
+        factor: 1,
+      },
+      // Reclaim the lock if the holder crashed and never released it.
+      // Significantly longer than the clone timeout so we don't steal from a
+      // slow-but-healthy clone, even on a sluggish filesystem where
+      // proper-lockfile's mtime refresh (every stale/2) might lag.
+      stale: 180_000,
+    });
+
+    try {
+      return await fn();
     } finally {
       try {
         await release();
       } catch {
         // release() can throw if proper-lockfile detected the lock was
-        // compromised (e.g., stale-reclaimed by another process). The clone
-        // itself has already been atomically published via renameSync, so
-        // there is nothing to clean up.
+        // compromised (e.g., stale-reclaimed by another process). Whatever the
+        // critical section published landed atomically (clone) or is a
+        // committed git state (fetch+reset), so there is nothing to clean up.
       }
     }
+  }
 
-    return cloneDir;
+  /**
+   * Bring a past-TTL clone of a mutable ref up to date, in place, under the
+   * clone lock.
+   *
+   * Best-effort by design: this runs on the read path and the clone it is
+   * refreshing is already usable, so every failure mode — offline, expired
+   * auth, lock contention, a cache directory yanked out from under us — warns
+   * and serves the cached bytes rather than failing the caller's `resolve()`.
+   * For the same reason it makes a single bounded attempt instead of going
+   * through `withGitRetry`: spending up to ~35 s of retry backoff on a read
+   * whose fallback is already correct is the wrong trade.
+   */
+  private async refreshStaleClone(
+    owner: string,
+    repo: string,
+    ref: string,
+    cloneDir: string
+  ): Promise<void> {
+    const label = `${owner}/${repo}@${ref}`;
+    try {
+      await this.withCloneLock(cloneDir, REFRESH_LOCK_RETRIES, async () => {
+        // Re-check under the lock: a concurrent resolve (this process or
+        // another) may have refreshed while we waited, and a second fetch+reset
+        // would be pure cost. This is what collapses N concurrent resolves of a
+        // stale clone into exactly one fetch.
+        if (!isCloneStale(cloneDir)) return;
+
+        // The clone can disappear between the fast-path check and the lock —
+        // a concurrent `air update`, or a user clearing the cache. Nothing to
+        // refresh; the caller then fails on the missing file exactly as it
+        // would have before this path existed.
+        if (!existsSync(resolve(cloneDir, ".git"))) return;
+
+        const { before, after } = await this.fetchAndReset(
+          cloneDir,
+          ref,
+          REFRESH_FETCH_TIMEOUT_MS
+        );
+        if (before !== after) {
+          this.logger.info(
+            `refreshed cached clone (${label}): ` +
+              `${before.slice(0, 7)} → ${after.slice(0, 7)}`
+          );
+        }
+      });
+    } catch (err) {
+      const rawMsg = err instanceof Error ? err.message : String(err);
+      const msg = redactToken(rawMsg, this.token);
+      this.logger.warn(
+        `failed to refresh cached clone (${label}), serving the cached copy: ${msg}`
+      );
+    }
+  }
+
+  /**
+   * `git fetch --depth 1` + `git reset --hard` a clone onto the current tip of
+   * its ref, returning the HEAD SHA before and after. Shared by the TTL refresh
+   * on the read path and by `refreshCache()` (`air update`), so there is
+   * exactly one definition of "bring a mutable-ref clone up to date".
+   *
+   * Stamps the clone's last-fetch marker *before* fetching, so both callers
+   * reset the TTL clock and a failing remote costs one bounded git call per TTL
+   * window rather than one per resolve.
+   *
+   * Callers must hold the clone lock — this mutates the working tree in place.
+   */
+  private async fetchAndReset(
+    cloneDir: string,
+    ref: string,
+    fetchTimeoutMs: number = CLONE_TIMEOUT_MS
+  ): Promise<{ before: string; after: string }> {
+    // Stamp first, before anything that can throw: whichever step fails, the
+    // TTL clock has already restarted and the backoff holds.
+    writeFetchStamp(cloneDir);
+
+    const before = await this.readHeadSha(cloneDir);
+
+    const fetchArgs =
+      ref === "HEAD"
+        ? ["fetch", "--depth", "1", "origin"]
+        : ["fetch", "--depth", "1", "origin", ref];
+    await runGit(fetchArgs, {
+      cwd: cloneDir,
+      env: GIT_STALL_ENV,
+      timeoutMs: fetchTimeoutMs,
+    });
+
+    // For `HEAD` the clone tracks the remote's default branch, which
+    // `origin/HEAD` names; for an explicit ref the fetch above set FETCH_HEAD.
+    const resetRef = ref === "HEAD" ? "origin/HEAD" : "FETCH_HEAD";
+    const target = await this.readSha(cloneDir, resetRef);
+
+    // Skip the reset when the remote has not moved. This is the common case —
+    // most TTL expiries find nothing new — and skipping matters for more than
+    // speed: `git reset --hard` rewrites the working tree of the *published*
+    // clone, which readers inside their own TTL walk without taking the lock.
+    // Not touching it unless there is genuinely a new commit to serve shrinks
+    // that exposure from "every TTL expiry" to "only when the content the
+    // refresh exists to deliver actually changed".
+    if (target === before) {
+      return { before, after: before };
+    }
+
+    await runGit(["reset", "--hard", resetRef], {
+      cwd: cloneDir,
+      env: GIT_STALL_ENV,
+      timeoutMs: LOCAL_GIT_TIMEOUT_MS,
+    });
+
+    const after = await this.readHeadSha(cloneDir);
+    return { before, after };
+  }
+
+  /** Current HEAD SHA of a local clone. */
+  private async readHeadSha(cloneDir: string): Promise<string> {
+    return this.readSha(cloneDir, "HEAD");
+  }
+
+  /** Resolve any local rev (`HEAD`, `origin/HEAD`, `FETCH_HEAD`) to a SHA. */
+  private async readSha(cloneDir: string, rev: string): Promise<string> {
+    return (
+      await runGit(["rev-parse", rev], {
+        cwd: cloneDir,
+        env: GIT_STALL_ENV,
+        timeoutMs: LOCAL_GIT_TIMEOUT_MS,
+      })
+    ).stdout.trim();
   }
 
   /**

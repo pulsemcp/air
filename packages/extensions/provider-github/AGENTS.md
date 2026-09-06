@@ -8,15 +8,19 @@ AIR catalog provider for GitHub. Resolves `github://` URIs in `air.json` by shal
 packages/extensions/provider-github/
 ├── src/
 │   ├── index.ts            # AirExtension default export + re-exports
+│   ├── git.ts              # bounded/retried git invocation primitives
 │   └── github-provider.ts  # GitHubCatalogProvider class, URI parser, clone/cache logic
 ├── tests/
-│   └── github-provider.test.ts  # URI parsing, cache paths, clone integration
+│   ├── github-provider.test.ts  # URI parsing, cache paths, clone integration
+│   ├── concurrency.test.ts      # clone-race serialization, atomic publish
+│   ├── ttl-refresh.test.ts      # mutable-ref TTL refresh vs. immutable short-circuit
+│   └── git.test.ts              # runBounded / withGitRetry primitives
 └── package.json
 ```
 
 ## Domain Context
 
-This package implements the `CatalogProvider` interface from `@pulsemcp/air-core`. It handles `github://owner/repo[@ref]/path/to/file.json` URIs by shelling out to `git clone --depth 1` (via `execFileSync`) and then reading the requested file from the local clone. Cache refresh uses `git fetch --depth 1` + `git reset --hard`.
+This package implements the `CatalogProvider` interface from `@pulsemcp/air-core`. It handles `github://owner/repo[@ref]/path/to/file.json` URIs by shelling out to `git clone --depth 1` (via the bounded/retried `runGit` in `git.ts`) and then reading the requested file from the local clone. Cache refresh uses `git fetch --depth 1` + `git reset --hard`.
 
 ### Git protocol
 
@@ -42,10 +46,21 @@ Token values are redacted from error messages before surfacing them.
 ## Core Principles
 
 ### Shell out to `git`, not `gh`
-Uses `git` (universally installed) via `execFileSync`. Never depends on the `gh` CLI or a GitHub API client. URI components are strictly validated before being passed as arguments to prevent injection.
+Uses `git` (universally installed) via `runGit`. Never depends on the `gh` CLI or a GitHub API client. URI components are strictly validated before being passed as arguments to prevent injection.
 
-### Cache aggressively, invalidate manually
-Each `{owner}/{repo}/{ref}` is cloned once and reused. Mutable refs (branches, `HEAD`) are refreshed via `air update`; full-SHA refs are treated as immutable and never refreshed. Users can also delete `~/.air/cache/github/` to force a clean re-clone.
+### Cache aggressively, but bound reuse by whether the ref can move
+Each `{owner}/{repo}/{ref}` is cloned once and reused. Full-SHA refs are content-addressed, so the clone is correct forever and `ensureClone` short-circuits unconditionally. Mutable refs (`HEAD`, branch names) can move upstream, so reuse is bounded by a TTL (`DEFAULT_MUTABLE_REF_TTL_MS`, 5 minutes, overridable with `AIR_GIT_CACHE_TTL_MS`): past the TTL the next read fetches and hard-resets the clone before serving it. `air update` (`refreshCache()`) refreshes everything immediately regardless of TTL, and users can delete `~/.air/cache/github/` to force a clean re-clone.
+
+Only a 40-hex SHA counts as immutable. A **tag** is deliberately treated as mutable, because git tags can be force-moved and a moved tag that never refreshed would be the exact bug this TTL exists to fix — the cost is one cheap `fetch` per TTL window, and the reset is skipped when the tag has not moved. A full SHA is the way to pin with zero network.
+
+The TTL clock is a stamp file at `<clone>/.git/air-last-fetch`, written before every fetch. It lives under `.git` so core's working-tree walk never sees it, and because `git reset --hard` only rewrites tracked paths (plus git's own index/refs/reflogs) an untracked file there survives the refresh. It records the last *attempt* so a failing remote costs one bounded git call per TTL window rather than one per resolve.
+
+### One lock, one mutation path
+Every mutation of a cache entry — the initial clone, the TTL refresh, and `air update`'s refresh — goes through `withCloneLock()` on the same `${cloneDir}.lock`, and every fetch+reset goes through the single `fetchAndReset()` helper. That is what makes "a refresh can never interleave with another process's clone" true by construction rather than by inspection. The lock is a filesystem mutex and is **not reentrant**: never call a locking method from inside a locked section.
+
+**Scope of the atomicity guarantee, precisely.** The initial clone is atomic for readers: it lands via temp-dir-then-rename, so a reader either sees no `.git` or a complete clone. A *refresh* is not — it hard-resets the published directory in place, and readers (a `resolve()` inside its own TTL) do not take the lock. So a reader walking a clone at the moment a refresh lands can in principle see files from two commits. Two things keep that narrow, and both are load-bearing: `fetchAndReset()` **skips the reset entirely when the remote has not moved**, so the working tree is untouched on the overwhelming majority of TTL expiries; and the window itself is the few milliseconds of a `reset --hard`. Do not "simplify" the skip away. Closing the window properly would mean serving content-addressed directories behind an atomically-swapped symlink, which is a cache-layout change, not a tweak.
+
+`checkFreshness()` is the deliberate exception — it is a read-only report the SDK calls to surface warnings, and it stays that way. A function named "check" that hard-reset working trees would be a trap.
 
 ### SSH by default, HTTPS by opt-in
 Keep the default ergonomic (no token dance for most engineers) but never force a protocol choice on users who have reasons to prefer the other one.
@@ -53,7 +68,9 @@ Keep the default ergonomic (no token dance for most engineers) but never force a
 ## What NOT to Do
 
 - Do not add a hard dependency on the `gh` CLI — `git` is sufficient and more portable
-- Do not interpolate URI components into shell strings — pass them as argv entries via `execFileSync`
+- Do not interpolate URI components into shell strings — pass them as argv entries to `runGit`
 - Do not leak tokens in error messages — run `redactToken()` before rethrowing
 - Do not silently swallow clone errors — include the public URL, ref, and `git` stderr in error messages
+- Do not fail a `resolve()` because a *refresh* failed — the cached clone is still usable; warn and serve it
+- Do not add a second lock, a second fetch+reset, or a second freshness clock — extend `withCloneLock()` / `fetchAndReset()` / the stamp instead
 - Do not change the default protocol without updating the schema description, CHANGELOG, and docs — this is a breaking change for cache paths and CI setup

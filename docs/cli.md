@@ -270,3 +270,4 @@ If `.mcp.json` would be left empty after removing AIR-managed servers (no other 
 | `AIR_NO_COLOR` | Disable colored output. |
 | `AIR_GIT_PROTOCOL` | Force the protocol used by git-based catalog providers (`ssh` or `https`). Overrides the `gitProtocol` field in `air.json`; a `--git-protocol` CLI flag still wins over the env var. |
 | `AIR_GITHUB_TOKEN` | GitHub token used by `@pulsemcp/air-provider-github` for private repos and higher rate limits. Only consumed when protocol is `https`; ignored under `ssh`. |
+| `AIR_GIT_CACHE_TTL_MS` | How long `@pulsemcp/air-provider-github` reuses a cached clone of a **mutable** ref (`HEAD`, a branch, a tag) before re-fetching it (default: `300000`, i.e. 5 minutes). `0` re-checks on every resolve. Clones pinned to a full commit SHA are immutable and are never re-fetched regardless of this value. |
