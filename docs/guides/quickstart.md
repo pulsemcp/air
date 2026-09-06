@@ -37,13 +37,34 @@ To upgrade the CLI to the latest version:
 air upgrade
 ```
 
-This runs `npm install -g @pulsemcp/air-cli@latest` under the hood. If you're already on the latest version, it reports that and exits without reinstalling.
+This does two things:
+
+1. Runs `npm install -g @pulsemcp/air-cli@latest`. If you're already on the latest version, it says so and skips the reinstall.
+2. Brings the extension packages installed next to your `air.json` onto the same version line.
+
+That second step matters because extensions are loaded from `<airJsonDir>/node_modules` (`~/.air/node_modules` by default), never from the global npm tree — so upgrading the CLI alone leaves the code that actually runs behind. Every package in the AIR monorepo is published off one shared version line, so `air upgrade` rewrites each first-party extension's constraint in `<airJsonDir>/package.json` to `~MAJOR.MINOR.0` of the upgraded CLI and reinstalls it.
+
+It deliberately leaves four kinds of entry alone, and names each one in its output:
+
+- local path extensions (`./…`), which npm does not manage
+- packages outside the `@pulsemcp/air-` namespace, whose versions are not tied to the CLI
+- specifiers that pin a version in `air.json` (`@pulsemcp/air-provider-github@0.9.2`) — that pin is your stated intent
+- packages already installed *ahead* of the CLI, so an upgrade never downgrades a working install
 
 Use `--dry-run` to see what would happen without actually installing:
 
 ```bash
 air upgrade --dry-run
 ```
+
+Use `--no-extensions` to upgrade only the CLI, and `--config <path>` to point at an `air.json` other than `~/.air/air.json`:
+
+```bash
+air upgrade --no-extensions
+air upgrade --config /path/to/air.json
+```
+
+If a CLI upgrade ever leaves you with errors like `Provider for "github://" cannot resolve directory paths`, that is the stale-extension symptom — `air upgrade` (or `air install`, which now also compares installed versions against their declared ranges) is the fix.
 
 ## 2. Initialize your configuration
 

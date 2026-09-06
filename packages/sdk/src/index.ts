@@ -160,7 +160,32 @@ export { installExtensions } from "./install.js";
 export type {
   InstallExtensionsOptions,
   InstallExtensionsResult,
+  ExtensionVersionMismatch,
 } from "./install.js";
+
+// Extension lockstep upgrade (used by `air upgrade`)
+export { upgradeExtensions } from "./upgrade.js";
+export type {
+  UpgradeExtensionsOptions,
+  UpgradeExtensionsResult,
+  ExtensionUpgradePlan,
+  ExtensionUpgradeAction,
+  ExtensionUpgradeSkipReason,
+  NpmInstallExtensions,
+} from "./upgrade.js";
+
+// Version helpers shared by the install/update/upgrade paths
+export {
+  lockstepRange,
+  rangeIsWithinMinorLine,
+  satisfiesRange,
+  parseVersion,
+  compareVersions,
+  stripVersion,
+  specifierRange,
+  readInstalledVersion,
+} from "./versions.js";
+export type { ParsedVersion } from "./versions.js";
 
 // Extension loader
 export { loadExtensions } from "./extension-loader.js";

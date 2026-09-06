@@ -1,5 +1,5 @@
 import { execFile } from "child_process";
-import { existsSync, readFileSync, readdirSync } from "fs";
+import { existsSync, readdirSync } from "fs";
 import { dirname, join, resolve } from "path";
 import { pathToFileURL } from "url";
 import { createRequire } from "module";
@@ -15,6 +15,11 @@ import {
 } from "@pulsemcp/air-core";
 import { loadExtensions } from "./extension-loader.js";
 import { resolveEsmEntry } from "./esm-resolve.js";
+import {
+  compareVersions,
+  readInstalledVersion,
+  stripVersion,
+} from "./versions.js";
 
 /**
  * Known provider packages, keyed by their cache directory name (scheme).
@@ -110,69 +115,6 @@ function discoverCachedSchemes(): string[] {
   } catch {
     return [];
   }
-}
-
-/**
- * Read the installed version of an npm package from its package.json,
- * looking under `<prefix>/node_modules/<packageName>`.
- */
-function readInstalledVersion(
-  packageName: string,
-  prefix: string
-): string | null {
-  try {
-    const pkgPath = join(prefix, "node_modules", packageName, "package.json");
-    if (!existsSync(pkgPath)) return null;
-    const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
-    return typeof pkg.version === "string" ? pkg.version : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Compare two semver-ish version strings of the form `MAJOR.MINOR.PATCH`.
- * Returns a negative number if `a < b`, 0 if equal, positive if `a > b`.
- * Pre-release suffixes are ignored — we only need ordering for known
- * provider versions like `0.0.13` vs `0.0.21`.
- */
-function compareVersions(a: string, b: string): number {
-  const parse = (v: string): number[] =>
-    v
-      .split("-")[0]
-      .split(".")
-      .map((n) => Number.parseInt(n, 10) || 0);
-  const av = parse(a);
-  const bv = parse(b);
-  const len = Math.max(av.length, bv.length);
-  for (let i = 0; i < len; i++) {
-    const diff = (av[i] ?? 0) - (bv[i] ?? 0);
-    if (diff !== 0) return diff;
-  }
-  return 0;
-}
-
-/**
- * Strip a version suffix from an npm specifier so we can compare against
- * known package names. Mirrors the helper in `install.ts`.
- */
-function stripVersion(specifier: string): string {
-  if (specifier.startsWith("@")) {
-    const slashIdx = specifier.indexOf("/");
-    if (slashIdx !== -1) {
-      const afterSlash = specifier.slice(slashIdx + 1);
-      const atIdx = afterSlash.indexOf("@");
-      if (atIdx !== -1) {
-        return specifier.slice(0, slashIdx + 1 + atIdx);
-      }
-    }
-    return specifier;
-  }
-  const atIdx = specifier.indexOf("@");
-  if (atIdx > 0) {
-    return specifier.slice(0, atIdx);
-  }
-  return specifier;
 }
 
 /**

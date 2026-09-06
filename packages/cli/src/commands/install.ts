@@ -25,6 +25,13 @@ export function installCommand(): Command {
             prefix: options.prefix,
           });
 
+          for (const mismatch of result.mismatched) {
+            console.error(
+              `Outdated: ${mismatch.packageName} ${mismatch.installedVersion} ` +
+                `does not satisfy "${mismatch.requiredRange}" ` +
+                `(from ${mismatch.source}) — reinstalling`
+            );
+          }
           if (result.installed.length > 0) {
             console.error(
               `Installed: ${result.installed.join(", ")}`
