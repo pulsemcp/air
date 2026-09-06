@@ -124,11 +124,12 @@ describe("scanLocalSkills (pi)", () => {
     // returns what it parsed rather than discarding the whole block.
     writeFileSync(
       join(skillsDir, "unclosed", "SKILL.md"),
-      "---\ndescription: Unclosed\nno closing delimiter"
+      "---\ntitle: Unclosed Title\ndescription: Unclosed\nno closing delimiter"
     );
 
     const result = scanLocalSkills(dir);
     expect(result[0].description).toBe("Unclosed");
+    expect(result[0].title).toBe("Unclosed Title");
   });
 
   it("strips matching quotes from frontmatter values", () => {

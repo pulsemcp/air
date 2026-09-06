@@ -100,6 +100,23 @@ describe("scanLocalSkills (cursor)", () => {
     expect(result[0].description).toBe("(local skill — no description)");
   });
 
+  it("reads frontmatter even when the closing delimiter is missing entirely", () => {
+    const dir = createTempDir();
+    cleanup.push(dir);
+    const skillsDir = join(dir, ".cursor", "skills");
+    mkdirSync(join(skillsDir, "unclosed"), { recursive: true });
+    // No closing `---`: the reader consumes every line after the opener and
+    // returns what it parsed rather than discarding the whole block.
+    writeFileSync(
+      join(skillsDir, "unclosed", "SKILL.md"),
+      "---\ntitle: Unclosed Title\ndescription: Unclosed\nno closing delimiter"
+    );
+
+    const result = scanLocalSkills(dir);
+    expect(result[0].description).toBe("Unclosed");
+    expect(result[0].title).toBe("Unclosed Title");
+  });
+
   it("strips matching quotes from frontmatter values", () => {
     const dir = createTempDir();
     cleanup.push(dir);

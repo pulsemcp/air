@@ -91,7 +91,7 @@ function readFrontmatter(path: string): Record<string, string> {
     }
     result[key] = value;
   }
-  return {};
+  return result;
 }
 
 function pickString(
