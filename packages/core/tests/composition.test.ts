@@ -947,4 +947,44 @@ describe("composition", () => {
         .length,
     ).toBe(0);
   });
+
+  // `default_runtime` is an authored, opaque pass-through: core resolves it
+  // onto the `RootEntry` without interpreting it, so a consumer reading
+  // `root.default_runtime` off `resolveArtifacts` output gets exactly what the
+  // author wrote. Core knows nothing about what any runtime identifier means.
+  it("carries an authored default_runtime through resolveArtifacts unchanged", async () => {
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "team",
+        roots: ["./roots.json"],
+      },
+      "roots.json": {
+        "claude-root": exampleRoot("claude-root", {
+          default_runtime: "claude_code",
+        }),
+        "codex-root": exampleRoot("codex-root", {
+          default_runtime: "codex",
+        }),
+        // An identifier core has never heard of — it must survive untouched.
+        "future-root": exampleRoot("future-root", {
+          default_runtime: "some-future-agent",
+        }),
+        // Omitted entirely: core does NOT default it to "claude_code";
+        // resolving the default is the consumer's job.
+        "unset-root": exampleRoot("unset-root"),
+      },
+    });
+    cleanup = c;
+
+    const artifacts = await resolveArtifacts(join(dir, "air.json"));
+
+    expect(artifacts.roots["@local/claude-root"].default_runtime).toBe(
+      "claude_code",
+    );
+    expect(artifacts.roots["@local/codex-root"].default_runtime).toBe("codex");
+    expect(artifacts.roots["@local/future-root"].default_runtime).toBe(
+      "some-future-agent",
+    );
+    expect(artifacts.roots["@local/unset-root"].default_runtime).toBeUndefined();
+  });
 });

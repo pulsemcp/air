@@ -28,7 +28,7 @@
     "copy-schemas": "cp -r ../../schemas ./schemas",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "tsc --noEmit",
+    "lint": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
     "prepare": "npm run copy-schemas"
   },
   "dependencies": {

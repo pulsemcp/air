@@ -64,6 +64,31 @@ describe("stripScopes — happy path", () => {
     expect(Object.keys(result.hooks)).toEqual(["audit"]);
   });
 
+  // `default_runtime` names an agent runtime, not another artifact, so it is
+  // not a qualified ID and scope stripping must leave it byte-identical rather
+  // than rewriting it the way it rewrites `default_skills` et al.
+  it("leaves non-reference scalar root fields untouched", () => {
+    const artifacts: ResolvedArtifacts = {
+      ...emptyArtifacts(),
+      roots: {
+        "@local/default": {
+          description: "Default",
+          default_runtime: "codex",
+        },
+        // An identifier stripScopes has never heard of survives verbatim.
+        "@acme/roots/future": {
+          description: "Future",
+          default_runtime: "some-future-agent",
+        },
+      },
+    };
+
+    const result = stripScopes(artifacts);
+
+    expect(result.roots["default"].default_runtime).toBe("codex");
+    expect(result.roots["future"].default_runtime).toBe("some-future-agent");
+  });
+
   it("rewrites reference fields inside entries to bare shortnames", () => {
     const artifacts: ResolvedArtifacts = {
       ...emptyArtifacts(),
