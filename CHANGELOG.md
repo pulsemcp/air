@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **A `SKILL.md` whose frontmatter block has an opening `---` but no closing `---` no longer loses every key it parsed.** `readFrontmatter` — the minimal frontmatter reader behind `scanLocalSkills` in the Claude, Codex and Cursor adapters — had two exits that disagreed: reaching the closing delimiter returned the accumulated key/value pairs, while running off the end of the file returned an empty map. An unterminated block therefore took the second path and discarded everything, so the skill surfaced in the local-skills scan with no title and the `(local skill — no description)` placeholder instead of its real metadata. Both exits now return what was parsed. Content after a well-formed closing `---` is still excluded, and the `@pulsemcp/air-adapter-pi` copy already behaved this way — all four adapter copies of the function are byte-identical again. Resolves [#143](https://github.com/pulsemcp/air/issues/143).
+
 ### Changed
 - **`@pulsemcp/air-provider-github` — a cached clone of a *mutable* ref (`HEAD` or a branch name) is now refreshed once it is older than a 5-minute TTL, instead of being served for the lifetime of the cache directory.** Previously `ensureClone()` short-circuited on the mere existence of `<cloneDir>/.git`, and nothing on the read path ever ran `git fetch` — `resolve()` and `resolveCatalogDir()` never called `checkFreshness()`, and `checkFreshness()` only *warned*. A `HEAD` clone populated at 8 AM therefore kept serving that snapshot all day, even after new commits landed upstream; only an explicit `air update` or deleting `~/.air/cache/github/` could move it. Now, when the ref is non-SHA and the clone is past its TTL, the next read performs `git fetch --depth 1 origin` + `git reset --hard origin/HEAD` (or `origin/{ref}`'s `FETCH_HEAD` for a named branch) before serving the clone.
 

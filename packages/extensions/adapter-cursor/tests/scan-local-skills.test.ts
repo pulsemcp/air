@@ -100,6 +100,22 @@ describe("scanLocalSkills (cursor)", () => {
     expect(result[0].description).toBe("(local skill — no description)");
   });
 
+  it("reads frontmatter from a well-formed block followed by a multi-line body", () => {
+    const dir = createTempDir();
+    cleanup.push(dir);
+    const skillsDir = join(dir, ".cursor", "skills");
+    mkdirSync(join(skillsDir, "trailing"), { recursive: true });
+    // Closing `---` on its own line, then a heading and a body line that looks
+    // like a frontmatter pair — it must not reach the map.
+    writeFileSync(
+      join(skillsDir, "trailing", "SKILL.md"),
+      "---\ndescription: Trailing body\n---\n# Heading\ndescription: LEAKED"
+    );
+
+    const result = scanLocalSkills(dir);
+    expect(result[0].description).toBe("Trailing body");
+  });
+
   it("reads frontmatter even when the closing delimiter is missing entirely", () => {
     const dir = createTempDir();
     cleanup.push(dir);
@@ -130,6 +146,20 @@ describe("scanLocalSkills (cursor)", () => {
     const result = scanLocalSkills(dir);
     expect(result[0].description).toBe("A quoted description");
     expect(result[0].title).toBe("Quoted Title");
+  });
+
+  it("uses the name field as the title when title is absent", () => {
+    const dir = createTempDir();
+    cleanup.push(dir);
+    const skillsDir = join(dir, ".cursor", "skills");
+    mkdirSync(join(skillsDir, "named"), { recursive: true });
+    writeFileSync(
+      join(skillsDir, "named", "SKILL.md"),
+      "---\nname: Deploy\ndescription: Deploys things\n---\n"
+    );
+
+    const result = scanLocalSkills(dir);
+    expect(result[0].title).toBe("Deploy");
   });
 
   it("sorts results alphabetically by id", () => {

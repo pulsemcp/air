@@ -58,7 +58,10 @@ export function scanLocalSkills(targetDir: string): LocalSkillEntry[] {
  * `---` lines into a flat key/value map. Only handles top-level
  * `key: value` scalars, which is all SKILL.md frontmatter needs in
  * practice. Unquoted values have surrounding whitespace trimmed and
- * matching single/double quotes stripped.
+ * matching single/double quotes stripped. A block whose closing `---`
+ * is missing is parsed to end-of-file rather than discarded — reporting
+ * the pairs that were parsed beats silently falling back to no title
+ * and no description.
  */
 function readFrontmatter(path: string): Record<string, string> {
   let content: string;
