@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **`@pulsemcp/air-provider-github` — a cached clone of a *mutable* ref (`HEAD` or a branch name) is now refreshed once it is older than a 5-minute TTL, instead of being served for the lifetime of the cache directory.** Previously `ensureClone()` short-circuited on the mere existence of `<cloneDir>/.git`, and nothing on the read path ever ran `git fetch` — `resolve()` and `resolveCatalogDir()` never called `checkFreshness()`, and `checkFreshness()` only *warned*. A `HEAD` clone populated at 8 AM therefore kept serving that snapshot all day, even after new commits landed upstream; only an explicit `air update` or deleting `~/.air/cache/github/` could move it. Now, when the ref is non-SHA and the clone is past its TTL, the next read performs `git fetch --depth 1 origin` + `git reset --hard origin/HEAD` (or `origin/{ref}`'s `FETCH_HEAD` for a named branch) before serving the clone.
+
+  **This is a behavior change**: a long-lived process can now observe newer catalog content mid-session, where before it was pinned to whatever it first cloned. That is the intent — a mutable ref that never moves is the bug — but consumers that relied on within-process immutability should pin a full commit SHA instead.
+
+  - **Full-SHA refs are unaffected.** A 40-hex ref is content-addressed and can never change upstream, so `isImmutableRef(ref)` short-circuits unconditionally: no TTL check, no `git fetch`, ever, at any age.
+  - **The refresh is best-effort.** It runs on the read path over a clone that is already usable, so any failure — offline, expired auth, lock contention, a cache directory removed underfoot — logs a warning and serves the cached bytes rather than failing the caller's `resolve()`. For the same reason it makes a single bounded attempt instead of going through `withGitRetry`, whose ~35s of backoff would be spent on a read whose fallback is already correct.
+  - **Refresh happens under the same `${cloneDir}.lock` introduced in 0.0.40**, with an under-lock staleness re-check, so N concurrent resolves of a stale clone collapse into exactly one fetch and a refresh can never interleave with another process's clone or reset of the same directory. `refreshCache()` (`air update`) now takes that lock too, and both paths share a single `fetchAndReset()` helper — one definition of "bring a mutable-ref clone up to date".
+  - **The TTL clock is a stamp file** at `<clone>/.git/air-last-fetch`, written before every fetch. It lives under `.git` so core's working-tree walk never mistakes it for a catalog file and `git reset --hard` cannot delete it, and it records the last *attempt*, so an unreachable remote costs one bounded git call per TTL window rather than one per resolve. Cache entries written by earlier versions have no stamp and fall back to the `.git` mtime, so they age correctly instead of looking brand new.
+  - **Tunable via `AIR_GIT_CACHE_TTL_MS`** (default `300000`); `0` re-checks on every resolve, a large value effectively pins the cache to the old behavior. `checkFreshness()` deliberately stays read-only — it is the SDK's warning report, not a mutation path.
+
+  Resolves [#107](https://github.com/pulsemcp/air/issues/107).
+
 ## [0.13.1] - 2026-06-22
 
 ### Fixed

@@ -82,4 +82,15 @@ export AIR_GITHUB_TOKEN=ghp_your_token_here
 
 ## Caching
 
-Fetched files are cached locally at `~/.air/cache/github/{owner}/{repo}/{ref}/{path}`. Delete the cache directory to force a re-fetch.
+Fetched files are cached locally at `~/.air/cache/github/{owner}/{repo}/{ref}/{path}`.
+
+How long a cache entry is reused depends on whether the ref can move:
+
+| Ref | Reuse | Why |
+|-----|-------|-----|
+| Full commit SHA (40 hex chars) | Forever | Content-addressed — it can never change upstream |
+| `HEAD` or a branch name | Up to 5 minutes | The remote tip moves, so the clone is re-fetched once it goes stale |
+
+When a mutable-ref clone is past its TTL, the next `resolve()` runs `git fetch --depth 1` + `git reset --hard` on it (under the same lock that serializes clones) before serving it, so a long-running process picks up commits pushed after it started. The refresh is best-effort: if the fetch fails (offline, expired auth), the cached clone is served with a warning rather than failing the resolve, and the next attempt is deferred for one TTL window.
+
+Set `AIR_GIT_CACHE_TTL_MS` to tune the window — `0` re-checks on every resolve, a large value effectively pins the cache. `air update` refreshes every cached mutable-ref clone immediately regardless of TTL, and deleting the cache directory forces a clean re-clone.
