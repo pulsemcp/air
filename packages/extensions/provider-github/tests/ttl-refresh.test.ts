@@ -12,12 +12,15 @@ import { EventEmitter } from "events";
 import { tmpdir } from "os";
 import { resolve } from "path";
 
-// Mock spawn so we never hit the network. The mock models a tiny fake remote:
-// `clone` materializes the remote's current payload+SHA into the destination,
-// `fetch`/`reset` move an existing clone onto the remote's *current* state, and
-// `rev-parse` reports whatever SHA the clone is sitting on. That is enough to
-// distinguish "served the cached snapshot" from "refreshed and served the newer
-// commit", which is the whole point of these tests.
+// Mock spawn so we never hit the network. The mock models a tiny fake remote
+// and, separately, the clone's own two pointers — what HEAD is checked out at
+// (`.git/FAKE_SHA`) and what the last fetch brought down (`.git/FAKE_FETCHED`).
+// `clone` materializes the remote's current payload+SHA; `fetch` advances only
+// the fetched pointer; `reset` moves the working tree onto it; `rev-parse`
+// answers for either pointer. Keeping them distinct is what lets a test tell
+// "fetched and found nothing new, left the tree alone" apart from "fetched,
+// found a new commit, and reset onto it" — and both of those apart from
+// "served the cached snapshot without touching the network".
 vi.mock("child_process", async () => {
   const actual = await vi.importActual<typeof import("child_process")>(
     "child_process"
@@ -37,16 +40,16 @@ const mockedSpawn = spawn as unknown as ReturnType<typeof vi.fn>;
 
 const PINNED_SHA = "0123456789abcdef0123456789abcdef01234567";
 
-/** Synchronously block the event loop for `ms`, to widen a race window. */
-function sleepSync(ms: number) {
-  const end = Date.now() + ms;
-  while (Date.now() < end) {
-    // spin
-  }
-}
-
+/**
+ * Build a fake ChildProcess that runs `work()` after `delayMs`, emits any
+ * stdout/stderr, then emits `close`. The delay is a real async gap (not a
+ * busy-spin), so other pending resolves genuinely interleave with a git call
+ * in flight — which is what makes the concurrency test below exercise the
+ * lock rather than just the ordering of a single-threaded burst.
+ */
 function makeFakeChild(
-  work: () => { code?: number; stdout?: string; stderr?: string }
+  work: () => { code?: number; stdout?: string; stderr?: string },
+  delayMs = 0
 ) {
   const child = new EventEmitter() as EventEmitter & {
     stdout: EventEmitter;
@@ -57,7 +60,7 @@ function makeFakeChild(
   child.stderr = new EventEmitter();
   child.pid = 4242;
 
-  setImmediate(() => {
+  const run = () => {
     let result: { code?: number; stdout?: string; stderr?: string };
     try {
       result = work();
@@ -69,7 +72,10 @@ function makeFakeChild(
     if (result.stdout) child.stdout.emit("data", Buffer.from(result.stdout));
     if (result.stderr) child.stderr.emit("data", Buffer.from(result.stderr));
     child.emit("close", result.code ?? 0, null);
-  });
+  };
+
+  if (delayMs > 0) setTimeout(run, delayMs);
+  else setImmediate(run);
 
   return child;
 }
@@ -88,7 +94,7 @@ describe("mutable-ref TTL refresh", () => {
   /** Every `git` argv the provider ran, in order. */
   let gitCalls: string[][];
   let remote: FakeRemote;
-  /** Extra sync delay injected into the `fetch` handler, to widen races. */
+  /** Async delay applied to the `fetch` child, to widen the refresh window. */
   let fetchDelayMs: number;
   /** When set, `git fetch` fails with this message. */
   let fetchFailure: string | undefined;
@@ -99,12 +105,24 @@ describe("mutable-ref TTL refresh", () => {
     warn: (message: string) => logs.push({ level: "warn", message }),
   };
 
-  /** Write the clone's working tree + fake SHA from the remote's current state. */
+  /**
+   * Write the clone's working tree and move both pointers onto the remote's
+   * current state — what a real `git clone`, or a `git reset --hard` onto a
+   * freshly fetched tip, leaves behind.
+   */
   function materialize(dest: string) {
     mkdirSync(resolve(dest, ".git"), { recursive: true });
     writeFileSync(resolve(dest, ".git", "config"), "");
     writeFileSync(resolve(dest, ".git", "FAKE_SHA"), remote.sha);
+    writeFileSync(resolve(dest, ".git", "FAKE_FETCHED"), remote.sha);
     writeFileSync(resolve(dest, "skills.json"), JSON.stringify(remote.payload));
+  }
+
+  /** Read a pointer, falling back to HEAD when nothing has been fetched yet. */
+  function readPointer(cloneDir: string, file: string): string {
+    const path = resolve(cloneDir, ".git", file);
+    if (existsSync(path)) return readFileSync(path, "utf-8");
+    return readFileSync(resolve(cloneDir, ".git", "FAKE_SHA"), "utf-8");
   }
 
   beforeEach(() => {
@@ -149,23 +167,28 @@ describe("mutable-ref TTL refresh", () => {
             }
             // --- refresh ------------------------------------------------
             case "fetch": {
-              if (fetchDelayMs) sleepSync(fetchDelayMs);
               if (fetchFailure) throw new Error(fetchFailure);
+              // A fetch moves the remote-tracking pointer only; the working
+              // tree and HEAD stay where they are until a reset.
+              writeFileSync(resolve(cwd!, ".git", "FAKE_FETCHED"), remote.sha);
               return { code: 0 };
             }
             case "reset": {
               materialize(cwd!);
               return { code: 0 };
             }
-            case "rev-parse":
-              return {
-                code: 0,
-                stdout: readFileSync(resolve(cwd!, ".git", "FAKE_SHA"), "utf-8"),
-              };
+            case "rev-parse": {
+              const rev = args[1];
+              const file = rev === "HEAD" ? "FAKE_SHA" : "FAKE_FETCHED";
+              return { code: 0, stdout: readPointer(cwd!, file) };
+            }
+            // --- read-only freshness report ------------------------------
+            case "ls-remote":
+              return { code: 0, stdout: `${remote.sha}\tHEAD\n` };
             default:
               throw new Error(`unexpected git subcommand: ${sub}`);
           }
-        });
+        }, sub === "fetch" ? fetchDelayMs : 0);
       }
     );
   });
@@ -400,5 +423,123 @@ describe("mutable-ref TTL refresh", () => {
     // A brand-new clone is stamped at publish time, so it must not immediately
     // turn around and refresh itself.
     expect(subcommands()).toEqual(["clone"]);
+  });
+
+  it("fetches but does not reset when the remote has not moved", async () => {
+    const provider = newProvider();
+    const uri = "github://acme/quiet/skills.json";
+    await provider.resolve(uri, "/tmp");
+
+    const cloneDir = getClonePath("acme", "quiet", "HEAD");
+    ageClone(cloneDir, DEFAULT_MUTABLE_REF_TTL_MS + 1000);
+    // Remote deliberately left where it was — the common case at TTL expiry.
+    gitCalls = [];
+
+    expect(await provider.resolve(uri, "/tmp")).toEqual({ v: 1 });
+
+    // The remote was consulted, but the published working tree was never
+    // rewritten — which is what keeps unlocked readers safe on the vast
+    // majority of TTL expiries.
+    expect(fetches()).toHaveLength(1);
+    expect(resets()).toHaveLength(0);
+    // No SHA-transition log line, because nothing transitioned.
+    expect(logs.filter((l) => l.message.includes("refreshed cached clone"))).toEqual([]);
+
+    // Still restamped, so the next resolve is served from cache.
+    gitCalls = [];
+    await provider.resolve(uri, "/tmp");
+    expect(gitCalls).toEqual([]);
+  });
+
+  it("treats a future-dated stamp as stale (clock moved backwards)", async () => {
+    const provider = newProvider();
+    const uri = "github://acme/skewed/skills.json";
+    await provider.resolve(uri, "/tmp");
+
+    // A clock correction (or an NTP jump on a fresh VM) can leave a stamp in
+    // the future. Trusting it would pin the clone until wall-clock catches up.
+    const cloneDir = getClonePath("acme", "skewed", "HEAD");
+    ageClone(cloneDir, -(24 * 60 * 60_000));
+    remote = { sha: "bbbbbbb2222222222222222222222222222222222", payload: { v: 2 } };
+    gitCalls = [];
+
+    expect(await provider.resolve(uri, "/tmp")).toEqual({ v: 2 });
+    expect(fetches()).toHaveLength(1);
+  });
+
+  it("falls back to the .git mtime when the stamp is unparseable", async () => {
+    const provider = newProvider();
+    const uri = "github://acme/corrupt/skills.json";
+    await provider.resolve(uri, "/tmp");
+
+    // A truncated write (crash mid-stamp) must not read as "brand new".
+    const cloneDir = getClonePath("acme", "corrupt", "HEAD");
+    writeFileSync(resolve(cloneDir, ".git", "air-last-fetch"), "not-a-number");
+    const hoursAgo = new Date(Date.now() - 6 * 60 * 60_000);
+    utimesSync(resolve(cloneDir, ".git"), hoursAgo, hoursAgo);
+
+    remote = { sha: "bbbbbbb2222222222222222222222222222222222", payload: { v: 2 } };
+    gitCalls = [];
+
+    expect(await provider.resolve(uri, "/tmp")).toEqual({ v: 2 });
+    expect(fetches()).toHaveLength(1);
+  });
+
+  it("refreshCache() updates a clone and restamps it, so the next resolve short-circuits", async () => {
+    const provider = newProvider();
+    const uri = "github://acme/updated/skills.json";
+    expect(await provider.resolve(uri, "/tmp")).toEqual({ v: 1 });
+
+    remote = { sha: "bbbbbbb2222222222222222222222222222222222", payload: { v: 2 } };
+    gitCalls = [];
+
+    const results = await provider.refreshCache();
+    const entry = results.find((r) => r.label === "acme/updated@HEAD");
+    expect(entry).toBeDefined();
+    // A real update, not a swallowed failure — the vacuous-pass shape
+    // ({ updated: false, message: "failed: ..." }) must not satisfy this.
+    expect(entry!.updated).toBe(true);
+    expect(entry!.message).toMatch(/^updated aaaaaaa → bbbbbbb$/);
+    expect(fetches()).toHaveLength(1);
+    expect(resets()).toHaveLength(1);
+
+    // `air update` reset the TTL clock, so the next read is served from cache.
+    gitCalls = [];
+    expect(await provider.resolve(uri, "/tmp")).toEqual({ v: 2 });
+    expect(gitCalls).toEqual([]);
+  });
+
+  it("refreshCache() skips immutable full-SHA clones", async () => {
+    const provider = newProvider();
+    await provider.resolve(`github://acme/pinned@${PINNED_SHA}/skills.json`, "/tmp");
+    gitCalls = [];
+
+    const results = await provider.refreshCache();
+    const entry = results.find((r) => r.label === `acme/pinned@${PINNED_SHA}`);
+    expect(entry).toEqual({
+      label: `acme/pinned@${PINNED_SHA}`,
+      updated: false,
+      message: "skipped (immutable ref)",
+    });
+    expect(gitCalls).toEqual([]);
+  });
+
+  it("checkFreshness() only reports — it never fetches or resets", async () => {
+    const provider = newProvider();
+    const uri = "github://acme/watched/skills.json";
+    await provider.resolve(uri, "/tmp");
+
+    ageClone(getClonePath("acme", "watched", "HEAD"), DEFAULT_MUTABLE_REF_TTL_MS + 1000);
+    remote = { sha: "bbbbbbb2222222222222222222222222222222222", payload: { v: 2 } };
+    gitCalls = [];
+
+    const warnings = await provider.checkFreshness([uri]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].message).toContain("is behind remote");
+
+    // The SDK calls this to print warnings; it must not mutate the cache.
+    expect(subcommands().sort()).toEqual(["ls-remote", "rev-parse"]);
+    expect(fetches()).toEqual([]);
+    expect(resets()).toEqual([]);
   });
 });

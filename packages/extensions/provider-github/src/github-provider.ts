@@ -192,11 +192,21 @@ export function getClonePath(owner: string, repo: string, ref: string): string {
 }
 
 /**
- * Redact tokens from a string to prevent leaking credentials in logs.
+ * Redact credentials from a string to prevent leaking them in logs.
+ *
+ * Two passes, because the current token is not the only credential that can
+ * appear: an HTTPS clone persists `https://<token>@github.com/...` in the
+ * clone's `.git/config`, so git echoes *that* URL — which may embed a token
+ * rotated out of this process's environment — in `unable to access` errors.
+ * Strip any URL userinfo as well as the token we know about.
  */
 function redactToken(text: string, token?: string): string {
-  if (!token) return text;
-  return text.replaceAll(token, "***");
+  const withoutUrlAuth = text.replace(
+    /(\bhttps?:\/\/)[^/@\s]+@/gi,
+    "$1***@"
+  );
+  if (!token) return withoutUrlAuth;
+  return withoutUrlAuth.replaceAll(token, "***");
 }
 
 /**
@@ -223,8 +233,9 @@ export const DEFAULT_MUTABLE_REF_TTL_MS = 5 * 60_000;
  * Filename of the refresh stamp, written inside the clone's `.git` directory.
  * It lives under `.git` rather than in the working tree for two reasons: core
  * walks the working tree looking for artifact indexes and must not see a file
- * this provider invented, and `git reset --hard` rewrites the working tree but
- * never touches `.git`, so the stamp survives its own refresh.
+ * this provider invented, and `git reset --hard` only rewrites *tracked* paths
+ * (plus git's own metadata — index, refs, reflogs), so an untracked file under
+ * `.git` survives its own refresh.
  */
 const FETCH_STAMP_FILE = "air-last-fetch";
 
@@ -232,12 +243,21 @@ const FETCH_STAMP_FILE = "air-last-fetch";
 const CLONE_LOCK_RETRIES = 480;
 
 /**
- * Lock-acquisition budget for a TTL refresh (~30 s at 250 ms). Deliberately
+ * Lock-acquisition budget for a TTL refresh (~5 s at 250 ms). Deliberately far
  * shorter than the clone budget: the refresh path already holds a usable clone,
- * so waiting out someone else's slow clone is worse than serving the cached
- * bytes for one more TTL window.
+ * so waiting out someone else's slow clone is pure loss — better to serve the
+ * cached bytes and try again next TTL window.
  */
-const REFRESH_LOCK_RETRIES = 120;
+const REFRESH_LOCK_RETRIES = 20;
+
+/**
+ * Wall-clock cap (ms) for the fetch performed by a *read-path* TTL refresh.
+ * Much tighter than {@link CLONE_TIMEOUT_MS}, which bounds a clone the caller
+ * cannot proceed without. Here the fallback — the clone we already have — is
+ * already correct, so a resolve must not stall a full minute on a captive
+ * portal or a packet-dropping firewall just to learn nothing changed.
+ */
+export const REFRESH_FETCH_TIMEOUT_MS = 15_000;
 
 /**
  * Effective TTL for mutable-ref clones. Read per call rather than at module
@@ -846,7 +866,11 @@ export class GitHubCatalogProvider implements CatalogProvider {
         // would have before this path existed.
         if (!existsSync(resolve(cloneDir, ".git"))) return;
 
-        const { before, after } = await this.fetchAndReset(cloneDir, ref);
+        const { before, after } = await this.fetchAndReset(
+          cloneDir,
+          ref,
+          REFRESH_FETCH_TIMEOUT_MS
+        );
         if (before !== after) {
           this.logger.info(
             `refreshed cached clone (${label}): ` +
@@ -877,7 +901,8 @@ export class GitHubCatalogProvider implements CatalogProvider {
    */
   private async fetchAndReset(
     cloneDir: string,
-    ref: string
+    ref: string,
+    fetchTimeoutMs: number = CLONE_TIMEOUT_MS
   ): Promise<{ before: string; after: string }> {
     // Stamp first, before anything that can throw: whichever step fails, the
     // TTL clock has already restarted and the backoff holds.
@@ -892,12 +917,25 @@ export class GitHubCatalogProvider implements CatalogProvider {
     await runGit(fetchArgs, {
       cwd: cloneDir,
       env: GIT_STALL_ENV,
-      timeoutMs: CLONE_TIMEOUT_MS,
+      timeoutMs: fetchTimeoutMs,
     });
 
     // For `HEAD` the clone tracks the remote's default branch, which
     // `origin/HEAD` names; for an explicit ref the fetch above set FETCH_HEAD.
     const resetRef = ref === "HEAD" ? "origin/HEAD" : "FETCH_HEAD";
+    const target = await this.readSha(cloneDir, resetRef);
+
+    // Skip the reset when the remote has not moved. This is the common case —
+    // most TTL expiries find nothing new — and skipping matters for more than
+    // speed: `git reset --hard` rewrites the working tree of the *published*
+    // clone, which readers inside their own TTL walk without taking the lock.
+    // Not touching it unless there is genuinely a new commit to serve shrinks
+    // that exposure from "every TTL expiry" to "only when the content the
+    // refresh exists to deliver actually changed".
+    if (target === before) {
+      return { before, after: before };
+    }
+
     await runGit(["reset", "--hard", resetRef], {
       cwd: cloneDir,
       env: GIT_STALL_ENV,
@@ -910,8 +948,13 @@ export class GitHubCatalogProvider implements CatalogProvider {
 
   /** Current HEAD SHA of a local clone. */
   private async readHeadSha(cloneDir: string): Promise<string> {
+    return this.readSha(cloneDir, "HEAD");
+  }
+
+  /** Resolve any local rev (`HEAD`, `origin/HEAD`, `FETCH_HEAD`) to a SHA. */
+  private async readSha(cloneDir: string, rev: string): Promise<string> {
     return (
-      await runGit(["rev-parse", "HEAD"], {
+      await runGit(["rev-parse", rev], {
         cwd: cloneDir,
         env: GIT_STALL_ENV,
         timeoutMs: LOCAL_GIT_TIMEOUT_MS,
