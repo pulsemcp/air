@@ -34,10 +34,10 @@ function readHooks(dir: string): Record<string, any> {
 /**
  * Resolve a fixture *source* path inside the test's own unique temp dir.
  *
- * Fixture sources must never live in a sibling of the temp dir — the old
- * `join(dir, "..", "skills", "deploy")` pattern resolved to `<tmpdir>/skills/
- * deploy` for every test file, so vitest's parallel workers all wrote to the
- * same path and clobbered each other's content between write and read.
+ * Fixture sources must never live in a sibling of the temp dir. The old
+ * `join(dir, "..", "skills", "deploy")` pattern resolved to the same
+ * `<tmpdir>/skills/deploy` for every test file, so vitest's parallel workers
+ * all wrote there and clobbered each other's content between write and read.
  * The `__src__/` prefix keeps sources unique per test, cleaned up by the
  * `afterEach` rmSync, and clear of the trees the adapter itself reads or
  * writes (.cursor/).

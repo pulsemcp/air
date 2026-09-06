@@ -27,13 +27,13 @@ function emptyArtifacts(): ResolvedArtifacts {
 /**
  * Resolve a fixture *source* path inside the test's own unique temp dir.
  *
- * Fixture sources must never live in a sibling of the temp dir — the old
- * `join(dir, "..", "skills", "deploy")` pattern resolved to `<tmpdir>/skills/
- * deploy` for every test file, so vitest's parallel workers all wrote to the
- * same path and clobbered each other's content between write and read.
+ * Fixture sources must never live in a sibling of the temp dir. The old
+ * `join(dir, "..", "skills", "deploy")` pattern resolved to the same
+ * `<tmpdir>/skills/deploy` for every test file, so vitest's parallel workers
+ * all wrote there and clobbered each other's content between write and read.
  * The `__src__/` prefix keeps sources unique per test, cleaned up by the
  * `afterEach` rmSync, and clear of the trees the adapter itself reads or
- * writes (.claude/).
+ * writes (.claude/ and .mcp.json).
  */
 function srcPath(dir: string, ...segments: string[]): string {
   return join(dir, "__src__", ...segments);
@@ -655,7 +655,7 @@ describe("ClaudeAdapter", () => {
         artifacts.skills["@local/deploy"] = {
           id: "deploy",
           description: "Deploy",
-          path: "/tmp/skills/deploy",
+          path: srcPath(dir, "skills", "deploy"),
         };
 
         await expect(
@@ -690,7 +690,7 @@ describe("ClaudeAdapter", () => {
         artifacts.hooks["@local/lint"] = {
           id: "lint",
           description: "Lint hook",
-          path: "/tmp/hooks/lint",
+          path: srcPath(dir, "hooks", "lint"),
         };
 
         const root: RootEntry = {
@@ -1723,7 +1723,7 @@ describe("ClaudeAdapter", () => {
         const artifacts = emptyArtifacts();
         artifacts.hooks["@local/lint"] = {
           description: "Lint hook",
-          path: "/tmp/hooks/lint",
+          path: srcPath(dir, "hooks", "lint"),
         };
 
         await expect(

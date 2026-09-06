@@ -547,14 +547,21 @@ describe("GitHubCatalogProvider — git protocol", () => {
   // duration of this block rather than inheriting whatever the machine has.
 
   let originalToken: string | undefined;
+  let originalProtocol: string | undefined;
 
   beforeEach(() => {
     originalToken = process.env.AIR_GITHUB_TOKEN;
+    originalProtocol = process.env.AIR_GIT_PROTOCOL;
     delete process.env.AIR_GITHUB_TOKEN;
+    delete process.env.AIR_GIT_PROTOCOL;
   });
 
   afterEach(() => {
-    delete process.env.AIR_GIT_PROTOCOL;
+    if (originalProtocol === undefined) {
+      delete process.env.AIR_GIT_PROTOCOL;
+    } else {
+      process.env.AIR_GIT_PROTOCOL = originalProtocol;
+    }
     if (originalToken === undefined) {
       delete process.env.AIR_GITHUB_TOKEN;
     } else {
