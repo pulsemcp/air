@@ -74,4 +74,14 @@ The single entry point for setting up a working directory. Callers should not ne
 
 ## FAQ / Learnings
 
-No entries yet — this section grows from real usage.
+### Extensions load from `<airJsonDir>/node_modules`, never from the global npm tree
+
+The extension loader builds its resolver from `createRequire(join(airJsonDir, "__placeholder.js"))`, so a globally-installed `@pulsemcp/air-*` package is not the copy that runs. Anything that reasons about "which version of an extension is in use" must look under the air.json directory, not at `npm ls -g`.
+
+### `npm install <pkg>@<range>` rewrites the range you just wrote
+
+Handing npm an explicit spec makes it save its *own* normalization back into `dependencies` — a `~0.13.0` written by AIR comes back as `^0.13.1`. When the manifest is the source of truth, write it first and then run a **bare** `npm install --prefix <dir>`: npm leaves package.json byte-identical and reconciles the tree and lockfile against the ranges already there.
+
+### Any `npm install` in a prefix prunes what the manifest does not declare
+
+This holds for bare installs, explicit-spec installs, and `--no-save` alike. Before running one against a user's directory, make sure `dependencies` describes everything in `node_modules` you intend to keep — otherwise the reconcile deletes it.
