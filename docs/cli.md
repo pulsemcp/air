@@ -125,7 +125,7 @@ air list hooks
 air list references
 ```
 
-Shows ID, title (if available), and description for each artifact. Shows the merged result from all files listed in `air.json`.
+Shows ID, title (if available), and description for each artifact. Shows the merged result from all files listed in `air.json`, including catalogs behind provider URIs (e.g., `github://`) — the catalog providers declared under `extensions` are loaded and run first.
 
 ### `air resolve --json`
 

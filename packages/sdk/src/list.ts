@@ -1,9 +1,12 @@
+import { dirname, resolve } from "path";
 import {
+  loadAirConfig,
   getAirJsonPath,
   resolveArtifacts,
   emptyArtifacts,
   type ResolvedArtifacts,
 } from "@pulsemcp/air-core";
+import { loadExtensions } from "./extension-loader.js";
 
 export type ArtifactType =
   | "skills"
@@ -39,6 +42,10 @@ export interface ListArtifactsResult {
 /**
  * Resolve artifacts and return the entries for a specific artifact type.
  *
+ * Extensions declared in air.json are loaded so their catalog providers
+ * (e.g., github://) are registered before resolution — the same wiring
+ * `resolveFullArtifacts`, `startSession`, and `prepareSession` do.
+ *
  * @throws Error if the artifact type is invalid.
  */
 export async function listArtifacts(
@@ -52,9 +59,17 @@ export async function listArtifacts(
   }
 
   const airJsonPath = options?.config || getAirJsonPath();
-  const artifacts = airJsonPath
-    ? await resolveArtifacts(airJsonPath)
-    : emptyArtifacts();
+
+  let artifacts: ResolvedArtifacts;
+  if (airJsonPath) {
+    const airJsonDir = dirname(resolve(airJsonPath));
+    const airConfig = loadAirConfig(airJsonPath);
+    const loaded = await loadExtensions(airConfig.extensions || [], airJsonDir);
+    const providers = loaded.providers.map((ext) => ext.provider!);
+    artifacts = await resolveArtifacts(airJsonPath, { providers });
+  } else {
+    artifacts = emptyArtifacts();
+  }
 
   const artifactType = type as ArtifactType;
 
