@@ -74,12 +74,15 @@ export type { ShortnameCollision } from "./strip-scopes.js";
 export {
   parseNpxPackageSpecs,
   npxCacheKey,
+  npxCacheDirName,
+  buildPrewarmArgs,
   planNpxPrewarm,
   prewarmNpxPackages,
   prewarmSharedNpxCache,
   isNpxPrewarmEnabled,
 } from "./npx-cache.js";
 export type {
+  NpxLaunchSpec,
   NpxPrewarmGroup,
   NpxPrewarmOutcome,
   NpxPrewarmReport,

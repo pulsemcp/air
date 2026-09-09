@@ -275,10 +275,16 @@ export class ClaudeAdapter implements AgentAdapter {
     //    Without this, servers whose launch commands resolve to the same
     //    `_npx/<hash>` directory install into it concurrently on first launch
     //    and can corrupt each other (ENOTEMPTY), killing the whole cohort.
-    for (const warning of prewarmSharedNpxCache(translatedServers, {
-      cwd: targetDir,
-      enabled: options?.prewarmNpxCache,
-    }).warnings) {
+    //    The *merged* map is used, not just the AIR-managed one, so an AIR
+    //    server sharing a package with a user-authored `.mcp.json` entry is
+    //    covered too.
+    const mergedMcpServers = (mcpConfig.mcpServers ?? {}) as Record<string, unknown>;
+    for (const warning of (
+      await prewarmSharedNpxCache(mergedMcpServers, {
+        cwd: targetDir,
+        enabled: options?.prewarmNpxCache,
+      })
+    ).warnings) {
       console.warn(warning);
     }
 

@@ -369,7 +369,7 @@ export class CursorAdapter implements AgentAdapter {
     //    preserved; stale AIR keys removed).
     const translatedServers: Record<string, McpServerEntry> = {};
     for (const a of mcpActs) translatedServers[a.short] = artifacts.mcp[a.qualified];
-    this.writeCursorMcpConfig(
+    const { mcpServers: mergedMcpServers } = this.writeCursorMcpConfig(
       targetDir,
       this.translateMcpServersByShort(translatedServers),
       diff.staleMcpServers
@@ -379,10 +379,14 @@ export class CursorAdapter implements AgentAdapter {
     //    Without this, servers whose launch commands resolve to the same
     //    `_npx/<hash>` directory install into it concurrently on first launch
     //    and can corrupt each other (ENOTEMPTY), killing the whole cohort.
-    for (const warning of prewarmSharedNpxCache(translatedServers, {
-      cwd: targetDir,
-      enabled: options?.prewarmNpxCache,
-    }).warnings) {
+    //    The *merged* map is used, not just the AIR-managed subset, so an AIR
+    //    server sharing a package with a user-authored entry is covered.
+    for (const warning of (
+      await prewarmSharedNpxCache(mergedMcpServers, {
+        cwd: targetDir,
+        enabled: options?.prewarmNpxCache,
+      })
+    ).warnings) {
       console.warn(warning);
     }
 
@@ -916,7 +920,7 @@ export class CursorAdapter implements AgentAdapter {
     targetDir: string,
     translatedServers: Record<string, Record<string, unknown>>,
     staleMcpIds: string[]
-  ): string | null {
+  ): { path: string | null; mcpServers: Record<string, unknown> } {
     const mcpPath = join(targetDir, ".cursor", "mcp.json");
     const config = this.readJson(mcpPath);
 
@@ -931,11 +935,11 @@ export class CursorAdapter implements AgentAdapter {
 
     if (Object.keys(config).length === 0) {
       if (existsSync(mcpPath)) rmSync(mcpPath, { force: true });
-      return null;
+      return { path: null, mcpServers: servers };
     }
 
     this.writeJson(mcpPath, config);
-    return mcpPath;
+    return { path: mcpPath, mcpServers: servers };
   }
 
   /**

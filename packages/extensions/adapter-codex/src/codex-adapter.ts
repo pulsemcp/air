@@ -351,7 +351,7 @@ export class CodexAdapter implements AgentAdapter {
       ...diff.staleHooks,
       ...registeredHookShortIds,
     ]);
-    this.writeCodexConfig(
+    const { mcpServers: mergedMcpServers } = this.writeCodexConfig(
       targetDir,
       this.translateMcpServersByShort(translatedServers),
       diff.staleMcpServers,
@@ -364,10 +364,14 @@ export class CodexAdapter implements AgentAdapter {
     //    Without this, servers whose launch commands resolve to the same
     //    `_npx/<hash>` directory install into it concurrently on first launch
     //    and can corrupt each other (ENOTEMPTY), killing the whole cohort.
-    for (const warning of prewarmSharedNpxCache(translatedServers, {
-      cwd: targetDir,
-      enabled: options?.prewarmNpxCache,
-    }).warnings) {
+    //    The *merged* table is used, not just the AIR-managed subset, so an
+    //    AIR server sharing a package with a user-authored entry is covered.
+    for (const warning of (
+      await prewarmSharedNpxCache(mergedMcpServers, {
+        cwd: targetDir,
+        enabled: options?.prewarmNpxCache,
+      })
+    ).warnings) {
       console.warn(warning);
     }
 
@@ -1097,7 +1101,9 @@ export class CodexAdapter implements AgentAdapter {
    * - Hooks: AIR-owned entries (tagged with `_air_hook_id`) whose ID is in
    *   `managedHookIds` are pruned, then the current selection is registered.
    *
-   * Returns the path written.
+   * Returns the path written and the merged `mcp_servers` table — the latter
+   * so the caller can reason about *all* servers the session will start, not
+   * just the AIR-managed subset.
    */
   private writeCodexConfig(
     targetDir: string,
@@ -1106,7 +1112,7 @@ export class CodexAdapter implements AgentAdapter {
     newHookPaths: string[],
     managedHookIds: Set<string>,
     oauthCallbackUrl?: string
-  ): string {
+  ): { path: string; mcpServers: Record<string, unknown> } {
     const configPath = join(targetDir, ".codex", "config.toml");
     const config = this.readToml(configPath);
 
@@ -1136,12 +1142,12 @@ export class CodexAdapter implements AgentAdapter {
     // remove a now-empty one if a prior run (or user edit) emptied it out.
     if (Object.keys(config).length === 0) {
       if (existsSync(configPath)) rmSync(configPath, { force: true });
-      return configPath;
+      return { path: configPath, mcpServers: servers };
     }
 
     mkdirSync(dirname(configPath), { recursive: true });
     writeFileSync(configPath, stringifyToml(config) + "\n");
-    return configPath;
+    return { path: configPath, mcpServers: servers };
   }
 
   /**

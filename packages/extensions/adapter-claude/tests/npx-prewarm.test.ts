@@ -47,6 +47,12 @@ describe.skipIf(isWindows)("ClaudeAdapter npx prewarm", () => {
     writeFileSync(shim, `#!/bin/sh\nprintf '%s\\n' "$*" >> ${JSON.stringify(logPath)}\nexit 0\n`);
     chmodSync(shim, 0o755);
 
+    // The failure path resolves the npm cache root to decide whether a partial
+    // tree needs discarding; shimming npm keeps these tests off the real one.
+    const npmShim = join(binDir, "npm");
+    writeFileSync(npmShim, `#!/bin/sh\nprintf '%s\\n' ${JSON.stringify(join(dir, "__cache__"))}\nexit 0\n`);
+    chmodSync(npmShim, 0o755);
+
     originalPath = process.env.PATH;
     process.env.PATH = `${binDir}:${originalPath ?? ""}`;
   });
@@ -178,5 +184,41 @@ describe.skipIf(isWindows)("ClaudeAdapter npx prewarm", () => {
 
     expect(result.configFiles).toContain(join(dir, ".mcp.json"));
     expect(existsSync(join(dir, ".mcp.json"))).toBe(true);
+  });
+  it("covers a user-authored .mcp.json entry that shares the package", async () => {
+    // mergeMcpConfig preserves entries AIR does not manage. One of those
+    // sharing an npx spec with an AIR-managed server races it just the same,
+    // so the prewarm reads the merged map rather than the AIR-managed subset.
+    writeFileSync(
+      join(dir, ".mcp.json"),
+      JSON.stringify({
+        mcpServers: {
+          "hand-written": { command: "npx", args: ["-y", "shared@1.0.0"] },
+        },
+      })
+    );
+
+    await adapter.prepareSession(
+      artifactsWith({ "@local/air-managed": stdioServer("npx", ["-y", "shared@1.0.0"]) }),
+      dir,
+      { mcpServerOverrides: ["air-managed"] }
+    );
+
+    expect(invocations()).toEqual(["--yes --package shared@1.0.0 --call node --version"]);
+  });
+
+  it("leaves a group alone when a server redirects npm at another registry", async () => {
+    await adapter.prepareSession(
+      artifactsWith({
+        "@local/a1": stdioServer("npx", ["-y", "internal@1.0.0"], {
+          NPM_CONFIG_REGISTRY: "https://npm.internal.example",
+        }),
+        "@local/a2": stdioServer("npx", ["-y", "internal@1.0.0"]),
+      }),
+      dir,
+      { mcpServerOverrides: ["a1", "a2"] }
+    );
+
+    expect(invocations()).toEqual([]);
   });
 });

@@ -1,9 +1,14 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createHash } from "crypto";
+import { mkdirSync, existsSync, writeFileSync, rmSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 import type { McpServerEntry } from "../src/types.js";
 import {
   isNpxPrewarmEnabled,
   npxCacheKey,
+  buildPrewarmArgs,
+  npxCacheDirName,
   parseNpxPackageSpecs,
   planNpxPrewarm,
   prewarmNpxPackages,
@@ -173,16 +178,133 @@ describe("planNpxPrewarm", () => {
   });
 });
 
+describe("planNpxPrewarm — npm-sensitive env", () => {
+  it("skips a group whose servers redirect npm at a different registry", () => {
+    // The prewarm runs before transforms resolve ${VAR}, so it cannot honor a
+    // per-server registry. Installing anyway would put a *public* package of
+    // the same name into the directory the servers then execute from.
+    expect(
+      planNpxPrewarm({
+        a: stdio("npx", ["-y", "internal-tool@1.0.0"], {
+          NPM_CONFIG_REGISTRY: "https://npm.internal.example",
+        }),
+        b: stdio("npx", ["-y", "internal-tool@1.0.0"]),
+      })
+    ).toEqual([]);
+  });
+
+  it("skips a group whose servers override the npm cache location", () => {
+    expect(
+      planNpxPrewarm({
+        a: stdio("npx", ["-y", "pkg@1.0.0"], { npm_config_cache: "/somewhere/else" }),
+        b: stdio("npx", ["-y", "pkg@1.0.0"]),
+      })
+    ).toEqual([]);
+  });
+
+  it("skips a group carrying a registry auth token", () => {
+    expect(
+      planNpxPrewarm({
+        a: stdio("npx", ["-y", "pkg@1.0.0"], { NPM_TOKEN: "${NPM_TOKEN}" }),
+        b: stdio("npx", ["-y", "pkg@1.0.0"]),
+      })
+    ).toEqual([]);
+  });
+
+  it("still prewarms groups whose env is unrelated to npm", () => {
+    expect(
+      planNpxPrewarm({
+        a: stdio("npx", ["-y", "pkg@1.0.0"], { TOOL_GROUPS: "ro", API_KEY: "${K}" }),
+        b: stdio("npx", ["-y", "pkg@1.0.0"], { TOOL_GROUPS: "rw" }),
+      })
+    ).toHaveLength(1);
+  });
+
+  it("accepts raw agent-config entries, not just McpServerEntry", () => {
+    // Adapters pass the merged map they just wrote, which contains untyped
+    // user-authored entries alongside AIR-managed ones.
+    const groups = planNpxPrewarm({
+      "air-managed": { command: "npx", args: ["-y", "pkg@1.0.0"], env: { A: "1" } },
+      "user-added": { command: "npx", args: ["-y", "pkg@1.0.0", "--flag"] },
+      "not-an-object": "nonsense",
+      "no-command": { args: ["-y", "pkg@1.0.0"] },
+      "bad-args": { command: "npx", args: [1, 2] },
+    });
+    expect(groups).toEqual([
+      { packages: ["pkg@1.0.0"], servers: ["air-managed", "user-added"] },
+    ]);
+  });
+});
+
+describe("buildPrewarmArgs", () => {
+  const group = { packages: ["a@1", "b@2"], servers: ["x", "y"] };
+
+  it("installs every spec and runs a no-op instead of the package bin", () => {
+    expect(buildPrewarmArgs(group, "linux")).toEqual([
+      "--yes",
+      "--package",
+      "a@1",
+      "--package",
+      "b@2",
+      "--call",
+      "node --version",
+    ]);
+  });
+
+  it("quotes the --call value on win32, where argv is joined for cmd.exe", () => {
+    // Unquoted, cmd.exe splits it and npm sees a bare `--version`, which it
+    // answers by printing its version and exiting 0 — installing nothing while
+    // reporting success.
+    expect(buildPrewarmArgs(group, "win32").at(-1)).toBe('"node --version"');
+  });
+});
+
+describe("npxCacheDirName", () => {
+  it("reproduces the directory npm named in the reported crash", () => {
+    expect(npxCacheDirName(["pulsemcp-cms-admin-mcp-server@latest"])).toBe("dbbb2997d8a4f060");
+  });
+
+  it("is order-insensitive, like the key it hashes", () => {
+    expect(npxCacheDirName(["b@1", "a@2"])).toBe(npxCacheDirName(["a@2", "b@1"]));
+  });
+});
+
 describe("prewarmNpxPackages", () => {
   const group = (name: string): NpxPrewarmGroup => ({
     packages: [name],
     servers: [`${name}-a`, `${name}-b`],
   });
 
-  it("runs each group once and reports success", () => {
+  /** A cache root in the env keeps reconcileFailure from shelling out to npm. */
+  let cacheDir: string;
+  let env: NodeJS.ProcessEnv;
+
+  beforeEach(() => {
+    cacheDir = join(tmpdir(), `air-npxcache-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    mkdirSync(cacheDir, { recursive: true });
+    env = { NPM_CONFIG_CACHE: cacheDir };
+  });
+
+  afterEach(() => rmSync(cacheDir, { recursive: true, force: true }));
+
+  function installDir(packages: string[]): string {
+    return join(cacheDir, "_npx", npxCacheDirName(packages));
+  }
+
+  /** Materialize an npx cache entry; `complete` writes the hidden lockfile. */
+  function seedInstall(packages: string[], complete: boolean): string {
+    const dir = installDir(packages);
+    mkdirSync(join(dir, "node_modules", "some-dep"), { recursive: true });
+    writeFileSync(join(dir, "node_modules", "some-dep", "index.js"), "//\n");
+    if (complete) writeFileSync(join(dir, "node_modules", ".package-lock.json"), "{}");
+    return dir;
+  }
+
+  it("runs each group once and reports success", async () => {
     const seen: string[][] = [];
-    const outcomes = prewarmNpxPackages([group("alpha"), group("beta")], {
-      runner: (g) => {
+    const outcomes = await prewarmNpxPackages([group("alpha"), group("beta")], {
+      env,
+      runner: async (g) => {
         seen.push(g.packages);
         return { ok: true };
       },
@@ -191,11 +313,13 @@ describe("prewarmNpxPackages", () => {
     expect(outcomes.map((o) => o.status)).toEqual(["warmed", "warmed"]);
   });
 
-  it("runs groups serially so two prewarms never share a cache entry", () => {
+  it("runs groups serially so two prewarms never share a cache entry", async () => {
     const events: string[] = [];
-    prewarmNpxPackages([group("alpha"), group("beta")], {
-      runner: (g): PrewarmRunResult => {
+    await prewarmNpxPackages([group("alpha"), group("beta")], {
+      env,
+      runner: async (g) => {
         events.push(`start:${g.packages[0]}`);
+        await new Promise((r) => setImmediate(r));
         events.push(`end:${g.packages[0]}`);
         return { ok: true };
       },
@@ -203,31 +327,68 @@ describe("prewarmNpxPackages", () => {
     expect(events).toEqual(["start:alpha", "end:alpha", "start:beta", "end:beta"]);
   });
 
-  it("reports a failing group without throwing, and keeps going", () => {
-    const outcomes = prewarmNpxPackages([group("alpha"), group("beta")], {
-      runner: (g) =>
+  it("reports a failing group without throwing, and keeps going", async () => {
+    const outcomes = await prewarmNpxPackages([group("alpha"), group("beta")], {
+      env,
+      runner: async (g) =>
         g.packages[0] === "alpha" ? { ok: false, error: "ENOTFOUND registry" } : { ok: true },
     });
     expect(outcomes[0]).toMatchObject({ status: "failed", error: "ENOTFOUND registry" });
     expect(outcomes[1].status).toBe("warmed");
   });
 
-  it("converts a thrown runner error into a failed outcome", () => {
-    const outcomes = prewarmNpxPackages([group("alpha")], {
-      runner: () => {
+  it("converts a thrown runner error into a failed outcome", async () => {
+    const outcomes = await prewarmNpxPackages([group("alpha")], {
+      env,
+      runner: async () => {
         throw new Error("spawn npx ENOENT");
       },
     });
     expect(outcomes[0]).toMatchObject({ status: "failed", error: "spawn npx ENOENT" });
   });
 
-  it("skips remaining groups once the total time budget is spent", () => {
+  it("discards a half-written tree left by a killed install", async () => {
+    // A prewarm killed at its timeout can leave exactly the partial tree this
+    // feature exists to prevent — worse than never having run.
+    const dir = seedInstall(["alpha"], false);
+    const outcomes = await prewarmNpxPackages([group("alpha")], {
+      env,
+      runner: async () => ({ ok: false, error: "timed out" }),
+    });
+    expect(outcomes[0].status).toBe("failed");
+    expect(existsSync(dir)).toBe(false);
+  });
+
+  it("treats a failure over an already-complete tree as warmed", async () => {
+    // Offline `air prepare` against a warm cache: npm cannot resolve the tag,
+    // but the servers will still find everything they need.
+    const dir = seedInstall(["alpha"], true);
+    const outcomes = await prewarmNpxPackages([group("alpha")], {
+      env,
+      runner: async () => ({ ok: false, error: "ENOTFOUND registry" }),
+    });
+    expect(outcomes[0].status).toBe("warmed");
+    expect(existsSync(dir)).toBe(true);
+  });
+
+  it("never removes a path that is not an npx cache entry", async () => {
+    const stray = join(cacheDir, "_npx", "not-a-hash");
+    mkdirSync(stray, { recursive: true });
+    await prewarmNpxPackages([group("alpha")], {
+      env,
+      runner: async () => ({ ok: false, error: "timed out" }),
+    });
+    expect(existsSync(stray)).toBe(true);
+  });
+
+  it("skips remaining groups once the total time budget is spent", async () => {
     let now = 0;
     const spy = vi.spyOn(Date, "now").mockImplementation(() => now);
     try {
-      const outcomes = prewarmNpxPackages([group("alpha"), group("beta")], {
+      const outcomes = await prewarmNpxPackages([group("alpha"), group("beta")], {
+        env,
         totalTimeoutMs: 100,
-        runner: () => {
+        runner: async () => {
           now += 500;
           return { ok: true };
         },
@@ -244,25 +405,30 @@ describe("prewarmSharedNpxCache", () => {
     ro: stdio("npx", ["-y", "pkg@latest"], { TOOL_GROUPS: "ro" }),
     rw: stdio("npx", ["-y", "pkg@latest"], { TOOL_GROUPS: "rw" }),
   };
+  const env: NodeJS.ProcessEnv = { NPM_CONFIG_CACHE: join(tmpdir(), "air-nonexistent-cache") };
 
-  it("performs no work when nothing collides", () => {
-    const runner = vi.fn(() => ({ ok: true }));
-    const report = prewarmSharedNpxCache({ solo: stdio("npx", ["-y", "pkg@latest"]) }, { runner });
+  it("performs no work when nothing collides", async () => {
+    const runner = vi.fn(async () => ({ ok: true }));
+    const report = await prewarmSharedNpxCache(
+      { solo: stdio("npx", ["-y", "pkg@latest"]) },
+      { runner, env }
+    );
     expect(runner).not.toHaveBeenCalled();
     expect(report).toEqual({ outcomes: [], warnings: [] });
   });
 
-  it("warms a collision group and emits no warnings on success", () => {
-    const runner = vi.fn(() => ({ ok: true }));
-    const report = prewarmSharedNpxCache(colliding, { runner });
+  it("warms a collision group and emits no warnings on success", async () => {
+    const runner = vi.fn(async () => ({ ok: true }));
+    const report = await prewarmSharedNpxCache(colliding, { runner, env });
     expect(runner).toHaveBeenCalledTimes(1);
     expect(report.outcomes[0].status).toBe("warmed");
     expect(report.warnings).toEqual([]);
   });
 
-  it("names the packages and the affected servers when a prewarm fails", () => {
-    const report = prewarmSharedNpxCache(colliding, {
-      runner: () => ({ ok: false, error: "timed out" }),
+  it("names the packages and the affected servers when a prewarm fails", async () => {
+    const report = await prewarmSharedNpxCache(colliding, {
+      env,
+      runner: async () => ({ ok: false, error: "timed out" }),
     });
     expect(report.warnings).toHaveLength(1);
     expect(report.warnings[0]).toContain("pkg@latest");
@@ -270,20 +436,25 @@ describe("prewarmSharedNpxCache", () => {
     expect(report.warnings[0]).toContain("timed out");
   });
 
-  it("does no I/O when disabled by option or by AIR_NPX_PREWARM", () => {
-    const runner = vi.fn(() => ({ ok: true }));
-    expect(prewarmSharedNpxCache(colliding, { runner, enabled: false }).outcomes[0].status).toBe(
-      "skipped"
-    );
-    expect(
-      prewarmSharedNpxCache(colliding, { runner, env: { AIR_NPX_PREWARM: "0" } }).outcomes[0].status
-    ).toBe("skipped");
+  it("does no I/O when disabled by option or by AIR_NPX_PREWARM", async () => {
+    const runner = vi.fn(async () => ({ ok: true }));
+    const byOption = await prewarmSharedNpxCache(colliding, { runner, env, enabled: false });
+    expect(byOption.outcomes[0].status).toBe("skipped");
+    const byEnv = await prewarmSharedNpxCache(colliding, {
+      runner,
+      env: { ...env, AIR_NPX_PREWARM: "0" },
+    });
+    expect(byEnv.outcomes[0].status).toBe("skipped");
     expect(runner).not.toHaveBeenCalled();
   });
 
-  it("lets an explicit option override the environment", () => {
-    const runner = vi.fn(() => ({ ok: true }));
-    prewarmSharedNpxCache(colliding, { runner, enabled: true, env: { AIR_NPX_PREWARM: "0" } });
+  it("lets an explicit option override the environment", async () => {
+    const runner = vi.fn(async () => ({ ok: true }));
+    await prewarmSharedNpxCache(colliding, {
+      runner,
+      enabled: true,
+      env: { ...env, AIR_NPX_PREWARM: "0" },
+    });
     expect(runner).toHaveBeenCalledTimes(1);
   });
 });
