@@ -35,6 +35,7 @@ import {
   writeManifest,
   parseQualifiedId,
   resolveReference,
+  prewarmSharedNpxCache,
 } from "@pulsemcp/air-core";
 import { scanLocalSkills } from "./scan-local-skills.js";
 
@@ -269,6 +270,17 @@ export class ClaudeAdapter implements AgentAdapter {
     );
     writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig, null, 2) + "\n");
     configFiles.push(mcpConfigPath);
+
+    // 4b. Prewarm npx cache entries shared by two or more activated servers.
+    //    Without this, servers whose launch commands resolve to the same
+    //    `_npx/<hash>` directory install into it concurrently on first launch
+    //    and can corrupt each other (ENOTEMPTY), killing the whole cohort.
+    for (const warning of prewarmSharedNpxCache(translatedServers, {
+      cwd: targetDir,
+      enabled: options?.prewarmNpxCache,
+    }).warnings) {
+      console.warn(warning);
+    }
 
     // 5. Inject skills + references into .claude/skills/<short>/
     const materializedSkillShortIds: string[] = [];

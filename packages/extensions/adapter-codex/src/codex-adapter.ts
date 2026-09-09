@@ -35,6 +35,7 @@ import {
   writeManifest,
   parseQualifiedId,
   resolveReference,
+  prewarmSharedNpxCache,
 } from "@pulsemcp/air-core";
 import { scanLocalSkills } from "./scan-local-skills.js";
 
@@ -358,6 +359,17 @@ export class CodexAdapter implements AgentAdapter {
       managedHookIds,
       this.collectOAuthCallbackUrl(translatedServers)
     );
+
+    // 6b. Prewarm npx cache entries shared by two or more activated servers.
+    //    Without this, servers whose launch commands resolve to the same
+    //    `_npx/<hash>` directory install into it concurrently on first launch
+    //    and can corrupt each other (ENOTEMPTY), killing the whole cohort.
+    for (const warning of prewarmSharedNpxCache(translatedServers, {
+      cwd: targetDir,
+      enabled: options?.prewarmNpxCache,
+    }).warnings) {
+      console.warn(warning);
+    }
 
     // 7. Persist the updated manifest (shortnames — keyed by filesystem dir).
     //    Only record skills/hooks that were actually materialized so the manifest

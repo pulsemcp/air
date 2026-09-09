@@ -402,6 +402,15 @@ export interface PrepareSessionOptions {
    * an MCP server) should set this to true.
    */
   skipSubagentMerge?: boolean;
+  /**
+   * Prewarm the npx cache for packages shared by two or more activated MCP
+   * servers, so those servers do not run concurrent `npm install`s into the
+   * same `_npx/<hash>` directory when the agent starts them.
+   *
+   * Defaults to enabled; set false (or `AIR_NPX_PREWARM=0`) to keep
+   * `prepareSession` free of network I/O.
+   */
+  prewarmNpxCache?: boolean;
 }
 
 export interface CleanSessionOptions {

@@ -70,6 +70,16 @@ export interface PrepareSessionOptions {
    */
   skipSubagentMerge?: boolean;
   /**
+   * Prewarm the npx cache for packages shared by two or more activated MCP
+   * servers, so the agent does not start concurrent installs into the same
+   * `_npx/<hash>` directory. Defaults to enabled; `AIR_NPX_PREWARM=0` also
+   * turns it off.
+   *
+   * The prewarm writes to this process's `NPM_CONFIG_CACHE`, so run the agent
+   * with the same npm cache you run `prepareSession` with.
+   */
+  prewarmNpxCache?: boolean;
+  /**
    * Parsed CLI option values contributed by extensions.
    * Passed through to transforms via TransformContext.options.
    */
@@ -249,6 +259,7 @@ export async function prepareSession(
       hookOverrides,
       pluginOverrides,
       skipSubagentMerge: options.skipSubagentMerge,
+      prewarmNpxCache: options.prewarmNpxCache,
     }
   );
 

@@ -8,6 +8,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **MCP servers that share one `npx` package no longer corrupt each other's install when the agent starts them concurrently.** `npx` names its install directory `<npm cache>/_npx/<hash>` from the package spec alone, so two servers whose launch commands resolve to the same spec target the *same* directory even when they differ in every other way. Starting them together against a cold cache runs two `npm install`s into that directory at once, and one process `rmdir`s a tree the other is still writing:
+
+  ```
+  npm error code ENOTEMPTY
+  npm error syscall rmdir
+  npm error path .../_npx/dbbb2997d8a4f060/node_modules/<pkg>/shared/<dep>
+  ```
+
+  The corrupted tree is shared, so the failure takes down every server in the group rather than one — an orchestrator sees the whole session die at MCP connection time. Isolating the npm cache per working directory does not help, because the colliding servers live in the *same* working directory.
+
+  `prepareSession()` now groups the activated stdio servers by the npx package spec they resolve to and installs each *shared* spec exactly once, serially, before it returns — so every server finds a satisfying install and writes nothing when it launches. Implemented in `@pulsemcp/air-core` (`planNpxPrewarm`, `prewarmNpxPackages`, `prewarmSharedNpxCache`) and wired into the Claude, Codex and Cursor adapters.
+
+  - **Only collisions are prewarmed.** A package with a single consumer has nothing to race with, so the common case does no extra work and performs no I/O.
+  - **Nothing is guessed.** The spec parser handles `-y`, `-p/--package`, `-c/--call`, `--`, `npm exec`/`npm x`, and absolute or `.cmd` paths to `npx`; an unrecognized flag (npx forwards arbitrary npm config as `--key value`, so `--registry https://…` would otherwise look like a package spec) makes the invocation unparseable rather than mis-grouped, and a spec still holding an unresolved `${VAR}` is skipped rather than installed. `uvx`, `docker` and other non-npx commands are untouched.
+  - **Failure is never fatal.** An offline registry, a private package, or a timeout prints a warning naming the packages and the affected servers; preparation continues and the caller is left exactly where it would have been without the prewarm. Per-group and total time budgets bound the work.
+  - **Opt out** with `AIR_NPX_PREWARM=0`, or `prewarmNpxCache: false` on `prepareSession()` — for air-gapped environments where `air prepare` must not reach the network.
+  - **Orchestrators must run `air prepare` and the agent with the same `NPM_CONFIG_CACHE`.** The prewarm writes to the cache the preparing process is configured with; launching the agent with a different one warms one directory and reads another. Documented in `docs/guides/configuring-mcp-servers.md`.
+
 - **A `SKILL.md` whose frontmatter block has an opening `---` but no closing `---` no longer loses every key it parsed.** `readFrontmatter` — the minimal frontmatter reader behind `scanLocalSkills` in the Claude, Codex and Cursor adapters — had two exits that disagreed: reaching the closing delimiter returned the accumulated key/value pairs, while running off the end of the file returned an empty map. An unterminated block therefore took the second path and discarded everything, so the skill surfaced in the local-skills scan with no title and the `(local skill — no description)` placeholder instead of its real metadata. Both exits now return what was parsed. Content after a well-formed closing `---` is still excluded, and the `@pulsemcp/air-adapter-pi` copy already behaved this way — all four adapter copies of the function are byte-identical again. Resolves [#143](https://github.com/pulsemcp/air/issues/143).
 
 ### Changed

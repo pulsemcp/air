@@ -34,6 +34,7 @@ import {
   writeManifest,
   parseQualifiedId,
   resolveReference,
+  prewarmSharedNpxCache,
 } from "@pulsemcp/air-core";
 import { scanLocalSkills } from "./scan-local-skills.js";
 
@@ -373,6 +374,17 @@ export class CursorAdapter implements AgentAdapter {
       this.translateMcpServersByShort(translatedServers),
       diff.staleMcpServers
     );
+
+    // 6a. Prewarm npx cache entries shared by two or more activated servers.
+    //    Without this, servers whose launch commands resolve to the same
+    //    `_npx/<hash>` directory install into it concurrently on first launch
+    //    and can corrupt each other (ENOTEMPTY), killing the whole cohort.
+    for (const warning of prewarmSharedNpxCache(translatedServers, {
+      cwd: targetDir,
+      enabled: options?.prewarmNpxCache,
+    }).warnings) {
+      console.warn(warning);
+    }
 
     // 6b. Write `.cursor/hooks.json`: AIR-owned hook registrations (tagged with
     //     `_air_hook_id`), merged into any user-authored hooks.

@@ -69,6 +69,24 @@ export type { QualifiedId, ReferenceResolution } from "./scope.js";
 export { stripScopes, ShortnameCollisionError } from "./strip-scopes.js";
 export type { ShortnameCollision } from "./strip-scopes.js";
 
+// npx cache prewarming (prevents concurrent-install races between MCP servers
+// whose launch commands resolve to the same npx cache entry)
+export {
+  parseNpxPackageSpecs,
+  npxCacheKey,
+  planNpxPrewarm,
+  prewarmNpxPackages,
+  prewarmSharedNpxCache,
+  isNpxPrewarmEnabled,
+} from "./npx-cache.js";
+export type {
+  NpxPrewarmGroup,
+  NpxPrewarmOutcome,
+  NpxPrewarmReport,
+  PrewarmNpxOptions,
+  PrewarmRunResult,
+} from "./npx-cache.js";
+
 // x-config deep-merge (used by hook materialization)
 export { mergeXConfig } from "./x-config.js";
 

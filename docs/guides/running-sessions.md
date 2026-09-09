@@ -164,6 +164,7 @@ The adapter argument is required — it specifies which agent adapter to use (e.
 4. Calls the adapter's `prepareSession()`:
    - Loads the prior-run manifest (if any) and cleans up stale artifacts — see [Cleanup between runs](#cleanup-between-runs)
    - Writes `.mcp.json` to the target directory (merges with existing user-added entries; replaces AIR-managed ones)
+   - Prewarms the npx cache for any package two or more activated servers share, so those servers do not run concurrent installs into the same cache directory when the agent starts them — see [Servers that share one npx package](configuring-mcp-servers.md#servers-that-share-one-npx-package)
    - Copies skills into the agent's skill directory
    - Copies hook directories into the agent's hook directory
    - Copies referenced documents
