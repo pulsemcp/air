@@ -39,6 +39,8 @@ When run in a TTY, `air start` opens an interactive terminal UI where you can:
 
 The footer shows a cross-artifact selection summary so you can see what's selected across all types.
 
+The TUI opens on what is already installed in the current directory. After the first `air start`, every skill, MCP server, and hook AIR installed on the previous run (recorded in AIR's per-directory manifest by the same adapter) is preselected, and so is every plugin whose skills, MCP servers, and hooks are all installed. Pressing Enter without changing anything leaves the directory as it is. On the first run in a directory, when AIR has installed nothing there yet, the TUI preselects the root's defaults instead.
+
 Skills that are already checked into the working directory under `.claude/skills/` show up in the Skills tab with a 🔒 marker and cannot be toggled. They're always active (the adapter never overwrites them). To disable one, remove or move its directory in the repo. See [Local skills tracked in the repo](managing-skills.md#local-skills-tracked-in-the-repo) for details.
 
 When not in a TTY (e.g., in a CI pipeline) or when `--skip-confirmation` is passed, the TUI is skipped and the agent launches with root defaults.
@@ -142,9 +144,9 @@ If you have [roots](roots.md) configured, activate one to scope the session:
 air start claude --root web-app
 ```
 
-This activates only the MCP servers, skills, plugins, and hooks listed in the root's defaults. Without `--root`, `air start` auto-detects the root from the current directory's git context and pre-selects the root's defaults in the TUI.
+This activates only the MCP servers, skills, plugins, and hooks listed in the root's defaults. Without `--root`, `air start` auto-detects the root from the current directory's git context and pre-selects the root's defaults in the TUI (on the first run in a directory; after that the TUI pre-selects what is installed — see [Interactive TUI](#interactive-tui)).
 
-When a root has subagent roots (other roots whose `default_in_roots` lists it), the TUI pre-selects MCP servers, skills, hooks, and plugins from both the parent and its subagents (union). The `--dry-run` output also reflects this merged view. Use `--no-subagent-merge` to disable this behavior.
+When a root has subagent roots (other roots whose `default_in_roots` lists it), the root defaults include MCP servers, skills, hooks, and plugins from both the parent and its subagents (union). The `--dry-run` output also reflects this merged view. Use `--no-subagent-merge` to disable this behavior.
 
 ## air prepare — programmatic sessions
 

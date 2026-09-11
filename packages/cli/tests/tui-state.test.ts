@@ -772,3 +772,109 @@ describe("buildInitialState with subagent merge", () => {
     expect(state.items.plugins.find((i) => i.id === "sub-plugin")?.selected).toBe(false);
   });
 });
+
+describe("buildInitialState with installed artifacts", () => {
+  const artifacts = makeArtifacts({
+    mcp: {
+      "default-server": { type: "stdio", command: "node", description: "d" },
+      "picked-server": { type: "stdio", command: "node", description: "p" },
+    },
+    skills: {
+      "default-skill": { description: "d", path: "/skills/default-skill" },
+      "picked-skill": { description: "p", path: "/skills/picked-skill" },
+    },
+    hooks: {
+      "default-hook": { description: "d", path: "/hooks/default-hook" },
+      "picked-hook": { description: "p", path: "/hooks/picked-hook" },
+    },
+    plugins: {
+      "default-plugin": { description: "d" },
+      "picked-plugin": { description: "p" },
+    },
+  });
+  const root = {
+    description: "r",
+    default_mcp_servers: ["default-server"],
+    default_skills: ["default-skill"],
+    default_hooks: ["default-hook"],
+    default_plugins: ["default-plugin"],
+  };
+  const selectedIn = (state: ReturnType<typeof buildInitialState>) => ({
+    mcp: state.items.mcp.filter((i) => i.selected).map((i) => i.id),
+    skills: state.items.skills.filter((i) => i.selected).map((i) => i.id),
+    hooks: state.items.hooks.filter((i) => i.selected).map((i) => i.id),
+    plugins: state.items.plugins.filter((i) => i.selected).map((i) => i.id),
+  });
+
+  it("preselects root defaults when nothing is installed yet (first run)", () => {
+    const state = buildInitialState(artifacts, root, "r", false, false, undefined, undefined);
+    expect(selectedIn(state)).toEqual({
+      mcp: ["default-server"],
+      skills: ["default-skill"],
+      hooks: ["default-hook"],
+      plugins: ["default-plugin"],
+    });
+  });
+
+  it("preselects what is installed instead of root defaults, in every category", () => {
+    const state = buildInitialState(artifacts, root, "r", false, false, undefined, {
+      mcpServers: ["picked-server"],
+      skills: ["picked-skill"],
+      hooks: ["picked-hook"],
+      plugins: ["picked-plugin"],
+    });
+    expect(selectedIn(state)).toEqual({
+      mcp: ["picked-server"],
+      skills: ["picked-skill"],
+      hooks: ["picked-hook"],
+      plugins: ["picked-plugin"],
+    });
+    // Enter without toggling hands the installed set straight back.
+    expect(getSelectedIds(state)).toEqual({
+      mcpServers: ["picked-server"],
+      skills: ["picked-skill"],
+      hooks: ["picked-hook"],
+      plugins: ["picked-plugin"],
+    });
+  });
+
+  it("preselects nothing in a category the last run left empty", () => {
+    const state = buildInitialState(artifacts, root, "r", false, false, undefined, {
+      mcpServers: [],
+      skills: [],
+      hooks: [],
+      plugins: [],
+    });
+    expect(selectedIn(state)).toEqual({ mcp: [], skills: [], hooks: [], plugins: [] });
+  });
+
+  it("keeps local skills locked and selected whatever is installed", () => {
+    const state = buildInitialState(
+      artifacts,
+      root,
+      "r",
+      false,
+      false,
+      {
+        skills: [
+          {
+            id: "local-only",
+            description: "Checked into the repo",
+            path: "/repo/.claude/skills/local-only",
+          },
+        ],
+      },
+      { mcpServers: [], skills: ["picked-skill"], hooks: [], plugins: [] }
+    );
+
+    const local = state.items.skills.find((i) => i.id === "local-only");
+    expect(local?.readOnly).toBe(true);
+    expect(local?.selected).toBe(true);
+    expect(state.items.skills.map((i) => [i.id, i.selected, i.readOnly ?? false])).toEqual([
+      ["default-skill", false, false],
+      ["local-only", true, true],
+      ["picked-skill", true, false],
+    ]);
+    expect(getSelectedIds(state).skills).toEqual(["picked-skill"]);
+  });
+});

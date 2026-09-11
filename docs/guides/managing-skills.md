@@ -187,6 +187,8 @@ If your repository already contains skills under `.claude/skills/` (for example,
 - **Read-only in the TUI.** You cannot toggle a local skill off from `air start`. Space, `a`, `n`, and `o` all skip read-only items.
 - **Disable by removing the directory.** To stop activating a local skill, delete or move its directory under `.claude/skills/`. A catalog version with the same ID can then be selected normally.
 
+Skills that AIR itself copied into `.claude/skills/` on an earlier `air start` or `air prepare` are not local skills. AIR tracks them in its per-directory manifest, so the TUI shows them as normal catalog entries, preselected because they are installed, and you can toggle them.
+
 If a local skill's ID matches a catalog skill, the catalog entry is replaced in the TUI by the read-only local entry (since the adapter would not write the catalog version anyway).
 
 ### Selecting specific skills

@@ -1,4 +1,5 @@
 import type {
+  InstalledArtifacts,
   LocalArtifacts,
   ResolvedArtifacts,
   RootEntry,
@@ -109,24 +110,32 @@ export function getMergedDefaults(
   };
 }
 
+/**
+ * Build the selector's initial state. Items are preselected from
+ * `installedArtifacts` — what AIR already installed in the target directory —
+ * when it is provided, so the TUI opens on the current on-disk state.
+ * Without it (first run in a directory), preselection falls back to the
+ * root's defaults.
+ */
 export function buildInitialState(
   artifacts: ResolvedArtifacts,
   root?: RootEntry,
   rootId?: string,
   rootAutoDetected = false,
   skipSubagentMerge = false,
-  localArtifacts?: LocalArtifacts
+  localArtifacts?: LocalArtifacts,
+  installedArtifacts?: InstalledArtifacts
 ): TuiState {
   const buildItems = (
     entries: Record<string, { description?: string; title?: string }>,
-    defaults?: string[]
+    preselected?: string[]
   ): ArtifactItem[] => {
-    const defaultSet = defaults ? new Set(defaults) : null;
+    const preselectedSet = preselected ? new Set(preselected) : null;
     return Object.entries(entries)
       .map(([id, entry]) => ({
         id,
         description: entry.description || entry.title || "(no description)",
-        selected: defaultSet ? defaultSet.has(id) : false,
+        selected: preselectedSet ? preselectedSet.has(id) : false,
       }))
       .sort((a, b) => a.id.localeCompare(b.id));
   };
@@ -146,14 +155,15 @@ export function buildInitialState(
   const hookDefaults = merged.hookIds.length > 0 ? merged.hookIds : root?.default_hooks;
   const pluginDefaults = merged.pluginIds.length > 0 ? merged.pluginIds : root?.default_plugins;
 
+  // What's already installed in the target wins over root defaults.
   const items: Record<ArtifactCategory, ArtifactItem[]> = {
-    mcp: buildItems(artifacts.mcp, mcpDefaults),
+    mcp: buildItems(artifacts.mcp, installedArtifacts?.mcpServers ?? mcpDefaults),
     skills: mergeLocalSkills(
-      buildItems(artifacts.skills, skillDefaults),
+      buildItems(artifacts.skills, installedArtifacts?.skills ?? skillDefaults),
       localArtifacts?.skills ?? []
     ),
-    hooks: buildItems(artifacts.hooks, hookDefaults),
-    plugins: buildItems(artifacts.plugins, pluginDefaults),
+    hooks: buildItems(artifacts.hooks, installedArtifacts?.hooks ?? hookDefaults),
+    plugins: buildItems(artifacts.plugins, installedArtifacts?.plugins ?? pluginDefaults),
   };
 
   const tabs = (

@@ -1,5 +1,6 @@
 import * as readline from "readline";
 import type {
+  InstalledArtifacts,
   LocalArtifacts,
   ResolvedArtifacts,
   RootEntry,
@@ -80,7 +81,8 @@ export async function runInteractiveSelector(
   rootId?: string,
   rootAutoDetected = false,
   skipSubagentMerge = false,
-  localArtifacts?: LocalArtifacts
+  localArtifacts?: LocalArtifacts,
+  installedArtifacts?: InstalledArtifacts
 ): Promise<TuiResult | null> {
   const state = buildInitialState(
     artifacts,
@@ -88,7 +90,8 @@ export async function runInteractiveSelector(
     rootId,
     rootAutoDetected,
     skipSubagentMerge,
-    localArtifacts
+    localArtifacts,
+    installedArtifacts
   );
 
   if (state.tabs.length === 0) {

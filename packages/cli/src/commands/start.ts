@@ -6,6 +6,7 @@ import {
   detectRoot,
   computeMergedDefaults,
   resolveCategoryOverride,
+  getInstalledArtifacts,
   type ResolvedArtifacts,
   type RootEntry,
 } from "@pulsemcp/air-sdk";
@@ -252,13 +253,26 @@ export function startCommand(): Command {
         let tuiPlugins = selectedPlugins;
 
         if (isTTY && !options.skipConfirmation && !hasArtifactFlags) {
+          // Open the TUI on what AIR already installed here; null (first run)
+          // falls back to root defaults.
+          const installed = getInstalledArtifacts({
+            target: process.cwd(),
+            adapter: agent,
+            artifacts: result.artifacts,
+            prefer: {
+              skills: merged.skillIds,
+              mcpServers: merged.mcpServerIds,
+              hooks: merged.hookIds,
+            },
+          });
           const tuiResult = await runInteractiveSelector(
             result.artifacts,
             root,
             rootId,
             rootAutoDetected,
             skipSubagentMerge,
-            result.localArtifacts
+            result.localArtifacts,
+            installed ?? undefined
           );
 
           if (!tuiResult) {

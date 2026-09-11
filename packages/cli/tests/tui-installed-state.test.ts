@@ -1,0 +1,197 @@
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { resolve, join } from "path";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "fs";
+import { tmpdir } from "os";
+import {
+  computeMergedDefaults,
+  getInstalledArtifacts,
+  prepareSession,
+  startSession,
+} from "@pulsemcp/air-sdk";
+import { buildInitialState, getSelectedIds } from "../src/tui/types.js";
+import { render } from "../src/tui/render.js";
+
+// eslint-disable-next-line no-control-regex
+const ANSI_RE = /\x1B\[[0-9;]*[A-Za-z]/g;
+
+const tempDirs: string[] = [];
+let airHomeDir: string;
+let originalAirHome: string | undefined;
+
+beforeEach(() => {
+  airHomeDir = resolve(
+    tmpdir(),
+    `air-home-tui-installed-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  );
+  originalAirHome = process.env.AIR_HOME;
+  process.env.AIR_HOME = airHomeDir;
+});
+
+afterEach(() => {
+  for (const dir of [...tempDirs, airHomeDir]) {
+    if (existsSync(dir)) rmSync(dir, { recursive: true, force: true });
+  }
+  tempDirs.length = 0;
+  if (originalAirHome === undefined) delete process.env.AIR_HOME;
+  else process.env.AIR_HOME = originalAirHome;
+});
+
+function createTemp(files: Record<string, unknown>): string {
+  const dir = resolve(
+    tmpdir(),
+    `air-cli-tui-installed-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  );
+  mkdirSync(dir, { recursive: true });
+  tempDirs.push(dir);
+  for (const [name, content] of Object.entries(files)) {
+    const path = resolve(dir, name);
+    mkdirSync(resolve(path, ".."), { recursive: true });
+    writeFileSync(
+      path,
+      typeof content === "string" ? content : JSON.stringify(content, null, 2)
+    );
+  }
+  return dir;
+}
+
+const skillMd = (id: string) =>
+  `---\nname: ${id}\ndescription: The ${id} skill\n---\n`;
+
+function setup() {
+  const catalog = createTemp({
+    "air.json": {
+      name: "test",
+      skills: ["./skills.json"],
+      mcp: ["./mcp.json"],
+      roots: ["./roots.json"],
+    },
+    "skills.json": {
+      alpha: { description: "Alpha", path: "skills/alpha", default_in_roots: ["web"] },
+      beta: { description: "Beta", path: "skills/beta", default_in_roots: ["web"] },
+      gamma: { description: "Gamma", path: "skills/gamma" },
+    },
+    "mcp.json": {
+      github: { type: "stdio", command: "gh-mcp", default_in_roots: ["web"] },
+      slack: { type: "stdio", command: "slack-mcp" },
+    },
+    "roots.json": { web: { description: "Web app" } },
+    "skills/alpha/SKILL.md": skillMd("alpha"),
+    "skills/beta/SKILL.md": skillMd("beta"),
+    "skills/gamma/SKILL.md": skillMd("gamma"),
+  });
+  const target = createTemp({
+    ".claude/skills/checked-in/SKILL.md": skillMd("checked-in"),
+  });
+  return { config: join(catalog, "air.json"), target };
+}
+
+/** Enter the selector the way `air start claude` does and return its state. */
+async function enterSelector(config: string, target: string) {
+  const result = await startSession("claude", {
+    config,
+    root: "web",
+    checkAvailability: false,
+    localScanDir: target,
+  });
+  const merged = computeMergedDefaults(result.root, result.artifacts);
+  const installed = getInstalledArtifacts({
+    target,
+    adapter: "claude",
+    artifacts: result.artifacts,
+    prefer: {
+      skills: merged.skillIds,
+      mcpServers: merged.mcpServerIds,
+      hooks: merged.hookIds,
+    },
+  });
+  return buildInitialState(
+    result.artifacts,
+    result.root,
+    "web",
+    false,
+    false,
+    result.localArtifacts,
+    installed ?? undefined
+  );
+}
+
+function selectedRows(state: ReturnType<typeof buildInitialState>) {
+  return {
+    mcp: state.items.mcp.filter((i) => i.selected).map((i) => i.id),
+    skills: state.items.skills
+      .filter((i) => i.selected)
+      .map((i) => (i.readOnly ? `${i.id} (locked)` : i.id)),
+  };
+}
+
+function onDisk(target: string) {
+  const mcpJson = JSON.parse(readFileSync(join(target, ".mcp.json"), "utf-8"));
+  return {
+    skills: readdirSync(join(target, ".claude", "skills")).sort(),
+    mcp: Object.keys(mcpJson.mcpServers).sort(),
+  };
+}
+
+describe("air start TUI preselection follows what is installed (#122)", () => {
+  it("preselects root defaults on the first run, then the prior selection on the next", async () => {
+    const { config, target } = setup();
+
+    // Run 1 — nothing installed yet: root defaults, plus the locked local skill.
+    const first = await enterSelector(config, target);
+    expect(selectedRows(first)).toEqual({
+      mcp: ["@local/github"],
+      skills: ["@local/alpha", "@local/beta", "checked-in (locked)"],
+    });
+
+    // The user picks a non-default set; AIR writes it to disk.
+    await prepareSession({
+      config,
+      root: "web",
+      target,
+      adapter: "claude",
+      skills: ["@local/alpha", "@local/gamma"],
+      mcpServers: ["@local/slack"],
+    });
+    expect(onDisk(target)).toEqual({
+      skills: ["alpha", "checked-in", "gamma"],
+      mcp: ["slack"],
+    });
+
+    // Run 2 — the TUI opens on what is on disk, not on the root defaults.
+    const second = await enterSelector(config, target);
+    expect(selectedRows(second)).toEqual({
+      mcp: ["@local/slack"],
+      skills: ["@local/alpha", "@local/gamma", "checked-in (locked)"],
+    });
+    const skillsTab = second.tabs.indexOf("skills");
+    second.activeTab = skillsTab;
+    const rendered = render(second, 10).map((l) => l.replace(ANSI_RE, ""));
+    expect(rendered).toContain("  ● @local/gamma — Gamma");
+    expect(rendered).toContain("  ○ @local/beta — Beta");
+    // AIR's own copies are not mistaken for skills checked into the repo.
+    expect(rendered.filter((l) => l.includes("🔒"))).toEqual([
+      expect.stringContaining("local skills are tracked"),
+      "  🔒 checked-in — The checked-in skill",
+    ]);
+
+    // Enter without toggling anything leaves the directory exactly as it was.
+    await prepareSession({
+      config,
+      root: "web",
+      target,
+      adapter: "claude",
+      ...getSelectedIds(second),
+    });
+    expect(onDisk(target)).toEqual({
+      skills: ["alpha", "checked-in", "gamma"],
+      mcp: ["slack"],
+    });
+  });
+});
