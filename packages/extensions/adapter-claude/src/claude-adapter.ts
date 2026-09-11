@@ -32,11 +32,17 @@ import {
   diffManifest,
   getManifestPath,
   loadManifest,
+  manifestSkillsAreAirOwned,
   writeManifest,
   parseQualifiedId,
   resolveReference,
 } from "@pulsemcp/air-core";
 import { scanLocalSkills } from "./scan-local-skills.js";
+import {
+  previousSkillOwnership,
+  relinquishedSkillMessage,
+  unverifiedSkillsMessage,
+} from "./skill-ownership.js";
 
 /**
  * A single activated artifact: the qualified ID resolved from input, plus the
@@ -238,7 +244,16 @@ export class ClaudeAdapter implements AgentAdapter {
 
     // 3. Reconcile against prior manifest using shortnames — those are the keys
     //    used for filesystem materialization and stored in the manifest.
-    const diff = diffManifest(prevManifest, {
+    //    A version 1 manifest may claim skill directories AIR never created
+    //    (#168); only the entries it can vouch for are carried forward.
+    const skillsDir = join(targetDir, ".claude", "skills");
+    const prevSkills = previousSkillOwnership(prevManifest, skillsDir, artifacts);
+    for (const id of prevSkills.relinquished) {
+      console.warn(relinquishedSkillMessage(`.claude/skills/${id}`));
+    }
+    const ownedPrevManifest =
+      prevManifest && { ...prevManifest, skills: [...prevSkills.owned] };
+    const diff = diffManifest(ownedPrevManifest, {
       skills: skillShortIds,
       hooks: hookShortIds,
       mcpServers: mcpShortIds,
@@ -278,7 +293,12 @@ export class ClaudeAdapter implements AgentAdapter {
       const skillTargetDir = join(targetDir, ".claude", "skills", a.short);
 
       if (existsSync(skillTargetDir)) {
-        materializedSkillShortIds.push(a.short);
+        // Re-claim only a directory an earlier run created. One AIR didn't
+        // create is the user's: leave it, and keep it out of the manifest so
+        // no later run deletes it (#168).
+        if (prevSkills.owned.has(a.short)) {
+          materializedSkillShortIds.push(a.short);
+        }
         continue;
       }
 
@@ -401,6 +421,10 @@ export class ClaudeAdapter implements AgentAdapter {
    *
    * Items in the manifest that no longer exist on disk are silently skipped
    * — the manifest can drift if a user removed files manually between runs.
+   *
+   * Skill entries in a version 1 manifest are the exception: that version
+   * could claim a skill directory AIR never created (#168), so they are left
+   * on disk and kept in the rewritten manifest instead of being removed.
    */
   async cleanSession(
     targetDir: string,
@@ -436,13 +460,27 @@ export class ClaudeAdapter implements AgentAdapter {
       };
     }
 
+    // A version 1 manifest may list skill directories AIR never created
+    // (#168), and there is no catalog here to check them against, so they
+    // stay on disk and in the manifest for the next prepareSession to check.
     const removedSkills: string[] = [];
+    const unverifiedSkills: string[] = [];
     if (cleanSkills) {
+      const skillsTrusted = manifestSkillsAreAirOwned(manifest);
       for (const id of manifest.skills) {
         const dir = join(targetDir, ".claude", "skills", id);
         if (!existsSync(dir)) continue;
+        if (!skillsTrusted) {
+          unverifiedSkills.push(id);
+          continue;
+        }
         if (!dryRun) rmSync(dir, { recursive: true, force: true });
         removedSkills.push(id);
+      }
+      if (unverifiedSkills.length > 0) {
+        console.warn(
+          unverifiedSkillsMessage(unverifiedSkills.map((id) => `.claude/skills/${id}`))
+        );
       }
     }
 
@@ -502,7 +540,7 @@ export class ClaudeAdapter implements AgentAdapter {
     }
 
     let manifestRemoved = false;
-    if (fullClean) {
+    if (fullClean && unverifiedSkills.length === 0) {
       // On a full clean the manifest is always removed (or would be, in
       // dry-run). Reporting `manifestRemoved: true` in dry-run keeps the
       // result shape honest for scripted consumers — they don't need to
@@ -513,17 +551,20 @@ export class ClaudeAdapter implements AgentAdapter {
         manifestRemoved = manifestFileExists;
       }
     } else if (!dryRun) {
-      writeManifest(
-        buildManifest(targetDir, {
+      writeManifest({
+        ...buildManifest(targetDir, {
           // Preserve the manifest's existing adapter when rewriting; fall back
           // to this adapter's own name for older manifests that predate the
           // adapter field.
           adapter: manifest.adapter ?? this.name,
-          skills: cleanSkills ? [] : manifest.skills,
+          skills: cleanSkills ? unverifiedSkills : manifest.skills,
           hooks: cleanHooks ? [] : manifest.hooks,
           mcpServers: cleanMcpServers ? [] : manifest.mcpServers,
-        })
-      );
+        }),
+        // Clean only drops entries, so the version still describes what is
+        // left — a version 1 manifest's skills still need checking.
+        version: manifest.version,
+      });
     }
 
     return {

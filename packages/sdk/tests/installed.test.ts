@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, beforeEach } from "vitest";
 import { resolve, join } from "path";
-import { mkdirSync, writeFileSync, rmSync, existsSync } from "fs";
+import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from "fs";
 import { tmpdir } from "os";
 import {
   buildManifest,
@@ -383,5 +383,38 @@ describe("installed state after prepareSession (Claude adapter)", () => {
     expect(second.localArtifacts?.skills.map((s) => s.id)).toEqual([
       "checked-in",
     ]);
+  });
+
+  it("keeps a checked-in skill that shares a catalog shortname local, even after a run selects it (#168)", async () => {
+    const { config, target } = setup();
+    const userBeta = join(target, ".claude", "skills", "beta", "SKILL.md");
+    mkdirSync(join(userBeta, ".."), { recursive: true });
+    writeFileSync(userBeta, "---\nname: beta\ndescription: Our own beta\n---\n");
+
+    // First run: the root's defaults, alpha + beta, are selected.
+    await prepareSession({ config, root: "web", target, adapter: "claude" });
+
+    const next = await startSession("claude", {
+      config,
+      root: "web",
+      checkAvailability: false,
+      localScanDir: target,
+    });
+    const installed = getInstalledSelection({
+      target,
+      adapter: "claude",
+      artifacts: next.artifacts,
+    });
+    expect(installed?.skills).toEqual(["@local/alpha"]);
+    expect(next.localArtifacts?.skills.map((s) => s.id)).toEqual([
+      "beta",
+      "checked-in",
+    ]);
+
+    // Confirming that selection, or deselecting everything, leaves it alone.
+    for (const skills of [installed?.skills, []]) {
+      await prepareSession({ config, root: "web", target, adapter: "claude", skills });
+    }
+    expect(readFileSync(userBeta, "utf-8")).toContain("Our own beta");
   });
 });

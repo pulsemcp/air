@@ -86,6 +86,10 @@ Handing npm an explicit spec makes it save its *own* normalization back into `de
 
 Each adapter's `prepareSession` diffs the new selection against the per-target manifest (`<airHome>/manifests/<sha256(target)>.json`) and removes manifest entries the selection omits. Anything that builds a selection for a directory AIR has already prepared — the `air start` TUI, a script — must start from what is installed (`getInstalledSelection`), not from root defaults, or a plain "confirm" silently uninstalls the previous run's picks. Skills AIR copied in also sit in the adapter's skills directory, so `listLocalArtifacts` sees them; `startSession` filters manifest-tracked ones out of `localArtifacts`.
 
+### The per-target manifest is a deletion list — record only what the adapter created
+
+Everything in a manifest's `skills` / `hooks` is `rm -rf`'d once it leaves the selection, so an adapter must never record a directory that already existed when it got there — that is how #168 deleted users' checked-in skills. From manifest `version: 2` on, `skills` is trusted as-is. Version 1 manifests may hold such claims, so `previousSkillOwnership` (each adapter's `skill-ownership.ts`, kept byte-identical across the four) re-checks their entries against the catalog. `cleanSession` has no catalog, so it leaves version 1 skills in place. Any code that rewrites a manifest while keeping its old entries must keep its `version` too, or it turns unchecked version 1 claims into trusted version 2 ones.
+
 ### Any `npm install` in a prefix prunes what the manifest does not declare
 
 This holds for bare installs, explicit-spec installs, and `--no-save` alike. Before running one against a user's directory, make sure `dependencies` describes everything in `node_modules` you intend to keep — otherwise the reconcile deletes it.
