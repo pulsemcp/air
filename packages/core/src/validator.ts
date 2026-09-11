@@ -60,7 +60,8 @@ function detectInlinePluginBodies(data: unknown): ValidationError[] {
   const errors: ValidationError[] = [];
 
   for (const [key, value] of Object.entries(data as Record<string, unknown>)) {
-    if (key === "$schema") continue;
+    // `$schema` is a string, so the object check below skips it along with any
+    // other non-entry value.
     if (!value || typeof value !== "object" || Array.isArray(value)) continue;
     const entry = value as Record<string, unknown>;
     if ("path" in entry) continue;
@@ -90,10 +91,15 @@ export function validateJson(
     return { valid: true, errors: [] };
   }
 
-  const errors: ValidationError[] = (validate.errors || []).map((err) => ({
-    path: err.instancePath || "/",
-    message: err.message || "Unknown validation error",
-  }));
+  const rawErrors = validate.errors || [];
+  const toValidationErrors = (
+    raw: typeof rawErrors
+  ): ValidationError[] =>
+    raw.map((err) => ({
+      path: err.instancePath || "/",
+      message: err.message || "Unknown validation error",
+    }));
+  const errors = toValidationErrors(rawErrors);
 
   if (schemaType === "air") {
     const legacy = detectLegacyExcludeShape(data);
@@ -112,18 +118,15 @@ export function validateJson(
       // problem AJV found with the same entry (a missing description, a
       // malformed version) is still reported.
       const replaced = new Set(inlineBodies.map((e) => e.path));
-      const rest = (validate.errors || [])
-        .filter(
+      const rest = toValidationErrors(
+        rawErrors.filter(
           (err) =>
             !(
               err.keyword === "dependencies" &&
               replaced.has(err.instancePath || "/")
             )
         )
-        .map((err) => ({
-          path: err.instancePath || "/",
-          message: err.message || "Unknown validation error",
-        }));
+      );
       return { valid: false, errors: [...inlineBodies, ...rest] };
     }
   }

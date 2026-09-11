@@ -312,7 +312,7 @@ describe("validateJson", () => {
       expect(result.valid).toBe(true);
     });
 
-    it("validates a plugin with artifact references", () => {
+    it("validates a plugin whose artifact references override its manifest", () => {
       const result = validateJson(
         {
           "my-plugin": examplePlugin("my-plugin", {

@@ -25,7 +25,7 @@
   ],
   "scripts": {
     "build": "npm run copy-schemas && tsc",
-    "copy-schemas": "cp -r ../../schemas ./schemas",
+    "copy-schemas": "rm -rf ./schemas && cp -r ../../schemas ./schemas",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",

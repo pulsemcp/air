@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { loadSchema } from "../src/schemas.js";
+import { readFileSync } from "fs";
+import { join } from "path";
+import { loadSchema, getSchemasDir } from "../src/schemas.js";
 import {
   PLUGIN_MANIFEST_FIELDS,
   PLUGIN_MANIFEST_REF_FIELDS,
@@ -11,6 +13,9 @@ import {
 // https://github.com/pulsemcp/air/issues/157. Two independent layers reject
 // them — plugins.schema.json at validation time and resolveArtifacts at
 // resolution time — so the two must agree on which fields count as a body.
+
+/** Fields that live on the plugins.json entry and are never part of the body. */
+const INDEX_LAYER_FIELDS = ["description", "path", "default_in_roots"];
 
 describe("plugin body fields", () => {
   it("matches the plugins schema's `dependencies` map field for field", () => {
@@ -28,11 +33,43 @@ describe("plugin body fields", () => {
     }
   });
 
+  it("covers every non-index property the plugins schema declares", () => {
+    // The `dependencies` check above catches updating one list and not the
+    // other. This catches updating *neither*: a new body property added to the
+    // schema without a matching dependency would silently be legal inline with
+    // no `path`, reopening the removed form one field at a time.
+    const schema = loadSchema("plugins") as {
+      $defs: { Plugin: { properties: Record<string, unknown> } };
+    };
+    const bodyProperties = Object.keys(schema.$defs.Plugin.properties).filter(
+      (f) => !INDEX_LAYER_FIELDS.includes(f)
+    );
+
+    expect(bodyProperties.sort()).toEqual([...PLUGIN_MANIFEST_FIELDS].sort());
+  });
+
+  it("covers every body property the plugin manifest schema declares", () => {
+    // The manifest is the other end of the same contract: a field it can carry
+    // that core does not know about would never be merged into the entry.
+    // plugin-manifest.schema.json has no SchemaType, so read it off disk.
+    const manifestSchema = JSON.parse(
+      readFileSync(
+        join(getSchemasDir(), "plugin-manifest.schema.json"),
+        "utf-8"
+      )
+    ) as { properties: Record<string, unknown> };
+    const manifestBody = Object.keys(manifestSchema.properties).filter(
+      (f) => !["$schema", "name", "description"].includes(f)
+    );
+
+    expect(manifestBody.sort()).toEqual([...PLUGIN_MANIFEST_FIELDS].sort());
+  });
+
   it("never treats an index-layer field as part of the body", () => {
     // These three stay on the plugins.json entry and must never require a
     // `path` — `description` is what the registry lists, and `default_in_roots`
     // is a catalog-layer decision rather than a property of the plugin.
-    for (const field of ["description", "path", "default_in_roots"]) {
+    for (const field of INDEX_LAYER_FIELDS) {
       expect(PLUGIN_MANIFEST_FIELDS).not.toContain(field);
     }
   });

@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { join } from "path";
 import { resolveArtifacts, CatalogConfigError } from "../src/config.js";
+import type { CatalogProvider } from "../src/types.js";
 import { createTempAirDir, exampleSkill, exampleMcpStdio } from "./helpers.js";
 
 let cleanup: (() => void) | undefined;
@@ -335,6 +336,79 @@ describe("plugin manifest hydration", () => {
     expect(
       warnings.find((w) => /Skipping plugins index/.test(w)),
     ).toBeUndefined();
+  });
+
+  it("hard-fails an inline-only plugin that came from a remote catalog", async () => {
+    // A consumer composing someone else's un-migrated catalog hits the same
+    // hard error as its author would — deliberately, so the plugin cannot go
+    // missing from every session without anyone being told. The remedy is on
+    // the consumer's side: pin the catalog ref, fork it, or drop it from
+    // air.json until upstream migrates.
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        skills: ["./skills.json"],
+        plugins: ["github://acme/shared/plugins/plugins.json"],
+      },
+      "skills.json": { lint: exampleSkill("lint") },
+    });
+    cleanup = c;
+
+    const provider: CatalogProvider = {
+      scheme: "github",
+      async resolve(): Promise<Record<string, unknown>> {
+        return {
+          "dev-tools": { description: "Developer tooling", skills: ["lint"] },
+        };
+      },
+    };
+
+    const warnings: string[] = [];
+    const err = await resolveArtifacts(join(dir, "air.json"), {
+      providers: [provider],
+      onWarning: (m) => warnings.push(m),
+    }).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(CatalogConfigError);
+    expect((err as Error).message).toMatch(
+      /Plugin "dev-tools" \(from github:\/\/acme\/shared\/plugins\/plugins\.json\)/,
+    );
+    expect(warnings).toEqual([]);
+  });
+
+  it("warns and drops a plugin whose path is not a string, without blaming the removed inline form", async () => {
+    // A present-but-malformed `path` is one plugin's content problem, so it
+    // must not masquerade as "declares its body inline with no path" at an
+    // entry that visibly has one.
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        skills: ["./skills.json"],
+        plugins: ["./plugins.json"],
+      },
+      "skills.json": { lint: exampleSkill("lint") },
+      "plugins.json": {
+        "dev-tools": {
+          description: "Developer tooling",
+          path: 42,
+          skills: ["lint"],
+        },
+        healthy: { description: "Healthy plugin", path: "./healthy" },
+      },
+      "healthy/.plugin/plugin.json": { skills: ["lint"] },
+    });
+    cleanup = c;
+
+    const warnings: string[] = [];
+    const artifacts = await resolveArtifacts(join(dir, "air.json"), {
+      onWarning: (m) => warnings.push(m),
+    });
+
+    expect(artifacts.plugins["@local/dev-tools"]).toBeUndefined();
+    expect(artifacts.plugins["@local/healthy"]).toBeDefined();
+    const warning = warnings.find((w) => /Plugin "dev-tools"/.test(w));
+    expect(warning).toMatch(/"path" must be a string/);
+    expect(warning).not.toMatch(/declares its body inline/);
   });
 
   it("accepts a body-less entry with no path — there is no inline body to reject", async () => {

@@ -156,7 +156,7 @@ function hydratePluginManifests(
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(entries)) {
     const entry = value as Record<string, unknown>;
-    if (typeof entry.path !== "string") {
+    if (!("path" in entry)) {
       // Removed in favor of the manifest form (deprecated v0.13.0, removed in
       // https://github.com/pulsemcp/air/issues/157): a plugin that declares its
       // body (skills, mcp_servers, hooks, version, author, …) inline on the
@@ -176,6 +176,21 @@ function hydratePluginManifests(
         );
       }
       out[key] = entry;
+      continue;
+    }
+
+    // A `path` that is present but not a string is a content problem in one
+    // plugin, not the removed inline-body form — say so rather than reporting
+    // "no path" at an entry that visibly has one, and drop just this plugin the
+    // way a broken manifest does. The schema rejects it too (`path` is typed),
+    // so this is the belt to `air validate`'s braces.
+    if (typeof entry.path !== "string") {
+      warnings.push(
+        `Plugin "${key}" (from ${source}) was dropped: "path" must be a ` +
+          `string naming the plugin directory that holds its ` +
+          `.plugin/plugin.json manifest, but it is ${typeof entry.path}. ` +
+          `Other plugins and catalogs are unaffected.`
+      );
       continue;
     }
 
