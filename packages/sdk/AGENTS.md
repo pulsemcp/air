@@ -15,6 +15,7 @@ packages/sdk/
 │   ├── list.ts               # listArtifacts() — resolve and return artifacts by type
 │   ├── start.ts              # startSession() — prepare to start an agent session
 │   ├── prepare.ts            # prepareSession() — prepare a target directory for an agent
+│   ├── installed.ts          # getInstalledSelection() — the selection matching what AIR installed in a target (from its manifest)
 │   ├── install.ts            # installExtensions() — install missing or out-of-range extensions
 │   ├── upgrade.ts            # upgradeExtensions() — pin extensions to the CLI's version line
 │   └── versions.ts           # version/range helpers shared by install, update, and upgrade
