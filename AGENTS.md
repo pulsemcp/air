@@ -82,6 +82,10 @@ The extension loader builds its resolver from `createRequire(join(airJsonDir, "_
 
 Handing npm an explicit spec makes it save its *own* normalization back into `dependencies` — a `~0.13.0` written by AIR comes back as `^0.13.1`. When the manifest is the source of truth, write it first and then run a **bare** `npm install --prefix <dir>`: npm leaves package.json byte-identical and reconciles the tree and lockfile against the ranges already there.
 
+### A selection handed to `prepareSession` uninstalls whatever it leaves out
+
+Each adapter's `prepareSession` diffs the new selection against the per-target manifest (`<airHome>/manifests/<sha256(target)>.json`) and removes manifest entries the selection omits. Anything that builds a selection for a directory AIR has already prepared — the `air start` TUI, a script — must start from what is installed (`getInstalledSelection`), not from root defaults, or a plain "confirm" silently uninstalls the previous run's picks. Skills AIR copied in also sit in the adapter's skills directory, so `listLocalArtifacts` sees them; `startSession` filters manifest-tracked ones out of `localArtifacts`.
+
 ### Any `npm install` in a prefix prunes what the manifest does not declare
 
 This holds for bare installs, explicit-spec installs, and `--no-save` alike. Before running one against a user's directory, make sure `dependencies` describes everything in `node_modules` you intend to keep — otherwise the reconcile deletes it.
