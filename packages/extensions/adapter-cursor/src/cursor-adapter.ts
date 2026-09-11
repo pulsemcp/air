@@ -238,7 +238,13 @@ export class CursorAdapter implements AgentAdapter {
     const skillPaths: string[] = [];
     const hookPaths: string[] = [];
 
-    const prevManifest = loadManifest(targetDir);
+    // A manifest another adapter wrote names that adapter's directories, not
+    // this one's: acting on it would claim or delete same-named entries here.
+    const loadedManifest = loadManifest(targetDir);
+    const prevManifest =
+      loadedManifest?.adapter !== undefined && loadedManifest.adapter !== this.name
+        ? null
+        : loadedManifest;
 
     // 1. Resolve which artifacts to activate (overrides take precedence over root defaults)
     let mcpServerIds: string[] | undefined =

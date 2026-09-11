@@ -158,7 +158,13 @@ export class PiAdapter implements AgentAdapter {
     const root = options?.root;
     const skillPaths: string[] = [];
 
-    const prevManifest = loadManifest(targetDir);
+    // A manifest another adapter wrote names that adapter's directories, not
+    // this one's: acting on it would claim or delete same-named entries here.
+    const loadedManifest = loadManifest(targetDir);
+    const prevManifest =
+      loadedManifest?.adapter !== undefined && loadedManifest.adapter !== this.name
+        ? null
+        : loadedManifest;
 
     // 1. Resolve which skills to activate (overrides take precedence over root defaults).
     let skillIds: string[] = options?.skillOverrides ?? root?.default_skills ?? [];

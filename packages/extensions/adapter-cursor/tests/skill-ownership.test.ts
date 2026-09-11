@@ -5,6 +5,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "fs";
 import { dirname, join } from "path";
@@ -12,6 +13,7 @@ import { tmpdir } from "os";
 import { CursorAdapter } from "../src/cursor-adapter.js";
 import {
   MANIFEST_VERSION,
+  buildManifest,
   loadManifest,
   writeManifest,
   type ResolvedArtifacts,
@@ -171,6 +173,27 @@ describe("CursorAdapter skill ownership (#168)", () => {
       await select(artifacts, []);
       expect(existsSync(skillDir("foo"))).toBe(false);
     });
+
+    it("ignores a manifest another adapter wrote, whose entries name that adapter's directories", async () => {
+      const artifacts = catalog();
+      writeUserSkill("foo");
+      writeManifest(
+        buildManifest(target, { adapter: "another-adapter", skills: ["foo"] })
+      );
+
+      // Deselected: not a cleanup candidate here.
+      await select(artifacts, []);
+      expect(userSkillContent("foo")).toBe(USER_CONTENT);
+
+      writeManifest(
+        buildManifest(target, { adapter: "another-adapter", skills: ["foo"] })
+      );
+      // Selected: not re-claimed either, so a later deselect can't delete it.
+      await select(artifacts, ["foo"]);
+      expect(manifestSkills()).toEqual([]);
+      await select(artifacts, []);
+      expect(userSkillContent("foo")).toBe(USER_CONTENT);
+    });
   });
 
   describe("a version 1 manifest (written before the fix)", () => {
@@ -238,6 +261,48 @@ describe("CursorAdapter skill ownership (#168)", () => {
       expect(warnedAbout(warn, "bar")).toBe(true);
       expect(manifestSkills()).toEqual([]);
     });
+
+    it("gives up an AIR copy that has gained a symlink, which AIR never writes", async () => {
+      const artifacts = catalog();
+      await select(artifacts, ["bar"]);
+      symlinkSync(join(skillDir("bar"), "SKILL.md"), join(skillDir("bar"), "LINK.md"));
+      rewriteAsVersion1(["bar"]);
+      const warn = silenceWarnings();
+
+      await select(artifacts, []);
+      expect(existsSync(join(skillDir("bar"), "SKILL.md"))).toBe(true);
+      expect(warnedAbout(warn, "bar")).toBe(true);
+    });
+
+    it("never treats a catalog skill whose path is the directory itself as AIR's copy", async () => {
+      writeUserSkill("foo");
+      // The user's checked-in skill doubles as the catalog source, so its
+      // files trivially "match" the catalog.
+      const artifacts: ResolvedArtifacts = {
+        ...catalog(),
+        skills: { "@local/foo": { description: "Foo", path: skillDir("foo") } },
+      };
+      writeManifest({
+        ...buildManifest(target, { adapter: adapter.name, skills: ["foo"] }),
+        version: 1,
+      });
+      silenceWarnings();
+
+      await select(artifacts, []);
+      expect(userSkillContent("foo")).toBe(USER_CONTENT);
+      expect(manifestSkills()).toEqual([]);
+    });
+
+    it("installs and owns an entry whose directory is gone", async () => {
+      const artifacts = catalog();
+      await select(artifacts, ["bar"]);
+      rmSync(skillDir("bar"), { recursive: true, force: true });
+      rewriteAsVersion1(["bar"]);
+
+      await select(artifacts, ["bar"]);
+      expect(existsSync(join(skillDir("bar"), "SKILL.md"))).toBe(true);
+      expect(manifestSkills()).toEqual(["bar"]);
+    });
   });
 
   describe("cleanSession", () => {
@@ -266,6 +331,24 @@ describe("CursorAdapter skill ownership (#168)", () => {
       expect(second.manifestRemoved).toBe(true);
       expect(existsSync(skillDir("bar"))).toBe(false);
       expect(userSkillContent("foo")).toBe(USER_CONTENT);
+    });
+
+    it("changes nothing on a dry run over a version 1 manifest", async () => {
+      const artifacts = catalog();
+      writeUserSkill("foo");
+      await select(artifacts, ["foo", "bar"]);
+      rewriteAsVersion1(["foo", "bar"]);
+      silenceWarnings();
+
+      const result = await adapter.cleanSession(target, { dryRun: true });
+      expect(result.removedSkills).toEqual([]);
+      expect(result.manifestRemoved).toBe(false);
+      expect(userSkillContent("foo")).toBe(USER_CONTENT);
+      expect(existsSync(skillDir("bar"))).toBe(true);
+      expect(loadManifest(target)).toMatchObject({
+        version: 1,
+        skills: ["foo", "bar"],
+      });
     });
 
     it("keeps a version 1 manifest at version 1 when skills are kept", async () => {

@@ -1,7 +1,18 @@
-import { existsSync, lstatSync, readdirSync, readFileSync, statSync } from "fs";
-import { join } from "path";
+import {
+  existsSync,
+  lstatSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  statSync,
+} from "fs";
+import { join, sep } from "path";
 import type { Manifest, ResolvedArtifacts, SkillEntry } from "@pulsemcp/air-core";
-import { manifestSkillsAreAirOwned, parseQualifiedId } from "@pulsemcp/air-core";
+import {
+  isQualified,
+  manifestSkillsAreAirOwned,
+  parseQualifiedId,
+} from "@pulsemcp/air-core";
 
 /**
  * The previous manifest's skill entries, split into the ones this run may
@@ -50,10 +61,11 @@ export function previousSkillOwnership(
 export function relinquishedSkillMessage(displayPath: string): string {
   return (
     `AIR is leaving ${displayPath} in place and no longer manages it. An ` +
-    `earlier AIR version recorded it as installed by AIR, but its files ` +
-    `don't match what AIR installs for that skill, so it may be a skill you ` +
-    `wrote (https://github.com/pulsemcp/air/issues/168). Delete it by hand ` +
-    `if you don't need it.`
+    `earlier AIR version recorded it as installed by AIR, but AIR can't ` +
+    `confirm it wrote those files (they don't match what it installs for ` +
+    `any catalog skill of that name), so it may be a skill you wrote ` +
+    `(https://github.com/pulsemcp/air/issues/168). Delete it by hand if you ` +
+    `don't need it.`
   );
 }
 
@@ -63,6 +75,10 @@ export function relinquishedSkillMessage(displayPath: string): string {
  * plus its references under `references/`, byte for byte, and nothing else.
  * Mirrors the adapter's `copyDirRecursive` + `copyReferences`. Anything that
  * can't be read counts as a mismatch.
+ *
+ * A catalog skill whose source or references live inside `skillDir` (or
+ * contain it) is skipped: it would match itself, and `skillDir` is then the
+ * user's source, never AIR's copy.
  */
 function matchesCatalogSkill(
   skillDir: string,
@@ -70,8 +86,19 @@ function matchesCatalogSkill(
   artifacts: ResolvedArtifacts
 ): boolean {
   for (const [qualified, skill] of Object.entries(artifacts.skills)) {
-    if (parseQualifiedId(qualified).id !== short) continue;
+    if (!isQualified(qualified) || parseQualifiedId(qualified).id !== short) {
+      continue;
+    }
     try {
+      const target = realpathSync(skillDir);
+      const sources = [
+        skill.path,
+        ...(skill.references ?? []).flatMap((id) => {
+          const ref = artifacts.references[id];
+          return ref && existsSync(ref.path) ? [ref.path] : [];
+        }),
+      ];
+      if (sources.some((src) => overlaps(realpathSync(src), target))) continue;
       if (sameFiles(skillDir, installedFiles(skill, skillDir, artifacts))) {
         return true;
       }
@@ -80,6 +107,10 @@ function matchesCatalogSkill(
     }
   }
   return false;
+}
+
+function overlaps(a: string, b: string): boolean {
+  return a === b || a.startsWith(b + sep) || b.startsWith(a + sep);
 }
 
 /** Target path → source path for every file AIR writes into `skillDir`. */

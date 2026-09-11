@@ -33,7 +33,10 @@ export interface Manifest {
    * field existed; new writes always include it.
    */
   adapter?: string;
-  /** Skill IDs whose `.claude/skills/<id>/` (or adapter equivalent) AIR owns. */
+  /**
+   * Skill IDs whose `.claude/skills/<id>/` (or adapter equivalent) AIR owns —
+   * i.e. created itself. Everything listed here is deleted once deselected.
+   */
   skills: string[];
   /** Hook IDs whose `.claude/hooks/<id>/` (or adapter equivalent) AIR owns. */
   hooks: string[];
@@ -190,6 +193,11 @@ export function writeManifest(
 /**
  * Build a fresh manifest from the current target and selection.
  * Undefined category fields in the selection are normalized to `[]`.
+ *
+ * The result is stamped with {@link MANIFEST_VERSION}, which promises that
+ * `selection.skills` names only directories the caller created (see
+ * {@link manifestSkillsAreAirOwned}). An adapter must never pass a skill
+ * directory that already existed when it got there.
  */
 export function buildManifest(
   targetDir: string,
