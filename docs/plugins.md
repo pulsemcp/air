@@ -14,33 +14,29 @@ Plugins don't define new artifacts inline — they reference existing artifacts 
 
 ## Index Format
 
-Plugins are registered in `plugins.json`. Each entry declares which AIR artifacts it bundles:
+Plugins are registered in `plugins.json`. Each entry is a registry record — what the plugin is, and where its body lives:
 
 ```json
 {
   "code-quality": {
-    "title": "Code Quality Suite",
     "description": "Linting, formatting, and static analysis tools bundled with coding standards skills",
-    "version": "1.2.0",
-    "skills": ["lint-fix", "format-check"],
-    "mcp_servers": ["eslint-server"],
-    "hooks": ["lint-pre-commit"],
-    "author": { "name": "Acme Engineering" },
-    "license": "MIT",
-    "keywords": ["linting", "formatting", "eslint", "prettier"]
+    "path": "./code-quality",
+    "default_in_roots": ["web-app"]
   }
 }
 ```
 
+Everything else — the artifact references the plugin bundles and its distribution metadata — lives in the manifest at `<path>/.plugin/plugin.json`. See [The Plugin Body](#the-plugin-body-pluginpluginjson).
+
 ### Artifact References
 
-Plugins declare which AIR artifacts they bundle via the `skills`, `mcp_servers`, and `hooks` arrays. These reference IDs of artifacts defined in the corresponding AIR index files (skills.json, mcp.json, hooks.json).
+Plugins declare which AIR artifacts they bundle via the `skills`, `mcp_servers`, and `hooks` arrays of their manifest. These reference IDs of artifacts defined in the corresponding AIR index files (skills.json, mcp.json, hooks.json).
 
 This declarative mapping is designed to enable CLI deduplication — if you request `--skill lint-fix --plugin code-quality` and `code-quality` already bundles `lint-fix`, the CLI can determine that only the plugin needs to be activated.
 
-### Externalizing the Body: `.plugin/plugin.json`
+### The Plugin Body: `.plugin/plugin.json`
 
-An index entry can stay a lightweight registry record — just `description`, `path`, and (optionally) `default_in_roots` — and move everything else into a manifest body at `<path>/.plugin/plugin.json`. This is AIR's vendor-neutral analog of the [Open Plugins](#open-plugins) `.plugin/plugin.json` manifest, and it keeps a large `plugins.json` from bloating as plugins accumulate artifact references and distribution metadata.
+The index entry stays a lightweight registry record — just `description`, `path`, and (optionally) `default_in_roots` — while the body lives in a manifest at `<path>/.plugin/plugin.json`. This is AIR's vendor-neutral analog of the [Open Plugins](#open-plugins) `.plugin/plugin.json` manifest, and it keeps a large `plugins.json` from bloating as plugins accumulate artifact references and distribution metadata.
 
 ```json
 // plugins.json — thin registry
@@ -76,35 +72,57 @@ At resolution time, `resolveArtifacts` reads the manifest and merges its fields 
 - **Inline wins.** Any field declared on the `plugins.json` entry takes precedence over the same field in the manifest. The manifest only fills gaps. This composes a single plugin's split definition — it is not cross-catalog later-wins.
 - **What stays in the index.** `description` (the registry needs it to list the plugin), `path`, and `default_in_roots` (root membership is a catalog-layer decision, not a property of the distributed plugin) live on the entry. Unlike Open Plugins, the manifest's component fields (`skills`, `mcp_servers`, `hooks`, `plugins`) hold AIR artifact **IDs**, not paths to bundled component directories.
 - **`name` is informational.** The authoritative plugin ID is the `plugins.json` entry key; a `name` in the manifest is accepted for Open Plugins compatibility but ignored for identity.
-- **Errors are loud.** A missing `<path>/.plugin/plugin.json`, unparseable JSON, or a reference field that isn't an array of strings fails resolution with a diagnostic that names the plugin.
+- **A broken manifest drops one plugin, loudly.** A missing `<path>/.plugin/plugin.json`, unparseable JSON, or a reference field that isn't an array of strings warns with a diagnostic that names the plugin and drops that plugin; its siblings and every other catalog still resolve.
 
-> **Deprecation (v0.13.0).** Declaring a plugin's body **inline** on the `plugins.json` entry with no `path` — putting `skills`, `mcp_servers`, `hooks`, `plugins`, `version`, `author`, and the other distribution fields directly on the index record — is deprecated. `resolveArtifacts` emits a warning naming each affected plugin and the fields to move, and the form is slated for removal in a future release ([pulsemcp/air#157](https://github.com/pulsemcp/air/issues/157)). Migrate by moving the body into `<plugin-dir>/.plugin/plugin.json` and pointing the entry at it with `path`; keep `description`, `path`, and `default_in_roots` on the index record. Inline fields layered **on top of** a `path` (overriding individual manifest fields) are **not** deprecated — that is the sanctioned override path and stays quiet.
+> **Removed: inline plugin bodies.** Declaring a plugin's body **inline** on the `plugins.json` entry with no `path` — putting `skills`, `mcp_servers`, `hooks`, `plugins`, `version`, `author`, or the other distribution fields directly on the index record — was deprecated in v0.13.0 and has been removed ([pulsemcp/air#157](https://github.com/pulsemcp/air/issues/157)). Such an entry is now rejected by `plugins.schema.json`, and `resolveArtifacts` raises a `CatalogConfigError` naming the plugin and the fields to move. Migrate by moving the body into `<plugin-dir>/.plugin/plugin.json` and pointing the entry at it with `path`; keep `description`, `path`, and `default_in_roots` on the index record. Inline fields layered **on top of** a `path` (overriding individual manifest fields) were never deprecated — that is the sanctioned override path and still resolves.
 
-During the deprecation window all three forms still resolve: a plugin may declare everything inline (no `path`, **deprecated**), externalize everything (thin index + manifest, **recommended**), or set `path` and override individual fields inline (**supported**).
+Two forms resolve: a thin index record plus a manifest (**recommended**), or a `path` with individual fields overridden inline on the entry (**supported**). A body field with no `path` is an error at both validation and resolution time.
 
 ### Plugin Composition
 
-Plugins can compose other plugins using the `plugins` array. This allows building higher-level plugins from smaller, focused ones without manually flattening all primitive IDs:
+Plugins can compose other plugins using the `plugins` array of their manifest. This allows building higher-level plugins from smaller, focused ones without manually flattening all primitive IDs:
 
 ```json
+// plugins.json — one registry record per plugin
 {
   "code-quality": {
     "description": "Linting and formatting tools",
-    "skills": ["lint-fix", "format-check"],
-    "mcp_servers": ["eslint-server"],
-    "hooks": ["lint-pre-commit"]
+    "path": "./code-quality"
   },
   "database-tools": {
     "description": "Database management tools",
-    "skills": ["db-migrate", "db-seed"],
-    "mcp_servers": ["postgres-server"]
+    "path": "./database-tools"
   },
   "full-stack-dev": {
     "description": "Everything for full-stack development",
-    "plugins": ["code-quality", "database-tools"],
-    "skills": ["deploy"],
-    "mcp_servers": ["deploy-server"]
+    "path": "./full-stack-dev"
   }
+}
+```
+
+```json
+// code-quality/.plugin/plugin.json
+{
+  "skills": ["lint-fix", "format-check"],
+  "mcp_servers": ["eslint-server"],
+  "hooks": ["lint-pre-commit"]
+}
+```
+
+```json
+// database-tools/.plugin/plugin.json
+{
+  "skills": ["db-migrate", "db-seed"],
+  "mcp_servers": ["postgres-server"]
+}
+```
+
+```json
+// full-stack-dev/.plugin/plugin.json
+{
+  "plugins": ["code-quality", "database-tools"],
+  "skills": ["deploy"],
+  "mcp_servers": ["deploy-server"]
 }
 ```
 
@@ -126,7 +144,7 @@ After resolution, `full-stack-dev` expands to:
 | Field | Required | Description |
 |-------|----------|-------------|
 | `description` | Yes | What this plugin provides. |
-| `path` | No | Path to a plugin directory with a `.plugin/plugin.json` manifest body. When set, the manifest supplies the fields below (unless declared inline here). See [Externalizing the Body](#externalizing-the-body-pluginpluginjson). |
+| `path` | Yes, for any plugin with a body | Path to a plugin directory with a `.plugin/plugin.json` manifest body. The manifest supplies the fields below, unless the entry overrides one inline. See [The Plugin Body](#the-plugin-body-pluginpluginjson). |
 | `default_in_roots` | No | Names of roots this plugin is activated in by default; use `"*"` for every resolved root. Belongs on the index entry, not the manifest. |
 | `title` | No | Human-readable display name. |
 | `version` | No | Semantic version (e.g., `"1.2.0"`). |
@@ -141,7 +159,7 @@ After resolution, `full-stack-dev` expands to:
 | `logo` | No | Path or URL to the plugin's logo image. |
 | `keywords` | No | Keywords for discovery and categorization. |
 
-The `title`, `version`, `skills`, `mcp_servers`, `hooks`, `plugins`, `author`, `homepage`, `repository`, `license`, `logo`, and `keywords` fields belong in the `.plugin/plugin.json` manifest referenced by `path`. Declaring them inline on the entry without a `path` is **deprecated as of v0.13.0** (see the deprecation note under [Externalizing the Body](#externalizing-the-body-pluginpluginjson)); declaring them inline to override individual manifest fields remains supported. `description`, `path`, and `default_in_roots` always live on the index entry.
+The `title`, `version`, `skills`, `mcp_servers`, `hooks`, `plugins`, `author`, `homepage`, `repository`, `license`, `logo`, and `keywords` fields belong in the `.plugin/plugin.json` manifest referenced by `path`. Declaring any of them on an entry with no `path` is an error — that inline-body form was **removed in [#157](https://github.com/pulsemcp/air/issues/157)** (see the callout under [The Plugin Body](#the-plugin-body-pluginpluginjson)) — while declaring them alongside a `path` to override individual manifest fields remains supported. `description`, `path`, and `default_in_roots` always live on the index entry.
 
 ## Translation Layers
 
@@ -188,7 +206,7 @@ The [Open Plugin Specification](https://open-plugins.com/plugin-builders/specifi
 
 | Area | Open Plugins | AIR | Rationale |
 |------|-------------|-----|-----------|
-| **Format** | Directory with `.plugin/plugin.json` manifest | JSON index records in `plugins.json`, **or** a thin index record whose `path` points at a `.plugin/plugin.json` manifest body | AIR now supports the same `.plugin/plugin.json` manifest location (see [Externalizing the Body](#externalizing-the-body-pluginpluginjson)). The index record remains the composition layer, enabling multi-layer composition (org > team > project) without copying directories. |
+| **Format** | Directory with `.plugin/plugin.json` manifest | A thin JSON index record in `plugins.json` whose `path` points at a `.plugin/plugin.json` manifest body | AIR uses the same `.plugin/plugin.json` manifest location (see [The Plugin Body](#the-plugin-body-pluginpluginjson)). The index record remains the composition layer, enabling multi-layer composition (org > team > project) without copying directories. |
 | **Artifact references** | Components live inline within the plugin directory (skills, hooks, MCP configs are files under the plugin root) | The manifest's component fields hold artifact **IDs** referencing external index files (skills.json, mcp.json, hooks.json) | Referencing by ID keeps artifacts DRY — the same MCP server or skill can be shared across multiple plugins without duplication. It also enables the CLI to reason about overlap and deduplication. This is AIR's one substantive divergence from the Open Plugins manifest: same file, ID references instead of bundled component paths. |
 | **Plugin composition** | Not yet specified — plugins are self-contained directories | Supported — plugins can compose other plugins via a `plugins` array, with recursive expansion and cycle detection (see [Plugin Composition](#plugin-composition) above) | Composition lets authors build higher-level bundles (e.g., "full-stack-dev" = "code-quality" + "database-tools" + extras) without manually flattening primitive IDs. |
 | **Path resolution** | `${PLUGIN_ROOT}` expansion; path traversal outside plugin root is rejected | Paths resolved to absolute at load time relative to the index file's directory | AIR's model supports remote sources (github://, etc.) where a single directory root doesn't apply. |

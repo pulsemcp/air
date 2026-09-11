@@ -166,7 +166,7 @@ Error: Reference "review" is ambiguous — candidates: @acme/air-org/review,
 
 A reference to an artifact that does not exist in the resolved set at all — a typo, a not-yet-installed catalog, or an artifact an upstream catalog renamed or removed — does **not** fail resolution. AIR emits a warning naming the consumer, the field, the missing reference, and the available qualified IDs, then drops the dangling reference and continues. A single bad reference (for example a skill's `default_in_roots` pointing at a root the catalog no longer ships) never blocks the rest of an otherwise-valid config. Ambiguous references are the exception: because they are fixable by qualifying the reference rather than by dropping it, they still hard-fail as shown above.
 
-The same warn-and-continue principle isolates a single bad **source** from the rest of the resolve. If one catalog index cannot be loaded or parsed (unreachable provider, malformed JSON, a bad `path` inside the index), AIR logs a warning naming that index, skips it, and keeps resolving every other index and catalog — one broken source never aborts the whole `prepare`. Likewise, a plugin whose externalized `.plugin/plugin.json` manifest is missing, unparseable, or invalid is dropped with a warning while its sibling plugins resolve normally; a plugin that still declares its body inline (the pre-manifest layout) draws a deprecation warning but continues to resolve during the deprecation window. The one exception is a structural `air.json` mistake — a catalog URI whose scheme has no installed provider extension — which hard-fails, because silently dropping a whole catalog you explicitly listed would hide an author error rather than tolerate a content problem.
+The same warn-and-continue principle isolates a single bad **source** from the rest of the resolve. If one catalog index cannot be loaded or parsed (unreachable provider, malformed JSON, a bad `path` inside the index), AIR logs a warning naming that index, skips it, and keeps resolving every other index and catalog — one broken source never aborts the whole `prepare`. Likewise, a plugin whose `.plugin/plugin.json` manifest is missing, unparseable, or invalid is dropped with a warning while its sibling plugins resolve normally. The exceptions are structural mistakes in what you authored, which hard-fail rather than silently dropping a whole catalog you explicitly listed: a catalog URI whose scheme has no installed provider extension, and a plugin that declares its body inline with no `path` (the pre-manifest layout, [removed in #157](https://github.com/pulsemcp/air/issues/157)).
 
 After resolution, root and plugin reference fields are stored in **canonical (qualified) form** so adapters and consumers do not need to re-resolve them. This includes the per-root membership arrays (`default_mcp_servers`, `default_skills`, `default_plugins`, `default_hooks`, `default_references`, `default_subagent_roots`) that AIR computes by inverting each artifact's `default_in_roots`.
 
@@ -381,15 +381,23 @@ rm -rf ~/.air/cache/github/acme/shared-air-config
 
 ## Plugin composition
 
-Plugins can compose other plugins, creating hierarchical capability bundles. References inside a plugin entry use the same short / qualified rules described above:
+Plugins can compose other plugins, creating hierarchical capability bundles. References inside a plugin's `.plugin/plugin.json` manifest use the same short / qualified rules described above:
 
 ```json
+// plugins.json
 {
   "full-stack-dev": {
     "description": "Full-stack developer toolkit",
-    "plugins": ["code-quality", "deploy-toolkit"],
-    "skills": ["monitor-logs"]
+    "path": "./full-stack-dev"
   }
+}
+```
+
+```json
+// full-stack-dev/.plugin/plugin.json
+{
+  "plugins": ["code-quality", "deploy-toolkit"],
+  "skills": ["monitor-logs"]
 }
 ```
 
@@ -459,7 +467,7 @@ There is no "disabled" flag, no override-with-empty-entry trick. If you want a t
 | Catalog missing an artifact file | Silently skipped — that catalog contributes nothing for that type |
 | Catalog index file unloadable or unparseable (malformed JSON, bad `path`) | Warning logged naming the index; that one source is skipped and resolution continues |
 | Plugin's `.plugin/plugin.json` manifest missing, unparseable, or invalid | Warning logged naming the plugin; that one plugin is dropped and resolution continues |
-| Plugin declares its body inline (legacy, pre-manifest) | Deprecation warning logged; the inline body is still resolved during the deprecation window |
+| Plugin declares its body inline with no `path` (legacy, pre-manifest) | Hard failure — `CatalogConfigError` naming the plugin and the fields to move into its `.plugin/plugin.json` manifest ([#157](https://github.com/pulsemcp/air/issues/157)) |
 | Catalog URI scheme has no installed provider | Hard-fail — a misconfigured `air.json`, not a single source's content problem |
 | Index deeper than 3 levels in a catalog | Not discovered — reference it via the explicit per-type array |
 

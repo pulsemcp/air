@@ -15,6 +15,7 @@ import {
   exampleRoot,
   exampleReference,
   examplePlugin,
+  examplePluginManifest,
   exampleHook,
 } from "./helpers.js";
 
@@ -71,6 +72,7 @@ describe("resolveArtifacts", () => {
       "roots.json": { "my-root": exampleRoot("my-root") },
       "refs.json": { "my-ref": exampleReference("my-ref") },
       "plugins.json": { "my-plugin": examplePlugin("my-plugin") },
+      "my-plugin/.plugin/plugin.json": examplePluginManifest("my-plugin"),
       "hooks.json": { "my-hook": exampleHook("my-hook") },
     });
     cleanup = c;

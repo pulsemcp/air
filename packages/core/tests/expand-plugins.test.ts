@@ -6,7 +6,11 @@ import {
   mergeArtifacts,
   emptyArtifacts,
 } from "../src/config.js";
-import { createTempAirDir, examplePlugin } from "./helpers.js";
+import {
+  createTempAirDir,
+  examplePlugin,
+  examplePluginManifest,
+} from "./helpers.js";
 
 let cleanup: (() => void) | undefined;
 
@@ -357,17 +361,20 @@ describe("resolveArtifacts with plugin composition", () => {
         mcp: ["./mcp.json"],
       },
       "plugins.json": {
-        "base": {
-          description: "Base plugin",
-          skills: ["lint", "format"],
-          mcp_servers: ["eslint-server"],
-        },
+        "base": { description: "Base plugin", path: "./base" },
         "full-stack": {
           description: "Full stack plugin",
-          plugins: ["base"],
-          skills: ["deploy"],
-          mcp_servers: ["deploy-server"],
+          path: "./full-stack",
         },
+      },
+      "base/.plugin/plugin.json": {
+        skills: ["lint", "format"],
+        mcp_servers: ["eslint-server"],
+      },
+      "full-stack/.plugin/plugin.json": {
+        plugins: ["base"],
+        skills: ["deploy"],
+        mcp_servers: ["deploy-server"],
       },
       "skills.json": {
         lint: { description: "Lint" },
@@ -404,12 +411,13 @@ describe("resolveArtifacts with plugin composition", () => {
         hooks: ["./hooks.json"],
       },
       "plugins.json": {
-        "simple": examplePlugin("simple", {
-          skills: ["skill-a"],
-          mcp_servers: ["server-a"],
-          hooks: ["hook-a"],
-        }),
+        "simple": examplePlugin("simple"),
       },
+      "simple/.plugin/plugin.json": examplePluginManifest("simple", {
+        skills: ["skill-a"],
+        mcp_servers: ["server-a"],
+        hooks: ["hook-a"],
+      }),
       "skills.json": { "skill-a": { description: "A" } },
       "mcp.json": { "server-a": { type: "stdio", command: "x" } },
       "hooks.json": { "hook-a": { description: "Hook A" } },
@@ -437,15 +445,11 @@ describe("resolveArtifacts with plugin composition", () => {
         plugins: ["./plugins.json"],
       },
       "plugins.json": {
-        "a": {
-          description: "Plugin A",
-          plugins: ["b"],
-        },
-        "b": {
-          description: "Plugin B",
-          plugins: ["a"],
-        },
+        "a": { description: "Plugin A", path: "./a" },
+        "b": { description: "Plugin B", path: "./b" },
       },
+      "a/.plugin/plugin.json": { plugins: ["b"] },
+      "b/.plugin/plugin.json": { plugins: ["a"] },
     });
     cleanup = c;
 
@@ -465,16 +469,22 @@ describe("resolveArtifacts with plugin composition", () => {
       "base-plugins.json": {
         "code-quality": {
           description: "Code quality tools",
-          skills: ["lint", "format"],
-          mcp_servers: ["eslint-server"],
+          path: "./code-quality",
         },
+      },
+      "code-quality/.plugin/plugin.json": {
+        skills: ["lint", "format"],
+        mcp_servers: ["eslint-server"],
       },
       "composite-plugins.json": {
         "full-stack": {
           description: "Full stack plugin",
-          plugins: ["code-quality"],
-          skills: ["deploy"],
+          path: "./full-stack",
         },
+      },
+      "full-stack/.plugin/plugin.json": {
+        plugins: ["code-quality"],
+        skills: ["deploy"],
       },
       "skills.json": {
         lint: { description: "Lint" },

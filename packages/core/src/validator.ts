@@ -1,6 +1,10 @@
 import Ajv from "ajv";
 import addFormats from "ajv-formats";
 import { loadSchema, type SchemaType } from "./schemas.js";
+import {
+  inlineBodyFields,
+  inlineBodyRemovedMessage,
+} from "./plugin-body.js";
 
 export interface ValidationResult {
   valid: boolean;
@@ -42,6 +46,35 @@ function detectLegacyExcludeShape(data: unknown): ValidationError | null {
   };
 }
 
+/**
+ * Plugin entries that declare body fields (`skills`, `version`, …) with no
+ * sibling `path` — the inline plugin body removed in
+ * https://github.com/pulsemcp/air/issues/157. The schema rejects these through
+ * a `dependencies` map, but AJV reports that one field at a time ("must have
+ * property path when property skills is present"), which says nothing about
+ * where those fields belong now. This replaces those with the same per-plugin
+ * migration message `resolveArtifacts` raises.
+ */
+function detectInlinePluginBodies(data: unknown): ValidationError[] {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return [];
+  const errors: ValidationError[] = [];
+
+  for (const [key, value] of Object.entries(data as Record<string, unknown>)) {
+    if (key === "$schema") continue;
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    const entry = value as Record<string, unknown>;
+    if ("path" in entry) continue;
+    const inline = inlineBodyFields(entry);
+    if (inline.length === 0) continue;
+    errors.push({
+      path: `/${key}`,
+      message: inlineBodyRemovedMessage(key, inline),
+    });
+  }
+
+  return errors;
+}
+
 export function validateJson(
   data: unknown,
   schemaType: SchemaType
@@ -69,6 +102,29 @@ export function validateJson(
         valid: false,
         errors: [legacy, ...errors.filter((e) => e.path !== "/exclude")],
       };
+    }
+  }
+
+  if (schemaType === "plugins") {
+    const inlineBodies = detectInlinePluginBodies(data);
+    if (inlineBodies.length > 0) {
+      // Drop only the raw `dependencies` errors these replace — every other
+      // problem AJV found with the same entry (a missing description, a
+      // malformed version) is still reported.
+      const replaced = new Set(inlineBodies.map((e) => e.path));
+      const rest = (validate.errors || [])
+        .filter(
+          (err) =>
+            !(
+              err.keyword === "dependencies" &&
+              replaced.has(err.instancePath || "/")
+            )
+        )
+        .map((err) => ({
+          path: err.instancePath || "/",
+          message: err.message || "Unknown validation error",
+        }));
+      return { valid: false, errors: [...inlineBodies, ...rest] };
     }
   }
 

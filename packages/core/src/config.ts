@@ -19,6 +19,12 @@ import {
   type SchemaType,
 } from "./schemas.js";
 import {
+  PLUGIN_MANIFEST_FIELDS,
+  PLUGIN_MANIFEST_REF_FIELDS,
+  inlineBodyFields,
+  inlineBodyRemovedMessage,
+} from "./plugin-body.js";
+import {
   LOCAL_SCOPE,
   deriveScope,
   qualifyId,
@@ -123,44 +129,15 @@ async function resolveEntryPaths<T>(
 }
 
 /**
- * Plugin manifest fields the externalized body may supply. The owning
- * plugins.json entry is the authoritative registry layer; any of these fields
- * declared inline on the entry take precedence over the manifest.
- * `description`, `path`, and `default_in_roots` are deliberately absent — they
- * belong to the index entry, not the externalized body.
- */
-const PLUGIN_MANIFEST_FIELDS = [
-  "title",
-  "version",
-  "skills",
-  "mcp_servers",
-  "hooks",
-  "plugins",
-  "author",
-  "homepage",
-  "repository",
-  "license",
-  "logo",
-  "keywords",
-] as const;
-
-/** Plugin manifest fields that must be arrays of strings when present. */
-const PLUGIN_MANIFEST_REF_FIELDS = [
-  "skills",
-  "mcp_servers",
-  "hooks",
-  "plugins",
-] as const;
-
-/**
  * Hydrate plugin entries that externalize their body into a manifest.
  *
- * When a plugin entry declares a `path`, the plugin's body lives at
- * `<path>/.plugin/plugin.json` — AIR's vendor-neutral analog of the Open
- * Plugins manifest. This lets `plugins.json` stay a lightweight registry
- * (description + path + default_in_roots) while the bundled artifact references
- * (skills, mcp_servers, hooks, plugins) and distribution metadata live with the
- * plugin.
+ * A plugin's body lives at `<path>/.plugin/plugin.json` — AIR's vendor-neutral
+ * analog of the Open Plugins manifest. This keeps `plugins.json` a lightweight
+ * registry (description + path + default_in_roots) while the bundled artifact
+ * references (skills, mcp_servers, hooks, plugins) and distribution metadata
+ * live with the plugin. Declaring that body inline on the index entry with no
+ * `path` was deprecated in v0.13.0 and is now rejected outright
+ * (https://github.com/pulsemcp/air/issues/157).
  *
  * `path` is already absolute here (resolved by {@link resolveEntryPaths}); the
  * manifest is read from the local filesystem, so remote (github://) plugins
@@ -180,21 +157,22 @@ function hydratePluginManifests(
   for (const [key, value] of Object.entries(entries)) {
     const entry = value as Record<string, unknown>;
     if (typeof entry.path !== "string") {
-      // Deprecated since v0.13.0: a plugin that declares its body (skills,
-      // mcp_servers, hooks, version, author, …) inline on the index entry
-      // instead of externalizing it into a <path>/.plugin/plugin.json manifest.
-      // Tracked for removal in https://github.com/pulsemcp/air/issues/157.
-      const inlineBody = PLUGIN_MANIFEST_FIELDS.filter((f) => f in entry);
+      // Removed in favor of the manifest form (deprecated v0.13.0, removed in
+      // https://github.com/pulsemcp/air/issues/157): a plugin that declares its
+      // body (skills, mcp_servers, hooks, version, author, …) inline on the
+      // index entry instead of externalizing it into a <path>/.plugin/plugin.json
+      // manifest. This is an author mistake in a catalog the author explicitly
+      // listed, not a content problem in one plugin, so — like an unregistered
+      // catalog scheme — it raises CatalogConfigError and hard-fails resolution
+      // instead of being isolated into a warning. Degrading it to a warning
+      // would silently drop the plugin (and everything it bundles) from every
+      // session, which is exactly the outcome the removal is meant to make
+      // visible. The schema rejects the same shape, so `air validate` reports
+      // it before resolution ever runs.
+      const inlineBody = inlineBodyFields(entry);
       if (inlineBody.length > 0) {
-        warnings.push(
-          `Plugin "${key}" (from ${source}) declares its body inline ` +
-            `(${inlineBody.join(", ")}) instead of referencing a ` +
-            `.plugin/plugin.json manifest via "path". Inline plugin bodies are ` +
-            `deprecated as of v0.13.0 and will be removed in a future release ` +
-            `(https://github.com/pulsemcp/air/issues/157). Move these fields ` +
-            `into "<plugin-dir>/.plugin/plugin.json" and set "path" to the ` +
-            `plugin directory; keep description, path, and default_in_roots on ` +
-            `the index entry.`
+        throw new CatalogConfigError(
+          inlineBodyRemovedMessage(key, inlineBody, source)
         );
       }
       out[key] = entry;
@@ -203,8 +181,7 @@ function hydratePluginManifests(
 
     // Hydration of a single plugin is isolated: a missing, unparseable, or
     // invalid manifest degrades to a warning and drops *only* this plugin,
-    // rather than aborting resolution of every other plugin and catalog. This
-    // matters during the inline→manifest migration window (issue #157): a
+    // rather than aborting resolution of every other plugin and catalog. A
     // half-migrated catalog (path set before the manifest lands, or a malformed
     // manifest) must not break `prepare` for sessions that don't even use it.
     try {

@@ -9,6 +9,7 @@ import {
   exampleHook,
   exampleReference,
   examplePlugin,
+  examplePluginManifest,
   exampleRoot,
 } from "./helpers.js";
 
@@ -38,6 +39,8 @@ describe("catalogs", () => {
       "team/plugins/plugins.json": {
         toolkit: examplePlugin("toolkit"),
       },
+      "team/plugins/toolkit/.plugin/plugin.json":
+        examplePluginManifest("toolkit"),
       "team/roots/roots.json": {
         "web-app": exampleRoot("web-app"),
       },
@@ -599,18 +602,20 @@ describe("catalogs", () => {
         catalogs: ["./org", "./team"],
       },
       "org/plugins/plugins.json": {
-        base: examplePlugin("base", {
-          skills: ["shared-skill"],
-        }),
+        base: examplePlugin("base"),
       },
+      "org/plugins/base/.plugin/plugin.json": examplePluginManifest("base", {
+        skills: ["shared-skill"],
+      }),
       "org/skills/skills.json": {
         "shared-skill": exampleSkill("shared-skill"),
       },
       "team/plugins/plugins.json": {
-        app: examplePlugin("app", {
-          plugins: ["base"],
-        }),
+        app: examplePlugin("app"),
       },
+      "team/plugins/app/.plugin/plugin.json": examplePluginManifest("app", {
+        plugins: ["base"],
+      }),
     });
     cleanup = c;
 
