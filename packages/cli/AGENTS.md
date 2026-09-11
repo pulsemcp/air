@@ -1,6 +1,6 @@
 # @pulsemcp/air-cli
 
-The CLI for the AIR framework. A thin wrapper around `@pulsemcp/air-sdk` that provides `validate`, `list`, `init`, `start`, `prepare`, `install`, and `upgrade` commands. All business logic is delegated to the SDK. `upgrade` shells out to `npm install -g @pulsemcp/air-cli@latest` itself, then delegates the extension-lockstep step to the SDK's `upgradeExtensions()`.
+The CLI for the AIR framework. A thin wrapper around `@pulsemcp/air-sdk` that provides `validate`, `list`, `init`, `start`, `prepare`, `install`, and `update` commands. All business logic is delegated to the SDK — including every `npm` invocation, which lives behind the SDK's `runUpdate()`.
 
 ## Folder Hierarchy
 
@@ -15,7 +15,7 @@ packages/cli/
 │       ├── start.ts          # Start an agent session
 │       ├── prepare.ts        # Prepare a directory for an agent session
 │       ├── install.ts        # Install extension packages from air.json
-│       └── upgrade.ts        # Upgrade the CLI, and its extensions in lockstep
+│       └── update.ts         # `air update` + its deprecated `air upgrade` alias
 ├── tests/                    # CLI command tests (spawn process, check output)
 └── package.json
 ```
@@ -33,6 +33,9 @@ The CLI is glue between the terminal and the SDK. Business logic belongs in the 
 
 ### Formatting and exit codes only
 CLI commands should only handle argument parsing, output formatting, and process lifecycle (`process.exit`). All logic flows through SDK functions.
+
+### Interactivity is a CLI concern; the safe default is the SDK's
+Prompting is terminal work, so it lives here — but the *policy* does not. `runUpdate()` installs nothing unless it is handed `assumeYes` or a `confirm` callback, and `update.ts` supplies that callback only when `isInteractiveTTY()`. A non-TTY caller therefore cannot be surprise-bumped by construction rather than by a check someone remembered to write. Keep it that way: never give the SDK a `confirm` that answers without a human.
 
 ## What NOT to Do
 

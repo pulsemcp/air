@@ -29,20 +29,45 @@ Verify the installation:
 air --version
 ```
 
-### Upgrading
+### Keeping everything up to date
 
-To upgrade the CLI to the latest version:
+One command does the whole job:
 
 ```bash
-air upgrade
+air update
 ```
 
-This does two things:
+`air update` runs in two phases:
 
-1. Runs `npm install -g @pulsemcp/air-cli@latest`. If you're already on the latest version, it says so and skips the reinstall.
-2. Brings the extension packages installed next to your `air.json` onto the same version line.
+1. **Refresh cached provider data** — re-clones or fetches the GitHub catalog repos behind any `github://` URIs in your `air.json`. Nothing changes version, so this always runs without asking.
+2. **Check for newer versions** — of the CLI itself *and* of every extension declared in your `air.json`. If anything needs a bump, it lists exactly what would change and asks before installing anything.
 
-That second step matters because extensions are loaded from `<airJsonDir>/node_modules` (`~/.air/node_modules` by default), never from the global npm tree — so upgrading the CLI alone leaves the code that actually runs behind. Every package in the AIR monorepo is published off one shared version line, so `air upgrade` rewrites each first-party extension's constraint in `<airJsonDir>/package.json` to `~MAJOR.MINOR.0` of the upgraded CLI and reinstalls it.
+```
+$ air update
+Refreshing provider caches…
+  ✓ github://pulsemcp/ai-artifacts@main — updated
+
+Current version: 0.13.1
+Latest version: 0.14.0
+
+Version check:
+  @pulsemcp/air-cli             0.13.1 → 0.14.0
+  @pulsemcp/air-adapter-claude  0.0.25 → ~0.14.0
+
+Upgrade these 2 packages? [Y/n]
+```
+
+**It never bumps a version without your say-so.** Answer `n` and nothing is installed. And when `air update` is not attached to a terminal — in CI, a pipeline, or any scripted wrapper — it skips the upgrade entirely rather than running an unattended `npm install -g`. Pass `--yes` when you *do* want a script to upgrade:
+
+```bash
+air update --yes          # upgrade without prompting (scripts, CI)
+air update --no-upgrade   # refresh caches only; report bumps, install nothing
+air update --dry-run      # show what would be installed, install nothing
+```
+
+#### Why the extension half matters
+
+Extensions are loaded from `<airJsonDir>/node_modules` (`~/.air/node_modules` by default), never from the global npm tree — so upgrading the CLI alone leaves the code that actually runs behind. Every package in the AIR monorepo is published off one shared version line, so `air update` rewrites each first-party extension's constraint in `<airJsonDir>/package.json` to `~MAJOR.MINOR.0` of the upgraded CLI and reinstalls it.
 
 It deliberately leaves four kinds of entry alone, and names each one in its output:
 
@@ -51,20 +76,20 @@ It deliberately leaves four kinds of entry alone, and names each one in its outp
 - specifiers that pin a version in `air.json` (`@pulsemcp/air-provider-github@0.9.2`) — that pin is your stated intent
 - packages already installed *ahead* of the CLI, so an upgrade never downgrades a working install
 
-Use `--dry-run` to see what would happen without actually installing:
+Use `--no-extensions` to consider only the CLI, and `--config <path>` to point at an `air.json` other than `~/.air/air.json`:
 
 ```bash
-air upgrade --dry-run
+air update --no-extensions
+air update --config /path/to/air.json
 ```
 
-Use `--no-extensions` to upgrade only the CLI, and `--config <path>` to point at an `air.json` other than `~/.air/air.json`:
+If you ever hit errors like `Provider for "github://" cannot resolve directory paths`, that is the stale-extension symptom — `air update` (or `air install`, which also compares installed versions against their declared ranges) is the fix.
 
-```bash
-air upgrade --no-extensions
-air upgrade --config /path/to/air.json
-```
+#### `air upgrade` is deprecated
 
-If a CLI upgrade ever leaves you with errors like `Provider for "github://" cannot resolve directory paths`, that is the stale-extension symptom — `air upgrade` (or `air install`, which now also compares installed versions against their declared ranges) is the fix.
+`air upgrade` and `air update` used to be two different commands, and the boundary between them was invisible until you hit it: `update` refreshed caches but never touched the CLI, `upgrade` bumped the CLI but never refreshed a cache. They are now one command.
+
+`air upgrade` still works — it prints a deprecation notice and then does exactly what `air update` does, with the same flags. Prefer `air update` in anything new.
 
 ## 2. Initialize your configuration
 

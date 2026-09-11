@@ -262,6 +262,43 @@ If `.mcp.json` would be left empty after removing AIR-managed servers (no other 
 - `0` — clean succeeded (including the no-manifest no-op case)
 - `1` — clean failed (e.g., adapter not installed, adapter does not implement clean)
 
+### `air update`
+
+Refresh cached provider data, then check the CLI and every extension declared in `air.json` for newer published versions. **Never installs a version bump without `--yes` or an interactive confirmation.**
+
+```bash
+# Refresh caches, then ask before upgrading anything
+air update
+
+# Upgrade without prompting — for scripts and CI
+air update --yes
+
+# Refresh caches only; report available bumps but install nothing
+air update --no-upgrade
+```
+
+The cache refresh always runs — it changes no versions, so there is nothing to consent to. The version check is gated:
+
+| Flag | Description |
+|------|-------------|
+| `-y`, `--yes` | Assume confirmation — upgrade without prompting. |
+| `--no-upgrade` | Refresh caches only. The version check still runs and reports, but installs nothing. Outranks `--yes`. |
+| `--dry-run` | Print the commands that would run, install nothing. |
+| `--no-extensions` | Consider only the CLI; leave the extension tree alone. |
+| `--no-auto-heal` | Do not auto-upgrade provider extensions too old to refresh their cache. |
+| `--git-protocol <ssh\|https>` | Protocol for git-based catalog providers. Overrides `gitProtocol` in `air.json`. |
+| `--config <path>` | Path to `air.json`. Defaults to `AIR_CONFIG` env or `~/.air/air.json`. |
+
+**Non-TTY behaviour.** When stdin or stdout is not a terminal — CI, a pipeline, any scripted wrapper — `air update` skips the upgrade and says so, rather than running an unattended `npm install -g`. Pass `--yes` to opt in.
+
+**Exit codes:**
+- `0` — the run completed (including every case where the upgrade was skipped)
+- `1` — the cache refresh failed and no upgrade repaired it, or an install failed
+
+### `air upgrade` (deprecated)
+
+A deprecated alias for `air update`. It prints a notice on stderr and then does the same work, accepting the same flags. `air update` and `air upgrade` used to be separate commands whose boundary was invisible until you hit it; they are now one. Prefer `air update`.
+
 ## Environment Variables
 
 | Variable | Description |

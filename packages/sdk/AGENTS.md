@@ -18,6 +18,8 @@ packages/sdk/
 │   ├── installed.ts          # getInstalledSelection() — the selection matching what AIR installed in a target (from its manifest)
 │   ├── install.ts            # installExtensions() — install missing or out-of-range extensions
 │   ├── upgrade.ts            # upgradeExtensions() — pin extensions to the CLI's version line
+│   ├── update.ts             # updateProviderCaches() — refresh cached provider data
+│   ├── run-update.ts         # runUpdate() — `air update`: cache refresh + consent-gated version check
 │   └── versions.ts           # version/range helpers shared by install, update, and upgrade
 ├── tests/                    # SDK unit tests (direct function calls, not CLI spawning)
 └── package.json
@@ -35,7 +37,10 @@ The SDK re-exports everything from core for convenience and adds high-level oper
 Any TypeScript/JavaScript consumer that wants to work with AIR should depend on `@pulsemcp/air-sdk`. The CLI is one such consumer.
 
 ### Return data, don't print
-SDK functions return structured result objects and throw errors as exceptions. The CLI handles formatting and process lifecycle.
+SDK functions return structured result objects and throw errors as exceptions. The CLI handles formatting and process lifecycle. Where a long operation needs to render as it happens, take a progress callback (`runUpdate`'s `onCachesRefreshed` / `onPlan`) rather than writing to the console.
+
+### Consent is an input, and its absence means no
+`runUpdate()` performs a version bump only when given `assumeYes` or a `confirm` callback that answers yes. With neither it reports `"non-interactive"` and installs nothing. That default is what keeps an unattended `npm install -g` out of CI, so it belongs here — in the layer every consumer goes through — not in the CLI's argument parsing.
 
 ### Re-export core for convenience
 Consumers don't need to depend on both `@pulsemcp/air-core` and `@pulsemcp/air-sdk`. The SDK re-exports all core types and functions.

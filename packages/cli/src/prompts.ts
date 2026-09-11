@@ -48,6 +48,34 @@ export async function promptYnd(question: string): Promise<YndResponse> {
 }
 
 /**
+ * Ask a single yes/no question on stdin.
+ *
+ * - Prints `question` to stderr, reads a line from stdin, maps the answer.
+ * - Default (empty input) is `true` — the `[Y/n]` contract.
+ * - `n`, `no` → false; anything else → true.
+ *
+ * Returns false outright when not on a TTY. Callers gate on
+ * {@link isInteractiveTTY} before ever reaching this, but a non-interactive
+ * caller that slipped through must get the safe answer, not a hang.
+ *
+ * @param question The full prompt line (include the trailing "? [Y/n] ").
+ */
+export async function promptYesNo(question: string): Promise<boolean> {
+  if (!isInteractiveTTY()) return false;
+
+  const rl = createInterface({ input: process.stdin, output: process.stderr });
+  try {
+    const answer: string = await new Promise((resolveP) => {
+      rl.question(question, (input: string) => resolveP(input));
+    });
+    const normalized = answer.trim().toLowerCase();
+    return normalized !== "n" && normalized !== "no";
+  } finally {
+    rl.close();
+  }
+}
+
+/**
  * True iff stdin + stdout are both attached to a terminal. When either is a
  * pipe or a file (CI runners, scripted wrappers), the caller should skip
  * interactive prompts.

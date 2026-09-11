@@ -93,3 +93,9 @@ Everything in a manifest's `skills` / `hooks` is `rm -rf`'d once it leaves the s
 ### Any `npm install` in a prefix prunes what the manifest does not declare
 
 This holds for bare installs, explicit-spec installs, and `--no-save` alike. Before running one against a user's directory, make sure `dependencies` describes everything in `node_modules` you intend to keep — otherwise the reconcile deletes it.
+
+### `air update` installs nothing it was not given consent for, and absence of consent is a no
+
+`runUpdate()` (`packages/sdk/src/run-update.ts`) performs a version bump only when handed `assumeYes` or a `confirm` callback that answers yes. Given neither it returns `decision: "non-interactive"` and installs nothing. The CLI supplies `confirm` only when `isInteractiveTTY()`, so a pipeline cannot be surprise-bumped by an unattended `npm install -g` — the property holds by construction, not by a check somewhere remembering to fire. Anything adding a new caller of `runUpdate` inherits that default; do not "fix" it by defaulting `assumeYes` to true.
+
+The cache refresh is the other half and is deliberately *not* gated: it changes no versions. It is also deliberately non-fatal — a provider too old or broken to load is exactly the state the version check repairs, so a refresh failure is recorded in `cacheRefreshError` and the run carries on. The CLI exits 1 only when nothing repaired it.
