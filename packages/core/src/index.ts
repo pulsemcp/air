@@ -98,6 +98,7 @@ export {
   buildManifest,
   diffManifest,
   deleteManifest,
+  manifestSkillsAreAirOwned,
 } from "./manifest.js";
 export type {
   Manifest,

@@ -12,8 +12,11 @@ import { dirname, resolve } from "path";
  * Manifest schema version. Incrementing this is a breaking change to the
  * on-disk format; future versions should be tolerant of older manifests
  * (treat unrecognized shapes as empty, same as the corrupt-manifest path).
+ *
+ * - 1: the original format.
+ * - 2: same shape, stricter `skills` — see {@link manifestSkillsAreAirOwned}.
  */
-export const MANIFEST_VERSION = 1;
+export const MANIFEST_VERSION = 2;
 
 /**
  * The on-disk record of artifacts AIR has written to a single target
@@ -30,7 +33,10 @@ export interface Manifest {
    * field existed; new writes always include it.
    */
   adapter?: string;
-  /** Skill IDs whose `.claude/skills/<id>/` (or adapter equivalent) AIR owns. */
+  /**
+   * Skill IDs whose `.claude/skills/<id>/` (or adapter equivalent) AIR owns —
+   * i.e. created itself. Everything listed here is deleted once deselected.
+   */
   skills: string[];
   /** Hook IDs whose `.claude/hooks/<id>/` (or adapter equivalent) AIR owns. */
   hooks: string[];
@@ -187,6 +193,11 @@ export function writeManifest(
 /**
  * Build a fresh manifest from the current target and selection.
  * Undefined category fields in the selection are normalized to `[]`.
+ *
+ * The result is stamped with {@link MANIFEST_VERSION}, which promises that
+ * `selection.skills` names only directories the caller created (see
+ * {@link manifestSkillsAreAirOwned}). An adapter must never pass a skill
+ * directory that already existed when it got there.
  */
 export function buildManifest(
   targetDir: string,
@@ -214,6 +225,19 @@ export function deleteManifest(
   if (!existsSync(path)) return false;
   rmSync(path, { force: true });
   return true;
+}
+
+/**
+ * Whether every entry in `manifest.skills` names a skill directory an adapter
+ * created itself, so the adapter may delete it once it is deselected.
+ *
+ * True from version 2. Version 1 manifests could also list a skill directory
+ * that already existed when the adapter reached it — typically a skill the
+ * user wrote and checked in (pulsemcp/air#168) — so an adapter must re-check
+ * each version 1 entry before it removes anything on the manifest's word.
+ */
+export function manifestSkillsAreAirOwned(manifest: Manifest): boolean {
+  return manifest.version >= 2;
 }
 
 /**

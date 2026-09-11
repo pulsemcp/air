@@ -15,6 +15,7 @@ import {
   getDefaultAirHome,
   getManifestPath,
   loadManifest,
+  manifestSkillsAreAirOwned,
   writeManifest,
   type Manifest,
 } from "../src/manifest.js";
@@ -292,6 +293,20 @@ describe("manifest", () => {
         staleHooks: [],
         staleMcpServers: [],
       });
+    });
+  });
+
+  describe("manifestSkillsAreAirOwned", () => {
+    it("trusts the skills of manifests written from version 2 on", () => {
+      expect(MANIFEST_VERSION).toBe(2);
+      const manifest = buildManifest(targetDir, { skills: ["a"] });
+      expect(manifest.version).toBe(2);
+      expect(manifestSkillsAreAirOwned(manifest)).toBe(true);
+    });
+
+    it("does not trust the skills of a version 1 manifest (#168)", () => {
+      const manifest = { ...buildManifest(targetDir, { skills: ["a"] }), version: 1 };
+      expect(manifestSkillsAreAirOwned(manifest)).toBe(false);
     });
   });
 });

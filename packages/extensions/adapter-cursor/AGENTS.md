@@ -9,10 +9,12 @@ packages/extensions/adapter-cursor/
 ├── src/
 │   ├── index.ts              # AirExtension default export + re-exports
 │   ├── cursor-adapter.ts      # CursorAdapter class implementing AgentAdapter
-│   └── scan-local-skills.ts   # Discovers user-managed skills in .cursor/skills/
+│   ├── scan-local-skills.ts   # Discovers user-managed skills in .cursor/skills/
+│   └── skill-ownership.ts     # Which skill dirs AIR owns and may delete (#168)
 ├── tests/
 │   ├── cursor-adapter.test.ts     # Translation, config generation, prepareSession tests
-│   └── scan-local-skills.test.ts  # Local skill discovery tests
+│   ├── scan-local-skills.test.ts  # Local skill discovery tests
+│   └── skill-ownership.test.ts    # Pre-existing skill dirs are never claimed or deleted
 └── package.json
 ```
 

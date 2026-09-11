@@ -39,6 +39,7 @@ export {
   buildManifest,
   diffManifest,
   deleteManifest,
+  manifestSkillsAreAirOwned,
 } from "@pulsemcp/air-core";
 
 // Re-export core types

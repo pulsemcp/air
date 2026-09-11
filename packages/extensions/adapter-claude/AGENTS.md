@@ -7,10 +7,14 @@ AIR adapter extension for Claude Code. Translates AIR artifacts into Claude Code
 ```
 packages/extensions/adapter-claude/
 ├── src/
-│   ├── index.ts           # AirExtension default export + re-exports
-│   └── claude-adapter.ts  # ClaudeAdapter class implementing AgentAdapter
+│   ├── index.ts              # AirExtension default export + re-exports
+│   ├── claude-adapter.ts     # ClaudeAdapter class implementing AgentAdapter
+│   ├── scan-local-skills.ts  # Discovers user-managed skills in .claude/skills/
+│   └── skill-ownership.ts    # Which skill dirs AIR owns and may delete (#168)
 ├── tests/
-│   └── claude-adapter.test.ts  # Translation, config generation, prepareSession tests
+│   ├── claude-adapter.test.ts     # Translation, config generation, prepareSession tests
+│   ├── scan-local-skills.test.ts  # Local skill discovery tests
+│   └── skill-ownership.test.ts    # Pre-existing skill dirs are never claimed or deleted
 └── package.json
 ```
 

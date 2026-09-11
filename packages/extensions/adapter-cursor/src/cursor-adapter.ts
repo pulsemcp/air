@@ -31,11 +31,17 @@ import {
   diffManifest,
   getManifestPath,
   loadManifest,
+  manifestSkillsAreAirOwned,
   writeManifest,
   parseQualifiedId,
   resolveReference,
 } from "@pulsemcp/air-core";
 import { scanLocalSkills } from "./scan-local-skills.js";
+import {
+  previousSkillOwnership,
+  relinquishedSkillMessage,
+  unverifiedSkillsMessage,
+} from "./skill-ownership.js";
 
 /**
  * A single activated artifact: the qualified ID resolved from input, plus the
@@ -232,7 +238,13 @@ export class CursorAdapter implements AgentAdapter {
     const skillPaths: string[] = [];
     const hookPaths: string[] = [];
 
-    const prevManifest = loadManifest(targetDir);
+    // A manifest another adapter wrote names that adapter's directories, not
+    // this one's: acting on it would claim or delete same-named entries here.
+    const loadedManifest = loadManifest(targetDir);
+    const prevManifest =
+      loadedManifest?.adapter !== undefined && loadedManifest.adapter !== this.name
+        ? null
+        : loadedManifest;
 
     // 1. Resolve which artifacts to activate (overrides take precedence over root defaults)
     let mcpServerIds: string[] | undefined =
@@ -286,7 +298,16 @@ export class CursorAdapter implements AgentAdapter {
 
     // 3. Reconcile against prior manifest using shortnames — those are the keys
     //    used for filesystem materialization and stored in the manifest.
-    const diff = diffManifest(prevManifest, {
+    //    A version 1 manifest may claim skill directories AIR never created
+    //    (#168); only the entries it can vouch for are carried forward.
+    const skillsDir = join(targetDir, ".cursor", "skills");
+    const prevSkills = previousSkillOwnership(prevManifest, skillsDir, artifacts);
+    for (const id of prevSkills.relinquished) {
+      console.warn(relinquishedSkillMessage(`.cursor/skills/${id}`));
+    }
+    const ownedPrevManifest =
+      prevManifest && { ...prevManifest, skills: [...prevSkills.owned] };
+    const diff = diffManifest(ownedPrevManifest, {
       skills: skillShortIds,
       hooks: hookShortIds,
       mcpServers: mcpShortIds,
@@ -314,7 +335,12 @@ export class CursorAdapter implements AgentAdapter {
       const skillTargetDir = join(targetDir, ".cursor", "skills", a.short);
 
       if (existsSync(skillTargetDir)) {
-        materializedSkillShortIds.push(a.short);
+        // Re-claim only a directory an earlier run created. One AIR didn't
+        // create is the user's: leave it, and keep it out of the manifest so
+        // no later run deletes it (#168).
+        if (prevSkills.owned.has(a.short)) {
+          materializedSkillShortIds.push(a.short);
+        }
         continue;
       }
 
@@ -446,6 +472,10 @@ export class CursorAdapter implements AgentAdapter {
    *
    * Items in the manifest that no longer exist on disk are silently skipped
    * — the manifest can drift if a user removed files manually between runs.
+   *
+   * Skill entries in a version 1 manifest are the exception: that version
+   * could claim a skill directory AIR never created (#168), so they are left
+   * on disk and kept in the rewritten manifest instead of being removed.
    */
   async cleanSession(
     targetDir: string,
@@ -480,13 +510,27 @@ export class CursorAdapter implements AgentAdapter {
     const mcpPath = join(targetDir, ".cursor", "mcp.json");
     const hooksPath = join(targetDir, ".cursor", "hooks.json");
 
+    // A version 1 manifest may list skill directories AIR never created
+    // (#168), and there is no catalog here to check them against, so they
+    // stay on disk and in the manifest for the next prepareSession to check.
     const removedSkills: string[] = [];
+    const unverifiedSkills: string[] = [];
     if (cleanSkills) {
+      const skillsTrusted = manifestSkillsAreAirOwned(manifest);
       for (const id of manifest.skills) {
         const dir = join(targetDir, ".cursor", "skills", id);
         if (!existsSync(dir)) continue;
+        if (!skillsTrusted) {
+          unverifiedSkills.push(id);
+          continue;
+        }
         if (!dryRun) rmSync(dir, { recursive: true, force: true });
         removedSkills.push(id);
+      }
+      if (unverifiedSkills.length > 0) {
+        console.warn(
+          unverifiedSkillsMessage(unverifiedSkills.map((id) => `.cursor/skills/${id}`))
+        );
       }
     }
 
@@ -528,21 +572,24 @@ export class CursorAdapter implements AgentAdapter {
     }
 
     let manifestRemoved = false;
-    if (fullClean) {
+    if (fullClean && unverifiedSkills.length === 0) {
       if (!dryRun) {
         manifestRemoved = deleteManifest(targetDir);
       } else {
         manifestRemoved = manifestFileExists;
       }
     } else if (!dryRun) {
-      writeManifest(
-        buildManifest(targetDir, {
+      writeManifest({
+        ...buildManifest(targetDir, {
           adapter: manifest.adapter ?? this.name,
-          skills: cleanSkills ? [] : manifest.skills,
+          skills: cleanSkills ? unverifiedSkills : manifest.skills,
           hooks: cleanHooks ? [] : manifest.hooks,
           mcpServers: cleanMcpServers ? [] : manifest.mcpServers,
-        })
-      );
+        }),
+        // Clean only drops entries, so the version still describes what is
+        // left — a version 1 manifest's skills still need checking.
+        version: manifest.version,
+      });
     }
 
     return {

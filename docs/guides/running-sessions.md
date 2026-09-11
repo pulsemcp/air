@@ -267,7 +267,9 @@ AIR records which artifact IDs it wrote to each target directory in a per-user m
 - **Hooks** — `.claude/hooks/<id>/` directories are deleted, and their entries in `.claude/settings.json` (identified by the `_airHookId` marker the adapter writes alongside each entry) are removed
 - **MCP servers** — the corresponding keys in `.mcp.json` are deleted; user-added keys and other top-level fields pass through unchanged
 
-Artifacts AIR didn't write are never touched. If you manually place a `.claude/skills/<id>/` or `.claude/hooks/<id>/` directory before the first `air prepare` run, AIR recognizes it as user-authored and leaves it alone — both the files and any `.claude/settings.json` hook registrations that reference it.
+Artifacts AIR didn't write are never touched. If a `.claude/skills/<id>/` or `.claude/hooks/<id>/` directory already exists when AIR goes to install a skill or hook with that ID, and AIR didn't create it on an earlier run, AIR treats it as user-authored and leaves it alone, even if you select the catalog version: it doesn't overwrite the files, register a hook directory in `.claude/settings.json`, or record the directory in the manifest, so later runs don't remove it. A manifest written by a different adapter (say, `air start codex` in a directory last prepared with `claude`) is ignored, since it describes that adapter's directories; the other adapter's copies stay on disk untracked.
+
+Manifests written by AIR 0.13.1 and earlier (manifest `version: 1`) could record a pre-existing skill directory as AIR's ([#168](https://github.com/pulsemcp/air/issues/168)). The first `air prepare` or `air start` after upgrading checks each skill such a manifest lists. It keeps one only if its files are byte-for-byte what AIR installs for a catalog skill with that ID (so a copy you checked in that is identical to the catalog skill counts as AIR's; a catalog skill whose `path` is that directory itself never does). Any other listed directory is left in place, dropped from the manifest, and reported in a warning. That includes an AIR copy you edited, and one whose catalog skill has changed since it was installed — common with a `github://` catalog, since AIR never refreshes an installed skill. Those stay on disk as local skills; delete them by hand if you don't need them. The rewritten manifest is `version: 2` and is trusted as-is from then on.
 
 If the manifest is missing or unreadable, the current run is treated as "no prior state" — nothing is cleaned up, and a fresh manifest is written at the end. You can point AIR at a different state directory for testing by setting `AIR_HOME` (defaults to `~/.air`).
 
@@ -295,6 +297,8 @@ Use it when you're done with a session and want to scrub everything AIR added �
    - **Hooks** — deletes `.claude/hooks/<id>/` directories and removes their entries from `.claude/settings.json` (identified by the `_airHookId` marker)
    - **MCP servers** — deletes the corresponding keys from `.mcp.json`; user-added keys are preserved. If `.mcp.json` would be left empty (no other top-level keys), the file is deleted entirely.
 3. Deletes the manifest on a full clean. If any `--keep-*` flag is set, the manifest is rewritten with the kept entries preserved so future `prepare` / `clean` cycles still track them.
+
+`air clean` has no catalog to check skills against, so it leaves the skills listed in a `version: 1` manifest (see [Cleanup between runs](#cleanup-between-runs)) where they are, keeps them in the manifest, and prints a warning. Run `air prepare` or `air start` in the directory once, then `air clean` again.
 
 Items listed in the manifest that no longer exist on disk are silently skipped (handles drift where files were removed manually). If no manifest exists for the target, `air clean` is a no-op and exits successfully.
 
