@@ -47,6 +47,8 @@ export interface StartSessionResult {
   agentAvailable: boolean | undefined;
   /** The command to start the agent. */
   startCommand: StartCommand;
+  /** The agent adapter's name (`AgentAdapter.name`). */
+  adapterName: string;
   /** The agent adapter display name. */
   adapterDisplayName: string;
   /** Warnings from provider cache freshness checks (e.g., stale GitHub clones). */
@@ -172,6 +174,7 @@ export async function startSession(
     sessionConfig,
     agentAvailable,
     startCommand,
+    adapterName: adapter.name,
     adapterDisplayName: adapter.displayName,
     warnings: warnings.length > 0 ? warnings : undefined,
     localArtifacts,

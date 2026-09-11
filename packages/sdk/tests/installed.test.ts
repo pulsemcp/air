@@ -8,7 +8,7 @@ import {
   type ResolvedArtifacts,
 } from "@pulsemcp/air-core";
 import {
-  getInstalledArtifacts,
+  getInstalledSelection,
   excludeInstalledLocalArtifacts,
 } from "../src/installed.js";
 import { prepareSession } from "../src/prepare.js";
@@ -81,11 +81,11 @@ const skill = (id: string) => ({ description: id, path: `/skills/${id}` });
 const hook = (id: string) => ({ description: id, path: `/hooks/${id}` });
 const server = { type: "stdio" as const, command: "node" };
 
-describe("getInstalledArtifacts", () => {
+describe("getInstalledSelection", () => {
   it("returns null when AIR has installed nothing in the target", () => {
     const target = createTemp({});
     expect(
-      getInstalledArtifacts({
+      getInstalledSelection({
         target,
         adapter: "claude",
         artifacts: makeArtifacts({ skills: { "@local/a": skill("a") } }),
@@ -104,7 +104,7 @@ describe("getInstalledArtifacts", () => {
       })
     );
 
-    const installed = getInstalledArtifacts({
+    const installed = getInstalledSelection({
       target,
       adapter: "claude",
       artifacts: makeArtifacts({
@@ -128,7 +128,7 @@ describe("getInstalledArtifacts", () => {
     writeManifest(buildManifest(target, { adapter: "claude" }));
 
     expect(
-      getInstalledArtifacts({
+      getInstalledSelection({
         target,
         adapter: "claude",
         artifacts: makeArtifacts({ skills: { "@local/a": skill("a") } }),
@@ -141,7 +141,7 @@ describe("getInstalledArtifacts", () => {
     writeManifest(buildManifest(target, { adapter: "codex", skills: ["a"] }));
 
     expect(
-      getInstalledArtifacts({
+      getInstalledSelection({
         target,
         adapter: "claude",
         artifacts: makeArtifacts({ skills: { "@local/a": skill("a") } }),
@@ -154,7 +154,7 @@ describe("getInstalledArtifacts", () => {
     writeManifest(buildManifest(target, { skills: ["a"] }));
 
     expect(
-      getInstalledArtifacts({
+      getInstalledSelection({
         target,
         adapter: "claude",
         artifacts: makeArtifacts({ skills: { "@local/a": skill("a") } }),
@@ -162,67 +162,124 @@ describe("getInstalledArtifacts", () => {
     ).toEqual(["@local/a"]);
   });
 
-  it("uses `prefer` to settle a shortname several scopes provide, and skips it otherwise", () => {
+  it("returns null instead of throwing when AIR home can't be resolved", () => {
+    const target = createTemp({});
+    const saved = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
+    delete process.env.AIR_HOME;
+    delete process.env.HOME;
+    delete process.env.USERPROFILE;
+    try {
+      expect(
+        getInstalledSelection({ target, adapter: "claude", artifacts: makeArtifacts() })
+      ).toBeNull();
+    } finally {
+      if (saved.HOME !== undefined) process.env.HOME = saved.HOME;
+      if (saved.USERPROFILE !== undefined) process.env.USERPROFILE = saved.USERPROFILE;
+    }
+  });
+
+  it("settles a shortname several scopes provide with the defaults, else leaves the category to defaults", () => {
     const target = createTemp({});
     writeManifest(
-      buildManifest(target, { adapter: "claude", skills: ["shared"] })
+      buildManifest(target, { adapter: "claude", skills: ["shared", "solo"] })
     );
     const artifacts = makeArtifacts({
       skills: {
         "@local/shared": skill("shared"),
         "@acme/cat/shared": skill("shared"),
+        "@local/solo": skill("solo"),
       },
     });
 
     expect(
-      getInstalledArtifacts({
+      getInstalledSelection({
         target,
         adapter: "claude",
         artifacts,
-        prefer: { skills: ["@acme/cat/shared"] },
+        defaults: { skills: ["@acme/cat/shared"] },
       })?.skills
-    ).toEqual(["@acme/cat/shared"]);
-    expect(
-      getInstalledArtifacts({ target, adapter: "claude", artifacts })?.skills
-    ).toEqual([]);
+    ).toEqual(["@acme/cat/shared", "@local/solo"]);
+    // Unsettled: guessing wrong would drop the installed copy on Enter, so the
+    // category is left undefined and the TUI uses root defaults, as before.
+    const unsettled = getInstalledSelection({ target, adapter: "claude", artifacts });
+    expect(unsettled?.skills).toBeUndefined();
+    expect(unsettled?.hooks).toEqual([]);
   });
 
-  it("infers a plugin as installed only when all of its primitives are", () => {
-    const target = createTemp({});
-    writeManifest(
-      buildManifest(target, {
-        adapter: "claude",
-        skills: ["a", "b"],
-        mcpServers: ["github"],
-      })
-    );
+  describe("plugins", () => {
+    const artifacts = makeArtifacts({
+      skills: {
+        "@local/a": skill("a"),
+        "@local/b": skill("b"),
+        "@local/c": skill("c"),
+      },
+      mcp: { "@local/github": server },
+      plugins: {
+        "@local/bundle": {
+          description: "a + b + github",
+          skills: ["@local/a", "@local/b"],
+          mcp_servers: ["@local/github"],
+        },
+        "@local/partial": {
+          description: "a + c",
+          skills: ["@local/a", "@local/c"],
+        },
+      },
+    });
+    const writeInstalled = () => {
+      const target = createTemp({});
+      writeManifest(
+        buildManifest(target, {
+          adapter: "claude",
+          skills: ["a", "b"],
+          mcpServers: ["github"],
+        })
+      );
+      return target;
+    };
 
-    const installed = getInstalledArtifacts({
-      target,
-      adapter: "claude",
-      artifacts: makeArtifacts({
-        skills: {
-          "@local/a": skill("a"),
-          "@local/b": skill("b"),
-          "@local/c": skill("c"),
-        },
-        mcp: { "@local/github": server },
-        plugins: {
-          "@local/full": {
-            description: "all installed",
-            skills: ["@local/a", "@local/b"],
-            mcp_servers: ["@local/github"],
-          },
-          "@local/partial": {
-            description: "c is missing",
-            skills: ["@local/a", "@local/c"],
-          },
-          "@local/empty": { description: "declares nothing" },
-        },
-      }),
+    it("preselects a default plugin whose primitives are all installed, and not its primitives on their own", () => {
+      const target = writeInstalled();
+      expect(
+        getInstalledSelection({
+          target,
+          adapter: "claude",
+          artifacts,
+          defaults: { plugins: ["@local/bundle", "@local/partial"] },
+        })
+      ).toEqual({
+        // bundle provides a, b and github; deselecting it should remove them.
+        // partial's c is not installed, so partial is not preselected.
+        skills: [],
+        mcpServers: [],
+        hooks: [],
+        plugins: ["@local/bundle"],
+      });
     });
 
-    expect(installed?.plugins).toEqual(["@local/full"]);
+    it("keeps a plugin-provided primitive selected on its own when it is itself a default", () => {
+      const target = writeInstalled();
+      expect(
+        getInstalledSelection({
+          target,
+          adapter: "claude",
+          artifacts,
+          defaults: { skills: ["@local/a"], plugins: ["@local/bundle"] },
+        })?.skills
+      ).toEqual(["@local/a"]);
+    });
+
+    it("never infers a plugin that isn't a default, even with every primitive installed", () => {
+      const target = writeInstalled();
+      expect(
+        getInstalledSelection({ target, adapter: "claude", artifacts })
+      ).toEqual({
+        skills: ["@local/a", "@local/b"],
+        mcpServers: ["@local/github"],
+        hooks: [],
+        plugins: [],
+      });
+    });
   });
 });
 
@@ -295,8 +352,9 @@ describe("installed state after prepareSession (Claude adapter)", () => {
       checkAvailability: false,
       localScanDir: target,
     });
+    expect(first.adapterName).toBe("claude");
     expect(
-      getInstalledArtifacts({ target, adapter: "claude", artifacts: first.artifacts })
+      getInstalledSelection({ target, adapter: "claude", artifacts: first.artifacts })
     ).toBeNull();
 
     await prepareSession({
@@ -314,7 +372,7 @@ describe("installed state after prepareSession (Claude adapter)", () => {
       localScanDir: target,
     });
     expect(
-      getInstalledArtifacts({ target, adapter: "claude", artifacts: second.artifacts })
+      getInstalledSelection({ target, adapter: "claude", artifacts: second.artifacts })
     ).toEqual({
       skills: ["@local/alpha", "@local/gamma"],
       mcpServers: [],

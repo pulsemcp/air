@@ -140,10 +140,10 @@ export type {
   MergedArtifactDefaults,
 } from "./prepare.js";
 
-export { getInstalledArtifacts } from "./installed.js";
+export { getInstalledSelection } from "./installed.js";
 export type {
-  InstalledArtifacts,
-  GetInstalledArtifactsOptions,
+  InstalledSelection,
+  GetInstalledSelectionOptions,
 } from "./installed.js";
 
 export { cleanSession } from "./clean.js";

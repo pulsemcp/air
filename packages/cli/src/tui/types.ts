@@ -1,5 +1,5 @@
 import type {
-  InstalledArtifacts,
+  InstalledSelection,
   LocalArtifacts,
   ResolvedArtifacts,
   RootEntry,
@@ -112,10 +112,10 @@ export function getMergedDefaults(
 
 /**
  * Build the selector's initial state. Items are preselected from
- * `installedArtifacts` — what AIR already installed in the target directory —
- * when it is provided, so the TUI opens on the current on-disk state.
- * Without it (first run in a directory), preselection falls back to the
- * root's defaults.
+ * `installedSelection` — the selection matching what AIR already installed in
+ * the target directory — so the TUI opens on the current on-disk state. Without
+ * it (first run in a directory), or for a category it leaves undefined,
+ * preselection falls back to the root's defaults.
  */
 export function buildInitialState(
   artifacts: ResolvedArtifacts,
@@ -124,7 +124,7 @@ export function buildInitialState(
   rootAutoDetected = false,
   skipSubagentMerge = false,
   localArtifacts?: LocalArtifacts,
-  installedArtifacts?: InstalledArtifacts
+  installedSelection?: InstalledSelection
 ): TuiState {
   const buildItems = (
     entries: Record<string, { description?: string; title?: string }>,
@@ -157,13 +157,13 @@ export function buildInitialState(
 
   // What's already installed in the target wins over root defaults.
   const items: Record<ArtifactCategory, ArtifactItem[]> = {
-    mcp: buildItems(artifacts.mcp, installedArtifacts?.mcpServers ?? mcpDefaults),
+    mcp: buildItems(artifacts.mcp, installedSelection?.mcpServers ?? mcpDefaults),
     skills: mergeLocalSkills(
-      buildItems(artifacts.skills, installedArtifacts?.skills ?? skillDefaults),
+      buildItems(artifacts.skills, installedSelection?.skills ?? skillDefaults),
       localArtifacts?.skills ?? []
     ),
-    hooks: buildItems(artifacts.hooks, installedArtifacts?.hooks ?? hookDefaults),
-    plugins: buildItems(artifacts.plugins, installedArtifacts?.plugins ?? pluginDefaults),
+    hooks: buildItems(artifacts.hooks, installedSelection?.hooks ?? hookDefaults),
+    plugins: buildItems(artifacts.plugins, installedSelection?.plugins ?? pluginDefaults),
   };
 
   const tabs = (

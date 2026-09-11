@@ -838,6 +838,21 @@ describe("buildInitialState with installed artifacts", () => {
     });
   });
 
+  it("falls back to root defaults for a category the installed selection leaves undefined", () => {
+    const state = buildInitialState(artifacts, root, "r", false, false, undefined, {
+      mcpServers: ["picked-server"],
+      skills: undefined,
+      hooks: ["picked-hook"],
+      plugins: [],
+    });
+    expect(selectedIn(state)).toEqual({
+      mcp: ["picked-server"],
+      skills: ["default-skill"],
+      hooks: ["picked-hook"],
+      plugins: [],
+    });
+  });
+
   it("preselects nothing in a category the last run left empty", () => {
     const state = buildInitialState(artifacts, root, "r", false, false, undefined, {
       mcpServers: [],

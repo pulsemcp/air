@@ -39,7 +39,13 @@ When run in a TTY, `air start` opens an interactive terminal UI where you can:
 
 The footer shows a cross-artifact selection summary so you can see what's selected across all types.
 
-The TUI opens on what is already installed in the current directory. After the first `air start`, every skill, MCP server, and hook AIR installed on the previous run (recorded in AIR's per-directory manifest by the same adapter) is preselected, and so is every plugin whose skills, MCP servers, and hooks are all installed. Pressing Enter without changing anything leaves the directory as it is. On the first run in a directory, when AIR has installed nothing there yet, the TUI preselects the root's defaults instead.
+The TUI opens on what is already installed in the current directory. On the first run in a directory, when AIR has installed nothing there yet, the TUI preselects the root's defaults. After that, it preselects what AIR installed on the previous run, as recorded in AIR's per-directory manifest by the same adapter, so pressing Enter without changing anything leaves the directory as it is:
+
+- Every skill, MCP server, and hook AIR installed there is preselected.
+- A default plugin is preselected when all of its skills, MCP servers, and hooks are installed. The skills, MCP servers, and hooks it provides are then left to the plugin, so deselecting the plugin removes them.
+- The manifest doesn't record plugins you added beyond the root's defaults. Their skills, MCP servers, and hooks show up selected individually instead.
+
+Root defaults only shape the first run. A default added to the root later isn't preselected automatically; select it in the TUI. The same applies to passing `--root`, including a different root than last time: the TUI still opens on what is installed.
 
 Skills that are already checked into the working directory under `.claude/skills/` show up in the Skills tab with a 🔒 marker and cannot be toggled. They're always active (the adapter never overwrites them). To disable one, remove or move its directory in the repo. See [Local skills tracked in the repo](managing-skills.md#local-skills-tracked-in-the-repo) for details.
 
@@ -144,7 +150,7 @@ If you have [roots](roots.md) configured, activate one to scope the session:
 air start claude --root web-app
 ```
 
-This activates only the MCP servers, skills, plugins, and hooks listed in the root's defaults. Without `--root`, `air start` auto-detects the root from the current directory's git context and pre-selects the root's defaults in the TUI (on the first run in a directory; after that the TUI pre-selects what is installed — see [Interactive TUI](#interactive-tui)).
+Without the TUI (`--skip-confirmation`, or no TTY), this activates only the MCP servers, skills, plugins, and hooks listed in the root's defaults. In the TUI, the root's defaults are preselected on the first run in a directory; after that the TUI preselects what is installed (see [Interactive TUI](#interactive-tui)). Without `--root`, `air start` auto-detects the root from the current directory's git context.
 
 When a root has subagent roots (other roots whose `default_in_roots` lists it), the root defaults include MCP servers, skills, hooks, and plugins from both the parent and its subagents (union). The `--dry-run` output also reflects this merged view. Use `--no-subagent-merge` to disable this behavior.
 

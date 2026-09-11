@@ -11,7 +11,7 @@ import {
 import { tmpdir } from "os";
 import {
   computeMergedDefaults,
-  getInstalledArtifacts,
+  getInstalledSelection,
   prepareSession,
   startSession,
 } from "@pulsemcp/air-sdk";
@@ -64,14 +64,16 @@ function createTemp(files: Record<string, unknown>): string {
 const skillMd = (id: string) =>
   `---\nname: ${id}\ndescription: The ${id} skill\n---\n`;
 
-function setup() {
+function setup(plugins: Record<string, unknown> = {}) {
   const catalog = createTemp({
     "air.json": {
       name: "test",
       skills: ["./skills.json"],
       mcp: ["./mcp.json"],
+      plugins: ["./plugins.json"],
       roots: ["./roots.json"],
     },
+    "plugins.json": plugins,
     "skills.json": {
       alpha: { description: "Alpha", path: "skills/alpha", default_in_roots: ["web"] },
       beta: { description: "Beta", path: "skills/beta", default_in_roots: ["web"] },
@@ -101,14 +103,15 @@ async function enterSelector(config: string, target: string) {
     localScanDir: target,
   });
   const merged = computeMergedDefaults(result.root, result.artifacts);
-  const installed = getInstalledArtifacts({
+  const installed = getInstalledSelection({
     target,
-    adapter: "claude",
+    adapter: result.adapterName,
     artifacts: result.artifacts,
-    prefer: {
+    defaults: {
       skills: merged.skillIds,
       mcpServers: merged.mcpServerIds,
       hooks: merged.hookIds,
+      plugins: merged.pluginIds,
     },
   });
   return buildInitialState(
@@ -125,6 +128,7 @@ async function enterSelector(config: string, target: string) {
 function selectedRows(state: ReturnType<typeof buildInitialState>) {
   return {
     mcp: state.items.mcp.filter((i) => i.selected).map((i) => i.id),
+    plugins: state.items.plugins.filter((i) => i.selected).map((i) => i.id),
     skills: state.items.skills
       .filter((i) => i.selected)
       .map((i) => (i.readOnly ? `${i.id} (locked)` : i.id)),
@@ -139,6 +143,18 @@ function onDisk(target: string) {
   };
 }
 
+/** Flip one row, as Space on it would, and return what Enter hands back. */
+function toggle(
+  state: ReturnType<typeof buildInitialState>,
+  category: "mcp" | "skills" | "hooks" | "plugins",
+  id: string
+) {
+  const item = state.items[category].find((i) => i.id === id);
+  if (!item) throw new Error(`no ${category} row ${id}`);
+  item.selected = !item.selected;
+  return getSelectedIds(state);
+}
+
 describe("air start TUI preselection follows what is installed (#122)", () => {
   it("preselects root defaults on the first run, then the prior selection on the next", async () => {
     const { config, target } = setup();
@@ -147,6 +163,7 @@ describe("air start TUI preselection follows what is installed (#122)", () => {
     const first = await enterSelector(config, target);
     expect(selectedRows(first)).toEqual({
       mcp: ["@local/github"],
+      plugins: [],
       skills: ["@local/alpha", "@local/beta", "checked-in (locked)"],
     });
 
@@ -168,6 +185,7 @@ describe("air start TUI preselection follows what is installed (#122)", () => {
     const second = await enterSelector(config, target);
     expect(selectedRows(second)).toEqual({
       mcp: ["@local/slack"],
+      plugins: [],
       skills: ["@local/alpha", "@local/gamma", "checked-in (locked)"],
     });
     const skillsTab = second.tabs.indexOf("skills");
@@ -193,5 +211,62 @@ describe("air start TUI preselection follows what is installed (#122)", () => {
       skills: ["alpha", "checked-in", "gamma"],
       mcp: ["slack"],
     });
+  });
+  it("does not preselect a non-default plugin, so deselecting one of its skills still removes it", async () => {
+    // bundle covers exactly the default skills, but nobody picked it.
+    const { config, target } = setup({
+      bundle: { description: "Bundle", skills: ["alpha", "beta"] },
+    });
+    await prepareSession({ config, root: "web", target, adapter: "claude" });
+    expect(onDisk(target).skills).toEqual(["alpha", "beta", "checked-in"]);
+
+    const second = await enterSelector(config, target);
+    expect(selectedRows(second).plugins).toEqual([]);
+
+    await prepareSession({
+      config,
+      root: "web",
+      target,
+      adapter: "claude",
+      ...toggle(second, "skills", "@local/alpha"),
+    });
+    expect(onDisk(target).skills).toEqual(["beta", "checked-in"]);
+  });
+
+  it("preselects a kept default plugin and leaves its skills to it, so Enter is a no-op and deselecting it removes them", async () => {
+    const { config, target } = setup({
+      kit: { description: "Kit", skills: ["gamma"], default_in_roots: ["web"] },
+    });
+    // Run 1 keeps the defaults: alpha, beta, and gamma via the kit plugin.
+    await prepareSession({ config, root: "web", target, adapter: "claude" });
+    expect(onDisk(target).skills).toEqual(["alpha", "beta", "checked-in", "gamma"]);
+
+    const second = await enterSelector(config, target);
+    expect(selectedRows(second)).toEqual({
+      mcp: ["@local/github"],
+      plugins: ["@local/kit"],
+      skills: ["@local/alpha", "@local/beta", "checked-in (locked)"],
+    });
+    await prepareSession({
+      config,
+      root: "web",
+      target,
+      adapter: "claude",
+      ...getSelectedIds(second),
+    });
+    expect(onDisk(target).skills).toEqual(["alpha", "beta", "checked-in", "gamma"]);
+
+    const third = await enterSelector(config, target);
+    await prepareSession({
+      config,
+      root: "web",
+      target,
+      adapter: "claude",
+      ...toggle(third, "plugins", "@local/kit"),
+    });
+    expect(onDisk(target).skills).toEqual(["alpha", "beta", "checked-in"]);
+
+    // And it stays off: the kit's skill is gone, so the kit isn't preselected.
+    expect(selectedRows(await enterSelector(config, target)).plugins).toEqual([]);
   });
 });
