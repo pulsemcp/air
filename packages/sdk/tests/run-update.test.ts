@@ -402,7 +402,10 @@ describe("runUpdate — the two halves", () => {
       ...spy.options,
     });
 
-    expect(result.versionCheck.decision).toBe("not-needed");
+    // Not "not-needed": "I checked and you are current" and "I could not
+    // check" are different answers, and collapsing them would let a script
+    // read a registry outage as a clean bill of health.
+    expect(result.versionCheck.decision).toBe("check-failed");
     expect(result.versionCheck.bumps).toEqual([]);
     expect(result.versionCheck.warnings.join("\n")).toContain(
       "Could not reach the npm registry"
@@ -465,6 +468,59 @@ describe("runUpdate — the two halves", () => {
     expect(result.versionCheck.decision).toBe("applied");
     expect(spy.globalInstalls).toEqual(["@pulsemcp/air-cli@latest"]);
     expect(spy.extensionInstalls).toEqual([dir]);
+  });
+
+  it("says the CLI already moved when the extension step then fails", async () => {
+    // Failing silently here leaves exactly the split-brain state this command
+    // exists to eliminate: a new CLI beside old extensions.
+    const dir = staleAirDir();
+    const spy = createSpy();
+
+    await expect(
+      runUpdate({
+        cliVersion: "0.13.1",
+        config: join(dir, "air.json"),
+        getLatestVersion: latest("0.14.0"),
+        assumeYes: true,
+        ...spy.options,
+        runNpmInstall: async () => ({ ok: false, stderr: "network error" }),
+      })
+    ).rejects.toThrow(
+      /The CLI was upgraded to 0\.14\.0, but the extension upgrade then failed/
+    );
+
+    expect(spy.globalInstalls).toEqual(["@pulsemcp/air-cli@latest"]);
+  });
+
+  it("does not claim a CLI upgrade that never happened", async () => {
+    // Same failure, but with the CLI already current — the message must not
+    // invent an upgrade.
+    const dir = staleAirDir();
+    const spy = createSpy();
+
+    await expect(
+      runUpdate({
+        cliVersion: "0.13.1",
+        config: join(dir, "air.json"),
+        getLatestVersion: latest("0.13.1"),
+        assumeYes: true,
+        ...spy.options,
+        runNpmInstall: async () => ({ ok: false, stderr: "network error" }),
+      })
+    ).rejects.toThrow(/npm install failed for extensions/);
+
+    await expect(
+      runUpdate({
+        cliVersion: "0.13.1",
+        config: join(dir, "air.json"),
+        getLatestVersion: latest("0.13.1"),
+        assumeYes: true,
+        ...spy.options,
+        runNpmInstall: async () => ({ ok: false, stderr: "network error" }),
+      })
+    ).rejects.not.toThrow(/The CLI was upgraded/);
+
+    expect(spy.globalInstalls).toEqual([]);
   });
 
   it("throws, and skips the extension step, when the global install fails", async () => {

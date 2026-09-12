@@ -23,9 +23,17 @@ interface UpdateOptions {
 
 /** Print the provider cache refresh half of the run. */
 function reportCaches(
-  cacheResults: Record<string, CacheRefreshResult[]>
+  cacheResults: Record<string, CacheRefreshResult[]>,
+  cacheRefreshError: string | null
 ): void {
   console.log("Refreshing provider caches…");
+
+  // A failed refresh also yields no results, so say which of the two happened
+  // rather than printing a reassuring "none found" over an error.
+  if (cacheRefreshError) {
+    console.log(`  ✗ cache refresh failed — ${cacheRefreshError}`);
+    return;
+  }
 
   const schemes = Object.keys(cacheResults);
   if (schemes.length === 0) {
@@ -128,6 +136,15 @@ function reportOutcome(result: RunUpdateResult): void {
     case "not-needed":
       console.log("\nEverything is up to date.");
       break;
+    case "check-failed":
+      // Deliberately not "up to date": the warning above said the registry
+      // was unreachable, and a line claiming everything is current would
+      // contradict it.
+      console.log(
+        "\nCould not check for updates — nothing was installed. " +
+          "Re-run `air update` once the registry is reachable."
+      );
+      break;
     case "disabled":
       console.log(
         "\n--no-upgrade: nothing was installed. " +
@@ -166,6 +183,15 @@ function reportOutcome(result: RunUpdateResult): void {
     }
   }
 
+  // Restored from the old `air upgrade`: without this, a first-time user with
+  // no air.json gets a run that silently ignores the entire extension half.
+  if (versionCheck.extensions && !versionCheck.extensions.configFound) {
+    console.log(
+      "\nNo air.json found — skipping the extension check. " +
+        "Run `air init` first, or set AIR_CONFIG."
+    );
+  }
+
   reportSkippedExtensions(versionCheck.extensionPlans);
 }
 
@@ -183,8 +209,9 @@ function buildUpdateCommand(name: string, deprecated: boolean): Command {
         ? "Deprecated alias for `air update`."
         : "Refresh cached provider data, then check the AIR CLI and every " +
             "extension declared in air.json for newer published versions. " +
-            "Never installs a version bump without --yes or an interactive " +
-            "confirmation."
+            "The version check never installs without --yes or an interactive " +
+            "confirmation. (The cache refresh may still repair a provider " +
+            "extension too old to refresh its own cache — see --no-auto-heal.)"
     )
     .option(
       "--config <path>",
@@ -202,7 +229,8 @@ function buildUpdateCommand(name: string, deprecated: boolean): Command {
     )
     .option(
       "--no-auto-heal",
-      "Do not auto-upgrade provider extensions that are too old to refresh their cache"
+      "Do not auto-upgrade provider extensions that are too old to refresh their cache. " +
+        "This repair is the one install the confirmation prompt does not cover"
     )
     .option(
       "--git-protocol <protocol>",

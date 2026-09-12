@@ -264,7 +264,7 @@ If `.mcp.json` would be left empty after removing AIR-managed servers (no other 
 
 ### `air update`
 
-Refresh cached provider data, then check the CLI and every extension declared in `air.json` for newer published versions. **Never installs a version bump without `--yes` or an interactive confirmation.**
+Refresh cached provider data, then check the CLI and every extension declared in `air.json` for newer published versions. **The version check never installs without `--yes` or an interactive confirmation.**
 
 ```bash
 # Refresh caches, then ask before upgrading anything
@@ -285,9 +285,11 @@ The cache refresh always runs — it changes no versions, so there is nothing to
 | `--no-upgrade` | Refresh caches only. The version check still runs and reports, but installs nothing. Outranks `--yes`. |
 | `--dry-run` | Print the commands that would run, install nothing. |
 | `--no-extensions` | Consider only the CLI; leave the extension tree alone. |
-| `--no-auto-heal` | Do not auto-upgrade provider extensions too old to refresh their cache. |
+| `--no-auto-heal` | Do not auto-upgrade provider extensions too old to refresh their cache. See the auto-heal note below. |
 | `--git-protocol <ssh\|https>` | Protocol for git-based catalog providers. Overrides `gitProtocol` in `air.json`. |
 | `--config <path>` | Path to `air.json`. Defaults to `AIR_CONFIG` env or `~/.air/air.json`. |
+
+**One install the prompt does not cover.** The cache refresh works by *loading* each provider, so a provider installed at a version too old to expose `refreshCache()` cannot refresh anything. Pre-existing `air update` behaviour is to repair that in place with `npm install <provider>@latest` under `<airJsonDir>`, before any provider is imported — Node caches modules by URL, so the repair has to happen before the load or it cannot take effect this run. That repair is not covered by the confirmation prompt, it is reported in the cache-refresh output, and `--no-auto-heal` disables it. It is narrowly scoped to known provider packages that are already installed and below a known minimum; it is never a global install and never installs a package that is absent.
 
 **Non-TTY behaviour.** When stdin or stdout is not a terminal — CI, a pipeline, any scripted wrapper — `air update` skips the upgrade and says so, rather than running an unattended `npm install -g`. Pass `--yes` to opt in.
 

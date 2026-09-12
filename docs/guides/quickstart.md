@@ -57,13 +57,15 @@ Version check:
 Upgrade these 2 packages? [Y/n]
 ```
 
-**It never bumps a version without your say-so.** Answer `n` and nothing is installed. And when `air update` is not attached to a terminal — in CI, a pipeline, or any scripted wrapper — it skips the upgrade entirely rather than running an unattended `npm install -g`. Pass `--yes` when you *do* want a script to upgrade:
+**The version check never bumps a version without your say-so.** Answer `n` and nothing is installed. And when `air update` is not attached to a terminal — in CI, a pipeline, or any scripted wrapper — it skips the upgrade entirely rather than running an unattended `npm install -g`. Pass `--yes` when you *do* want a script to upgrade:
 
 ```bash
 air update --yes          # upgrade without prompting (scripts, CI)
 air update --no-upgrade   # refresh caches only; report bumps, install nothing
 air update --dry-run      # show what would be installed, install nothing
 ```
+
+One install sits outside that prompt, and it is worth knowing about: the cache refresh works by *loading* each provider, so a provider too old to expose `refreshCache()` is repaired in place with `npm install <provider>@latest` before anything is loaded. That repair is pre-existing `air update` behaviour, is reported in the cache-refresh output, is never a global install, and is disabled by `--no-auto-heal`.
 
 #### Why the extension half matters
 

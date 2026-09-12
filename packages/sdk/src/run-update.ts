@@ -1,4 +1,4 @@
-import { execFile } from "child_process";
+import { execFile, spawn } from "child_process";
 import type { CacheRefreshResult } from "@pulsemcp/air-core";
 import { updateProviderCaches, type NpmInstallLatest } from "./update.js";
 import {
@@ -39,6 +39,14 @@ export interface VersionBump {
 export type UpgradeDecision =
   /** No package needed a bump. */
   | "not-needed"
+  /**
+   * The registry could not be reached, so nothing is known about what is
+   * available. Deliberately distinct from `"not-needed"`: "I checked and you
+   * are current" and "I could not check" are different answers, and a script
+   * that treats the second as the first calls an outage a clean bill of
+   * health.
+   */
+  | "check-failed"
   /** `dryRun` was set — the plan was computed and discarded. */
   | "dry-run"
   /** `upgrade: false` (`--no-upgrade`) — the plan was shown, not run. */
@@ -153,7 +161,8 @@ export interface RunUpdateOptions {
    * asked in the middle of it.
    */
   onCachesRefreshed?: (
-    cacheResults: Record<string, CacheRefreshResult[]>
+    cacheResults: Record<string, CacheRefreshResult[]>,
+    cacheRefreshError: string | null
   ) => void;
   /** Called once the plan is known, immediately before the decision is made. */
   onPlan?: (plan: UpdatePlan) => void;
@@ -179,7 +188,10 @@ const defaultLatestVersion: LatestVersionLookup = (packageName) =>
     execFile(
       "npm",
       ["view", packageName, "version"],
-      { encoding: "utf-8" },
+      // Bounded: a registry that black-holes the request would otherwise hang
+      // the whole command with no output explaining why. A timeout lands on
+      // the same "no bump known" path as any other lookup failure.
+      { encoding: "utf-8", timeout: 15_000 },
       (err, stdout) => {
         if (err) {
           resolveResult(null);
@@ -194,29 +206,28 @@ const defaultLatestVersion: LatestVersionLookup = (packageName) =>
 /**
  * Default {@link NpmInstallGlobal} — `npm install -g <spec>`.
  *
- * Inherits stdout and stderr so npm's own progress output reaches the
- * terminal, exactly as it did when this shelled out from the CLI. Tests never
- * reach this path; they pass their own hook.
+ * `spawn`, not `execFile`: this is the one npm call a user watches, and
+ * `execFile` always pipes and buffers regardless of any `stdio` passed to it,
+ * so the terminal would sit blank for the length of a global install. `spawn`
+ * really does inherit, which is what the old CLI's `execSync(…, { stdio:
+ * "inherit" })` did. It also has no `maxBuffer` to overrun on verbose npm
+ * output. Tests never reach this path; they pass their own hook.
  */
 const defaultNpmInstallGlobal: NpmInstallGlobal = (specifier) =>
   new Promise((resolveResult) => {
-    execFile(
-      "npm",
-      ["install", "-g", specifier],
-      { stdio: ["pipe", "inherit", "inherit"] } as Parameters<
-        typeof execFile
-      >[2],
-      (err, _stdout, stderr) => {
-        if (err) {
-          resolveResult({
-            ok: false,
-            stderr: stderr?.toString() || String(err),
-          });
-        } else {
-          resolveResult({ ok: true, stderr: "" });
-        }
-      }
-    );
+    const child = spawn("npm", ["install", "-g", specifier], {
+      stdio: ["ignore", "inherit", "inherit"],
+    });
+    child.on("error", (err) => {
+      resolveResult({ ok: false, stderr: String(err) });
+    });
+    child.on("close", (code) => {
+      resolveResult(
+        code === 0
+          ? { ok: true, stderr: "" }
+          : { ok: false, stderr: `npm exited with code ${code}` }
+      );
+    });
   });
 
 /**
@@ -272,7 +283,7 @@ export async function runUpdate(
     cacheRefreshError = err instanceof Error ? err.message : String(err);
     warnings.push(`Provider cache refresh failed: ${cacheRefreshError}`);
   }
-  options.onCachesRefreshed?.(cacheResults);
+  options.onCachesRefreshed?.(cacheResults, cacheRefreshError);
 
   // 2. Check the CLI against the registry.
   const getLatestVersion = options.getLatestVersion ?? defaultLatestVersion;
@@ -343,7 +354,9 @@ export async function runUpdate(
   // 4. Decide. Every branch but the last two leaves the tree untouched, and
   //    the default with no way to ask is to leave it untouched too.
   let decision: UpgradeDecision;
-  if (bumps.length === 0) {
+  if (!cliLatestVersion) {
+    decision = "check-failed";
+  } else if (bumps.length === 0) {
     decision = "not-needed";
   } else if (!upgradeEnabled) {
     decision = "disabled";
@@ -392,14 +405,33 @@ export async function runUpdate(
     cliUpgraded = true;
   }
 
-  if (extensionsEnabled && targetCliVersion && bumps.some((b) => b.kind === "extension")) {
-    extensions = await upgradeExtensions({
-      config: options.config,
-      cliVersion: targetCliVersion,
-      dryRun: false,
-      runNpmInstall: options.runNpmInstall,
-    });
-    extensionPlans = extensions.plans;
+  if (
+    extensionsEnabled &&
+    targetCliVersion &&
+    bumps.some((b) => b.kind === "extension")
+  ) {
+    try {
+      extensions = await upgradeExtensions({
+        config: options.config,
+        cliVersion: targetCliVersion,
+        dryRun: false,
+        runNpmInstall: options.runNpmInstall,
+      });
+      extensionPlans = extensions.plans;
+    } catch (err) {
+      // The CLI may already be on the new line at this point. Failing without
+      // saying so leaves the user in exactly the split-brain state this
+      // command exists to eliminate — a new CLI beside old extensions — with
+      // no clue that half of it landed.
+      const detail = err instanceof Error ? err.message : String(err);
+      throw new Error(
+        (cliUpgraded
+          ? `The CLI was upgraded to ${cliLatestVersion}, but the extension upgrade then failed, ` +
+            `so the extensions are still on their old version line. ` +
+            `Re-run \`air update\` to finish the job.\n\n`
+          : "") + detail
+      );
+    }
   }
 
   return {

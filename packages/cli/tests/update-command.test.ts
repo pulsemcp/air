@@ -43,7 +43,9 @@ function tempDir(label: string): string {
  * assert on the thing that actually matters — *whether* `npm install -g` was
  * reached — without a test run mutating the machine's global npm tree.
  */
-function createFakeNpm(latestVersion: string): { bin: string; log: string } {
+function createFakeNpm(
+  latestVersion: string | null
+): { bin: string; log: string } {
   const bin = tempDir("fake-npm");
   const log = join(bin, "npm-invocations.log");
   writeFileSync(
@@ -52,7 +54,10 @@ function createFakeNpm(latestVersion: string): { bin: string; log: string } {
       "#!/bin/sh",
       `echo "$@" >> "${log}"`,
       'if [ "$1" = "view" ]; then',
-      `  echo "${latestVersion}"`,
+      ...(latestVersion === null
+        ? // An unreachable registry: npm exits non-zero with nothing on stdout.
+          ['  echo "npm ERR! network request failed" >&2', "  exit 1"]
+        : [`  echo "${latestVersion}"`]),
       "fi",
       "exit 0",
       "",
@@ -331,6 +336,66 @@ describe("air update — flags", () => {
   });
 });
 
+describe("air update — degraded and failure paths", () => {
+  it("says it could not check, not that everything is up to date, when the registry is unreachable", () => {
+    const dir = createStaleAirDir();
+    const fake = createFakeNpm(null);
+
+    const result = runIsolated(
+      ["update", "--yes", "--config", join(dir, "air.json")],
+      fake,
+      dir
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toContain("Could not reach the npm registry");
+    expect(result.stdout).toContain("Could not check for updates");
+    // The contradiction this guards against: a reassuring "up to date" line
+    // printed directly under a warning that the check never ran.
+    expect(result.stdout).not.toContain("Everything is up to date.");
+
+    // Even with --yes, nothing is installed and nothing is pinned to a
+    // version line we could not confirm.
+    const log = npmLog(fake);
+    expect(log).not.toContain("install -g");
+    expect(log).not.toContain("install --prefix");
+    expect(
+      JSON.parse(readFileSync(join(dir, "package.json"), "utf-8")).dependencies
+    ).toEqual({ "@pulsemcp/air-adapter-claude": "^0.0.25" });
+  });
+
+  it("exits 1 when the cache refresh fails and no upgrade repaired it", () => {
+    // An extension that resolves nowhere makes the refresh throw. The run must
+    // still reach the version check — that is the step that repairs it — but
+    // an unrepaired failure is still a failed run.
+    const dir = tempDir("broken");
+    writeFileSync(
+      join(dir, "air.json"),
+      JSON.stringify(
+        { name: "test", extensions: ["@pulsemcp/air-adapter-does-not-exist"] },
+        null,
+        2
+      )
+    );
+    const pkg = JSON.parse(
+      readFileSync(resolve(__dirname, "../package.json"), "utf-8")
+    );
+    const fake = createFakeNpm(pkg.version);
+
+    const result = runIsolated(
+      ["update", "--config", join(dir, "air.json")],
+      fake,
+      dir
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toContain("cache refresh failed");
+    // Not the reassuring "no providers with cached data found" line.
+    expect(result.stdout).not.toContain("no providers with cached data found");
+    expect(result.stderr).toContain("Provider cache refresh failed");
+  });
+});
+
 describe("air upgrade — the deprecated alias", () => {
   it("warns, then does the same job as air update", () => {
     const dir = createStaleAirDir();
@@ -365,6 +430,39 @@ describe("air upgrade — the deprecated alias", () => {
 
     expect(result.stdout).toContain("Not an interactive terminal");
     expect(npmLog(fake)).not.toContain("install -g");
+  });
+
+  it("threads --git-protocol and --no-auto-heal through, as the old command did", () => {
+    // The "existing scripts keep working" claim rests on this pass-through,
+    // so assert the flags are accepted and acted on rather than only that
+    // they appear in --help.
+    const dir = createStaleAirDir();
+    const fake = createFakeNpm("0.99.0");
+
+    const result = runIsolated(
+      [
+        "upgrade",
+        "--git-protocol",
+        "https",
+        "--no-auto-heal",
+        "--config",
+        join(dir, "air.json"),
+      ],
+      fake,
+      dir
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("Refreshing provider caches…");
+    expect(result.stdout).toContain("Version check:");
+
+    // A bad value is still rejected, proving the flag reaches the parser.
+    const bad = runIsolated(
+      ["upgrade", "--git-protocol", "carrier-pigeon", "--config", join(dir, "air.json")],
+      fake,
+      dir
+    );
+    expect(bad.exitCode).not.toBe(0);
   });
 
   it("accepts the flags the old command took", () => {
