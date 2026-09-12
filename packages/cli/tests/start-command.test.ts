@@ -357,15 +357,18 @@ describe("start command — CLI artifact selection flags", () => {
       "plugins.json": {
         "plugin-a": {
           description: "Plugin A",
-          version: "1.0.0",
-          author: { name: "Test" },
+          path: "./plugin-a",
           default_in_roots: ["myroot"],
         },
-        "plugin-b": {
-          description: "Plugin B",
-          version: "1.0.0",
-          author: { name: "Test" },
-        },
+        "plugin-b": { description: "Plugin B", path: "./plugin-b" },
+      },
+      "plugin-a/.plugin/plugin.json": {
+        version: "1.0.0",
+        author: { name: "Test" },
+      },
+      "plugin-b/.plugin/plugin.json": {
+        version: "1.0.0",
+        author: { name: "Test" },
       },
       "roots.json": {
         myroot: {

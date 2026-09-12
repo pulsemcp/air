@@ -1,0 +1,8 @@
+{
+  "$schema": "../../../../../../schemas/plugin-manifest.schema.json",
+  "name": "platform-quality",
+  "title": "Platform Quality Suite",
+  "version": "1.0.0",
+  "skills": ["lint-fix", "format-check"],
+  "hooks": ["lint-check"]
+}

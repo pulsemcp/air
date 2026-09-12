@@ -354,11 +354,11 @@ export default {
         },
         "skills/deploy/SKILL.md": "# Deploy",
         "plugins.json": {
-          quality: {
-            description: "Quality",
-            skills: ["deploy"],
-            mcp_servers: ["gh"],
-          },
+          quality: { description: "Quality", path: "./quality" },
+        },
+        "quality/.plugin/plugin.json": {
+          skills: ["deploy"],
+          mcp_servers: ["gh"],
         },
       });
 
@@ -457,11 +457,11 @@ export default {
       },
       "skills/deploy/SKILL.md": "# Deploy",
       "plugins.json": {
-        "my-plugin": {
-          description: "A plugin",
-          skills: ["deploy"],
-          mcp_servers: ["gh"],
-        },
+        "my-plugin": { description: "A plugin", path: "./my-plugin" },
+      },
+      "my-plugin/.plugin/plugin.json": {
+        skills: ["deploy"],
+        mcp_servers: ["gh"],
       },
     });
 

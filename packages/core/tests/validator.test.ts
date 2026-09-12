@@ -312,7 +312,7 @@ describe("validateJson", () => {
       expect(result.valid).toBe(true);
     });
 
-    it("validates a plugin with artifact references", () => {
+    it("validates a plugin whose artifact references override its manifest", () => {
       const result = validateJson(
         {
           "my-plugin": examplePlugin("my-plugin", {
@@ -332,6 +332,76 @@ describe("validateJson", () => {
         "plugins"
       );
       expect(result.valid).toBe(false);
+    });
+
+    // Inline plugin bodies — body fields with no sibling `path` — were
+    // deprecated in v0.13.0 and removed in
+    // https://github.com/pulsemcp/air/issues/157. The schema rejects the same
+    // shape `resolveArtifacts` does, so `air validate` catches it first.
+    it("rejects a plugin that declares its body inline with no path", () => {
+      const result = validateJson(
+        {
+          "my-plugin": {
+            description: "A plugin",
+            version: "1.0.0",
+            skills: ["lint-fix"],
+          },
+        },
+        "plugins"
+      );
+
+      expect(result.valid).toBe(false);
+      const error = result.errors.find((e) => e.path === "/my-plugin");
+      expect(error).toBeDefined();
+      // One message per plugin, naming every offending field and where it goes
+      // — not AJV's raw one-field-at-a-time `dependencies` complaint.
+      expect(error!.message).toMatch(/Plugin "my-plugin"/);
+      expect(error!.message).toMatch(/version, skills/);
+      expect(error!.message).toMatch(/\.plugin\/plugin\.json/);
+      expect(error!.message).toMatch(/issues\/157/);
+      expect(
+        result.errors.filter((e) => /when property/.test(e.message))
+      ).toEqual([]);
+    });
+
+    it("still reports a plugin's other schema errors alongside the inline-body one", () => {
+      const result = validateJson(
+        { "my-plugin": { skills: ["lint-fix"] } },
+        "plugins"
+      );
+
+      expect(result.valid).toBe(false);
+      expect(
+        result.errors.some((e) => /declares its body inline/.test(e.message))
+      ).toBe(true);
+      // The missing `description` is not swallowed by the replacement.
+      expect(
+        result.errors.some((e) => /description/.test(e.message))
+      ).toBe(true);
+    });
+
+    it("accepts a plugin that overrides manifest fields inline alongside a path", () => {
+      const result = validateJson(
+        {
+          "my-plugin": {
+            description: "A plugin",
+            path: "./my-plugin",
+            version: "9.9.9",
+            skills: ["lint-fix"],
+          },
+        },
+        "plugins"
+      );
+      expect(result.errors).toEqual([]);
+      expect(result.valid).toBe(true);
+    });
+
+    it("accepts a body-less entry with no path", () => {
+      const result = validateJson(
+        { "my-plugin": { description: "Bundles nothing yet" } },
+        "plugins"
+      );
+      expect(result.valid).toBe(true);
     });
   });
 

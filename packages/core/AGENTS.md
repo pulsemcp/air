@@ -11,6 +11,7 @@ packages/core/
 │   ├── types.ts       # All artifact types + extension interfaces (AgentAdapter, CatalogProvider, PrepareTransform)
 │   ├── config.ts      # Config loading, merging, and resolution with CatalogProvider injection
 │   ├── validator.ts   # AJV-based JSON Schema validation
+│   ├── plugin-body.ts # Plugin body fields + the one inline-body-removed diagnostic
 │   └── schemas.ts     # Schema loading and detection utilities
 ├── tests/             # Vitest tests — config, validation, schemas, composition
 ├── schemas/           # Copied from repo root at build time (not checked in)

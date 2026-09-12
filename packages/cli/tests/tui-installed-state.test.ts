@@ -64,7 +64,17 @@ function createTemp(files: Record<string, unknown>): string {
 const skillMd = (id: string) =>
   `---\nname: ${id}\ndescription: The ${id} skill\n---\n`;
 
-function setup(plugins: Record<string, unknown> = {}) {
+/**
+ * `plugins` is the thin plugins.json index (description + path +
+ * default_in_roots); `pluginBodies` maps a plugin id to the
+ * `<id>/.plugin/plugin.json` manifest its entry points at. Inline plugin
+ * bodies were removed in https://github.com/pulsemcp/air/issues/157, so the
+ * two halves are always written together.
+ */
+function setup(
+  plugins: Record<string, unknown> = {},
+  pluginBodies: Record<string, unknown> = {}
+) {
   const catalog = createTemp({
     "air.json": {
       name: "test",
@@ -87,6 +97,12 @@ function setup(plugins: Record<string, unknown> = {}) {
     "skills/alpha/SKILL.md": skillMd("alpha"),
     "skills/beta/SKILL.md": skillMd("beta"),
     "skills/gamma/SKILL.md": skillMd("gamma"),
+    ...Object.fromEntries(
+      Object.entries(pluginBodies).map(([id, body]) => [
+        `${id}/.plugin/plugin.json`,
+        body,
+      ])
+    ),
   });
   const target = createTemp({
     ".claude/skills/checked-in/SKILL.md": skillMd("checked-in"),
@@ -214,9 +230,10 @@ describe("air start TUI preselection follows what is installed (#122)", () => {
   });
   it("does not preselect a non-default plugin, so deselecting one of its skills still removes it", async () => {
     // bundle covers exactly the default skills, but nobody picked it.
-    const { config, target } = setup({
-      bundle: { description: "Bundle", skills: ["alpha", "beta"] },
-    });
+    const { config, target } = setup(
+      { bundle: { description: "Bundle", path: "./bundle" } },
+      { bundle: { skills: ["alpha", "beta"] } }
+    );
     await prepareSession({ config, root: "web", target, adapter: "claude" });
     expect(onDisk(target).skills).toEqual(["alpha", "beta", "checked-in"]);
 
@@ -234,9 +251,16 @@ describe("air start TUI preselection follows what is installed (#122)", () => {
   });
 
   it("preselects a kept default plugin and leaves its skills to it, so Enter is a no-op and deselecting it removes them", async () => {
-    const { config, target } = setup({
-      kit: { description: "Kit", skills: ["gamma"], default_in_roots: ["web"] },
-    });
+    const { config, target } = setup(
+      {
+        kit: {
+          description: "Kit",
+          path: "./kit",
+          default_in_roots: ["web"],
+        },
+      },
+      { kit: { skills: ["gamma"] } }
+    );
     // Run 1 keeps the defaults: alpha, beta, and gamma via the kit plugin.
     await prepareSession({ config, root: "web", target, adapter: "claude" });
     expect(onDisk(target).skills).toEqual(["alpha", "beta", "checked-in", "gamma"]);

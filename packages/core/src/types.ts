@@ -149,17 +149,32 @@ export interface PluginAuthor {
 }
 
 export interface PluginEntry {
-  title?: string;
   description: string;
   /**
-   * Path to the plugin directory containing a `.plugin/plugin.json` manifest.
-   * Relative to the index file's directory, or a provider URI (e.g.
-   * `github://owner/repo[@ref]/path`). When set, `resolveArtifacts` loads the
-   * manifest and merges its fields (skills, mcp_servers, hooks, plugins, and
-   * distribution metadata) into this entry — fields declared inline here take
-   * precedence. Resolved to an absolute local path at resolution time.
+   * Path to the plugin directory containing a `.plugin/plugin.json` manifest —
+   * where a plugin's body lives. Relative to the index file's directory, or a
+   * provider URI (e.g. `github://owner/repo[@ref]/path`). `resolveArtifacts`
+   * loads the manifest and merges its fields (skills, mcp_servers, hooks,
+   * plugins, and distribution metadata) into this entry — fields declared
+   * inline here take precedence. Resolved to an absolute local path at
+   * resolution time.
+   *
+   * Optional because this one interface describes both halves of a plugin's
+   * life. An *authored* `plugins.json` entry that declares any body field must
+   * set `path`: declaring a body inline with no `path` was deprecated in
+   * v0.13.0 and removed in https://github.com/pulsemcp/air/issues/157, and now
+   * raises `CatalogConfigError`. A *resolved* entry — hydrated from a manifest,
+   * or built in memory by `mergeArtifacts` / `expandPlugins` / a consumer —
+   * carries the body already merged and need not name a directory at all.
    */
   path?: string;
+  /**
+   * Body fields, from here to `keywords`. These live in the
+   * `.plugin/plugin.json` manifest that `path` points at; declaring one on an
+   * index entry overrides the manifest's value for that field and requires the
+   * sibling `path`.
+   */
+  title?: string;
   version?: string;
   skills?: string[];
   mcp_servers?: string[];
