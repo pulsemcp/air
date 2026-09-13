@@ -15,8 +15,9 @@ import { dirname, resolve } from "path";
  *
  * - 1: the original format.
  * - 2: same shape, stricter `skills` — see {@link manifestSkillsAreAirOwned}.
+ * - 3: same shape, stricter `mcpServers` — see {@link manifestMcpServersAreAirOwned}.
  */
-export const MANIFEST_VERSION = 2;
+export const MANIFEST_VERSION = 3;
 
 /**
  * The on-disk record of artifacts AIR has written to a single target
@@ -40,7 +41,10 @@ export interface Manifest {
   skills: string[];
   /** Hook IDs whose `.claude/hooks/<id>/` (or adapter equivalent) AIR owns. */
   hooks: string[];
-  /** MCP server IDs whose key in `.mcp.json` (or adapter equivalent) AIR owns. */
+  /**
+   * MCP server IDs whose key in `.mcp.json` (or adapter equivalent) AIR owns —
+   * i.e. wrote itself. Every key listed here is removed once deselected.
+   */
   mcpServers: string[];
 }
 
@@ -196,8 +200,10 @@ export function writeManifest(
  *
  * The result is stamped with {@link MANIFEST_VERSION}, which promises that
  * `selection.skills` names only directories the caller created (see
- * {@link manifestSkillsAreAirOwned}). An adapter must never pass a skill
- * directory that already existed when it got there.
+ * {@link manifestSkillsAreAirOwned}) and `selection.mcpServers` names only
+ * keys it wrote (see {@link manifestMcpServersAreAirOwned}). An adapter must
+ * never pass a skill directory that already existed when it got there, or an
+ * MCP server key it found already in the config and didn't own.
  */
 export function buildManifest(
   targetDir: string,
@@ -238,6 +244,19 @@ export function deleteManifest(
  */
 export function manifestSkillsAreAirOwned(manifest: Manifest): boolean {
   return manifest.version >= 2;
+}
+
+/**
+ * Whether every entry in `manifest.mcpServers` names an MCP server key an
+ * adapter wrote itself, so the adapter may remove it once it is deselected.
+ *
+ * True from version 3. Earlier manifests could also list a key the user had
+ * written, which the adapter overwrote because a selected catalog server
+ * shared its name (pulsemcp/air#174), so an adapter must re-check each such
+ * entry before it removes anything on the manifest's word.
+ */
+export function manifestMcpServersAreAirOwned(manifest: Manifest): boolean {
+  return manifest.version >= 3;
 }
 
 /**

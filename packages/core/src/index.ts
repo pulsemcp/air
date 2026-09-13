@@ -99,6 +99,7 @@ export {
   diffManifest,
   deleteManifest,
   manifestSkillsAreAirOwned,
+  manifestMcpServersAreAirOwned,
 } from "./manifest.js";
 export type {
   Manifest,
