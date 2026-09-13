@@ -294,6 +294,28 @@ describe("CursorAdapter MCP server ownership (#174)", () => {
       expect(servers().github).toMatchObject({ command: "gh-mcp" });
       expect(manifestServers()).toEqual(["github"]);
     });
+
+    // Nothing rewrites this config in place, so placeholders compare exactly.
+    it("gives up a key whose placeholder text changed, since nothing resolves placeholders in this config", async () => {
+      const artifacts = catalog();
+      artifacts.mcp["@local/notion"] = {
+        type: "streamable-http",
+        url: "https://mcp.notion.example/mcp",
+        headers: { "X-Api-Key": "key-${NOTION_TOKEN}" },
+      };
+      silenceWarnings();
+      await select(artifacts, ["notion"]);
+      const written = JSON.stringify(servers().notion);
+      expect(written).toMatch(/\$\{[^}]*\}/);
+      setServers({ ...servers(), notion: JSON.parse(written.replace(/\$\{[^}]*\}/g, "mine")) });
+      rewriteAsLegacy(version, ["notion"]);
+      vi.restoreAllMocks();
+      const warn = silenceWarnings();
+
+      await select(artifacts, []);
+      expect(JSON.stringify(servers().notion)).toContain("key-mine");
+      expect(warnedAbout(warn, "notion")).toBe(true);
+    });
   });
 
   describe("cleanSession", () => {

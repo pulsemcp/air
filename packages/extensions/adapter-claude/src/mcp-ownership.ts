@@ -19,6 +19,16 @@ export interface PreviousMcpServerOwnership {
 /** The config the adapter writes under `short` for one catalog server. */
 export type TranslateMcpServer = (short: string, server: McpServerEntry) => unknown;
 
+export interface McpServerOwnershipOptions {
+  /**
+   * Whether `${...}` placeholders AIR wrote may since have been replaced in
+   * the config file itself. True only for a file the secret transforms
+   * (`@pulsemcp/air-secrets-env`, `@pulsemcp/air-secrets-file`) rewrite in
+   * place — Claude's `.mcp.json`. Elsewhere placeholders compare exactly.
+   */
+  resolvedPlaceholders: boolean;
+}
+
 /**
  * Decide which of `prevManifest`'s MCP server entries are AIR's, given the
  * server map currently in the adapter's config file.
@@ -35,7 +45,8 @@ export function previousMcpServerOwnership(
   prevManifest: Manifest | null,
   existingServers: Record<string, unknown>,
   artifacts: ResolvedArtifacts,
-  translate: TranslateMcpServer
+  translate: TranslateMcpServer,
+  options: McpServerOwnershipOptions
 ): PreviousMcpServerOwnership {
   if (!prevManifest) return { owned: new Set(), relinquished: [] };
   if (manifestMcpServersAreAirOwned(prevManifest)) {
@@ -47,7 +58,7 @@ export function previousMcpServerOwnership(
   for (const id of prevManifest.mcpServers) {
     if (
       !hasMcpServer(existingServers, id) ||
-      matchesCatalogServer(existingServers[id], id, artifacts, translate)
+      matchesCatalogServer(existingServers[id], id, artifacts, translate, options)
     ) {
       owned.add(id);
     } else {
@@ -66,14 +77,15 @@ function matchesCatalogServer(
   actual: unknown,
   short: string,
   artifacts: ResolvedArtifacts,
-  translate: TranslateMcpServer
+  translate: TranslateMcpServer,
+  options: McpServerOwnershipOptions
 ): boolean {
   for (const [qualified, server] of Object.entries(artifacts.mcp)) {
     if (!isQualified(qualified) || parseQualifiedId(qualified).id !== short) {
       continue;
     }
     try {
-      if (matchesWrittenConfig(actual, translate(short, server))) return true;
+      if (matchesWrittenConfig(actual, translate(short, server), options)) return true;
     } catch {
       // A server the adapter can't translate is not one it wrote.
     }
@@ -85,24 +97,25 @@ const PLACEHOLDER = /\$\{[^}]*\}/;
 
 /**
  * Whether `actual` is `written` as it can look on disk after an AIR run:
- * structurally equal, except that each `${...}` placeholder in a written
- * string may have been replaced by any text, because secret transforms
- * (`@pulsemcp/air-secrets-env`, `@pulsemcp/air-secrets-file`) resolve them in
- * the config file in place. The text around a placeholder, the set of keys,
- * array lengths, and every non-string value must match exactly.
+ * structurally equal — same keys, array lengths and values. With
+ * `resolvedPlaceholders`, each `${...}` placeholder in a written string may
+ * instead hold any text, but the text around it must still match exactly.
  */
-export function matchesWrittenConfig(actual: unknown, written: unknown): boolean {
+export function matchesWrittenConfig(
+  actual: unknown,
+  written: unknown,
+  options: McpServerOwnershipOptions
+): boolean {
   if (typeof written === "string") {
     if (typeof actual !== "string") return false;
     if (actual === written) return true;
-    const pattern = written.split(PLACEHOLDER).map(escapeRegExp).join("[\\s\\S]*");
-    return new RegExp(`^${pattern}$`).test(actual);
+    return options.resolvedPlaceholders && matchesResolved(actual, written);
   }
   if (Array.isArray(written)) {
     return (
       Array.isArray(actual) &&
       actual.length === written.length &&
-      written.every((value, i) => matchesWrittenConfig(actual[i], value))
+      written.every((value, i) => matchesWrittenConfig(actual[i], value, options))
     );
   }
   if (written !== null && typeof written === "object") {
@@ -115,15 +128,36 @@ export function matchesWrittenConfig(actual: unknown, written: unknown): boolean
       Object.keys(actualRecord).length === expected.length &&
       expected.every(
         ([key, value]) =>
-          hasMcpServer(actualRecord, key) && matchesWrittenConfig(actualRecord[key], value)
+          hasMcpServer(actualRecord, key) &&
+          matchesWrittenConfig(actualRecord[key], value, options)
       )
     );
   }
   return actual === written;
 }
 
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/**
+ * Whether `actual` is `written` with each placeholder replaced by any text.
+ * Linear: the first and last literal segments anchor the ends, and each one
+ * between is found at its leftmost position after the previous — never a
+ * regex, whose backtracking over catalog-supplied patterns can take minutes.
+ */
+function matchesResolved(actual: string, written: string): boolean {
+  const segments = written.split(PLACEHOLDER);
+  if (segments.length === 1) return false;
+  const first = segments[0];
+  const last = segments[segments.length - 1];
+  const end = actual.length - last.length;
+  if (end < first.length || !actual.startsWith(first) || !actual.endsWith(last)) {
+    return false;
+  }
+  let position = first.length;
+  for (const segment of segments.slice(1, -1)) {
+    const at = actual.indexOf(segment, position);
+    if (at < 0 || at + segment.length > end) return false;
+    position = at + segment.length;
+  }
+  return true;
 }
 
 export function relinquishedMcpServerMessage(configFile: string, id: string): string {

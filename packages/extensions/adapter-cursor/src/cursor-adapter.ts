@@ -321,7 +321,9 @@ export class CursorAdapter implements AgentAdapter {
       prevManifest,
       existingMcpServers,
       artifacts,
-      (short, server) => this.translateMcpServersByShort({ [short]: server })[short]
+      (short, server) => this.translateMcpServersByShort({ [short]: server })[short],
+      // Nothing rewrites `.cursor/mcp.json` in place, so placeholders compare exactly.
+      { resolvedPlaceholders: false }
     );
     for (const id of prevMcpServers.relinquished) {
       console.warn(relinquishedMcpServerMessage(".cursor/mcp.json", id));

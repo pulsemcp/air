@@ -277,7 +277,9 @@ export class ClaudeAdapter implements AgentAdapter {
         (this.translateMcpServersByShort({ [short]: server }).mcpServers as Record<
           string,
           unknown
-        >)[short]
+        >)[short],
+      // Secret transforms resolve `${VAR}` in `.mcp.json` in place.
+      { resolvedPlaceholders: true }
     );
     for (const id of prevMcpServers.relinquished) {
       console.warn(relinquishedMcpServerMessage(".mcp.json", id));

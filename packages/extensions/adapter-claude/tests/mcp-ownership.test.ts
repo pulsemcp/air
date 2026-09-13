@@ -331,6 +331,27 @@ describe("ClaudeAdapter MCP server ownership (#174)", () => {
       expect(servers().notion).toMatchObject({ headers: { Authorization: "Token mine" } });
       expect(warnedAbout(warn, "notion")).toBe(true);
     });
+
+    it("checks a many-placeholder value against a long edited one without stalling", async () => {
+      const artifacts = catalog();
+      artifacts.mcp["@local/slack"] = {
+        type: "stdio",
+        command: "slack-mcp",
+        env: { SLACK_TOKEN: "${A}-${B}-${C}-${D}-${E}-${F}-${G}-${H}-end" },
+      };
+      // The edited value can never match (it doesn't end in "-end"), which is
+      // where a backtracking regex tries every split of the dashes.
+      await select(artifacts, ["slack"]);
+      editServer("slack", { env: { SLACK_TOKEN: "-".repeat(20_000) + "x" } });
+      rewriteAsLegacy(version, ["slack"]);
+      const warn = silenceWarnings();
+
+      const started = Date.now();
+      await select(artifacts, []);
+      expect(Date.now() - started).toBeLessThan(2_000);
+      expect(warnedAbout(warn, "slack")).toBe(true);
+      expect(servers().slack).toBeDefined();
+    });
   });
 
   describe("cleanSession", () => {

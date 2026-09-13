@@ -298,7 +298,9 @@ export class CodexAdapter implements AgentAdapter {
       prevManifest,
       existingMcpServers,
       artifacts,
-      (short, server) => this.translateMcpServersByShort({ [short]: server })[short]
+      (short, server) => this.translateMcpServerQuietly(short, server),
+      // Nothing rewrites `.codex/config.toml` in place, so placeholders compare exactly.
+      { resolvedPlaceholders: false }
     );
     for (const id of prevMcpServers.relinquished) {
       console.warn(relinquishedMcpServerMessage(".codex/config.toml", id));
@@ -584,7 +586,7 @@ export class CodexAdapter implements AgentAdapter {
               configPath,
               removableMcpIds,
               cleanHooks ? new Set(manifest.hooks) : new Set(),
-              cleanMcpServers && mcpServersTrusted
+              cleanMcpServers && unverifiedMcpServers.length === 0
             );
           } else {
             mcpConfigPath = configPath;
@@ -761,6 +763,22 @@ export class CodexAdapter implements AgentAdapter {
    * expression — remote servers have no launch process to wrap — so it stays
    * literal in `http_headers` and warns (`warnUnforwardableSecret`).
    */
+  /** Set while translating only to compare with the config; see translateMcpServerQuietly. */
+  private quietTranslation = false;
+
+  /**
+   * Translate one server without its warnings, to compare against what is
+   * already in `.codex/config.toml`. The run warns once, when it writes.
+   */
+  private translateMcpServerQuietly(short: string, server: McpServerEntry): unknown {
+    this.quietTranslation = true;
+    try {
+      return this.translateMcpServersByShort({ [short]: server })[short];
+    } finally {
+      this.quietTranslation = false;
+    }
+  }
+
   translateMcpServersByShort(
     servers: Record<string, McpServerEntry>
   ): Record<string, Record<string, unknown>> {
@@ -972,6 +990,7 @@ export class CodexAdapter implements AgentAdapter {
    * variable references (e.g. `KEY = "${OTHER}"`).
    */
   private warnUnsafeEnvReference(serverName: string, key: string, value: string): void {
+    if (this.quietTranslation) return;
     console.warn(
       `[air-adapter-codex] MCP server "${serverName}" env["${key}"] = "${value}" ` +
         `cannot be forwarded: the env name or a \${VAR} reference is not a plain ` +
@@ -989,6 +1008,7 @@ export class CodexAdapter implements AgentAdapter {
    * (`command` is required by schema) and can't launch regardless.
    */
   private warnRebindWithoutCommand(serverName: string, rebindings: string[]): void {
+    if (this.quietTranslation) return;
     console.warn(
       `[air-adapter-codex] MCP server "${serverName}" has env references needing a ` +
         `launch shim (${rebindings.join(", ")}) but no command to wrap. The shim was ` +
@@ -1004,6 +1024,7 @@ export class CodexAdapter implements AgentAdapter {
    * an author's auth flow break silently.
    */
   private warnUnmappableOAuthFields(serverName: string, fields: string[]): void {
+    if (this.quietTranslation) return;
     console.warn(
       `[air-adapter-codex] MCP server "${serverName}" oauth.${fields.join(", oauth.")} ` +
         `${fields.length === 1 ? "has" : "have"} no Codex equivalent and ` +
@@ -1024,6 +1045,7 @@ export class CodexAdapter implements AgentAdapter {
    * renamed/partial env values are rebound via a `sh -c` shim instead.)
    */
   private warnUnforwardableSecret(serverName: string, field: string, value: string): void {
+    if (this.quietTranslation) return;
     console.warn(
       `[air-adapter-codex] MCP server "${serverName}" ${field} = "${value}" embeds a ` +
         `\${VAR} reference inside a larger header value that Codex cannot express. ` +
