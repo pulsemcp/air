@@ -316,6 +316,10 @@ describe("render legend", () => {
       // rows 40 - header 5 - notices 2 - footer (6 + 4 tabs)
       expect(getViewportHeight(state.tabs.length, notices.length)).toBe(23);
       expect(getViewportHeight(state.tabs.length)).toBe(25);
+      // The whole frame fits the terminal, with the key legend on screen.
+      const frame = render(state, getViewportHeight(state.tabs.length, notices.length));
+      expect(frame).toHaveLength(40);
+      expect(stripAnsi(frame[38])).toContain("quit");
     });
 
     it("keeps the legend while a search filters every default out", () => {

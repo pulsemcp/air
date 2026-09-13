@@ -34,6 +34,8 @@ export function getNoticeLines(state: TuiState): string[] {
   }
 
   const notices: string[] = [];
+  // The lock hint follows the search results, as it did before the default
+  // legend existed.
   const visibleItems = getVisibleItems(state);
   if (activeCat === "skills" && visibleItems.some((it) => it.readOnly)) {
     notices.push(

@@ -326,6 +326,7 @@ describe("air start TUI deselection removes what AIR installed, and nothing else
         lint: { description: "Lint", path: "hooks/lint", default_in_roots: ["web"] },
         fmt: { description: "Format", path: "hooks/fmt" },
         audit: { description: "Audit", path: "hooks/audit" },
+        review: { description: "Review", path: "hooks/review" },
       },
       "plugins.json": {
         kit: { description: "Kit", path: "./kit", default_in_roots: ["web"] },
@@ -343,12 +344,15 @@ describe("air start TUI deselection removes what AIR installed, and nothing else
       "hooks/lint/HOOK.json": hookJson("lint-cmd"),
       "hooks/fmt/HOOK.json": hookJson("fmt-cmd"),
       "hooks/audit/HOOK.json": hookJson("audit-cmd"),
+      "hooks/review/HOOK.json": hookJson("review-cmd"),
     });
     // Everything in the target before AIR's first run belongs to the user.
     const target = createTemp({
       ".claude/skills/checked-in/SKILL.md": skillMd("checked-in"),
       ".claude/skills/delta/SKILL.md": "---\nname: delta\ndescription: My own delta\n---\n",
       ".claude/hooks/mine/HOOK.json": hookJson("mine-cmd"),
+      // Shares its shortname with the catalog's review hook.
+      ".claude/hooks/review/HOOK.json": hookJson("my-review-cmd"),
       ".mcp.json": { mcpServers: { "user-mcp": { type: "stdio", command: "user-cmd" } } },
       ".claude/settings.json": {
         hooks: {
@@ -374,6 +378,9 @@ describe("air start TUI deselection removes what AIR installed, and nothing else
       hookDirs: readdirSync(join(target, ".claude", "hooks")).sort(),
       hookCommands,
       userDelta: readFileSync(join(target, ".claude", "skills", "delta", "SKILL.md"), "utf-8"),
+      userReview: JSON.parse(
+        readFileSync(join(target, ".claude", "hooks", "review", "HOOK.json"), "utf-8")
+      ).command,
     };
   }
 
@@ -389,17 +396,20 @@ describe("air start TUI deselection removes what AIR installed, and nothing else
       adapter: "claude",
       skills: ["@local/alpha", "@local/beta", "@local/delta"],
       mcpServers: ["@local/github", "@local/slack"],
-      hooks: ["@local/lint", "@local/fmt"],
+      hooks: ["@local/lint", "@local/fmt", "@local/review"],
       plugins: ["@local/kit"],
     });
     const userDelta = "---\nname: delta\ndescription: My own delta\n---\n";
     expect(fullDisk(target)).toEqual({
       skills: ["alpha", "beta", "checked-in", "delta", "gamma"],
       mcp: ["github", "linear", "slack", "user-mcp"],
-      hookDirs: ["audit", "fmt", "lint", "mine"],
+      hookDirs: ["audit", "fmt", "lint", "mine", "review"],
       hookCommands: expect.arrayContaining(["user-hook.sh"]),
       userDelta,
+      userReview: "my-review-cmd",
     });
+    // AIR registers lint, fmt and audit; the user's own review directory is
+    // neither overwritten nor registered.
     expect(fullDisk(target).hookCommands).toHaveLength(4);
 
     // Run 2 — the selector opens on that, with the user's own skills locked.
@@ -428,14 +438,17 @@ describe("air start TUI deselection removes what AIR installed, and nothing else
     await prepareSession({ config, root: "web", target, adapter: "claude", ...selection });
 
     // Each deselected item is gone — the plugin takes its skill, MCP server
-    // and hook with it — and everything AIR didn't write is untouched.
+    // and hook with it — and everything AIR didn't write is untouched,
+    // including the user's own review hook, which the catalog's never replaced
+    // and which the selection now leaves out.
     const after = fullDisk(target);
     expect(after).toEqual({
       skills: ["alpha", "checked-in", "delta"],
       mcp: ["github", "user-mcp"],
-      hookDirs: ["lint", "mine"],
+      hookDirs: ["lint", "mine", "review"],
       hookCommands: expect.any(Array),
       userDelta,
+      userReview: "my-review-cmd",
     });
     expect(after.hookCommands).toHaveLength(2);
     expect(after.hookCommands).toContain("user-hook.sh");
