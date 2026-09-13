@@ -13,7 +13,7 @@ import {
   type TuiResult,
   type TuiState,
 } from "./types.js";
-import { render, getViewportHeight } from "./render.js";
+import { render, getViewportHeight, getNoticeLines } from "./render.js";
 
 // eslint-disable-next-line no-control-regex
 const ANSI_RE = /\x1B\[[0-9;]*[A-Za-z]/g;
@@ -34,7 +34,10 @@ function padLine(line: string, width: number): string {
  * alternate screen buffer so the main scrollback is untouched.
  */
 function draw(state: TuiState): void {
-  const viewportHeight = getViewportHeight(state.tabs.length);
+  const viewportHeight = getViewportHeight(
+    state.tabs.length,
+    getNoticeLines(state).length
+  );
   const lines = render(state, viewportHeight);
   const cols = process.stdout.columns || 80;
   const rows = process.stdout.rows || 24;
@@ -57,7 +60,10 @@ function clampScroll(state: TuiState): void {
   const cat = state.tabs[state.activeTab];
   if (!cat) return;
   const visible = getVisibleItems(state);
-  const viewportHeight = getViewportHeight(state.tabs.length);
+  const viewportHeight = getViewportHeight(
+    state.tabs.length,
+    getNoticeLines(state).length
+  );
 
   if (state.cursors[cat] >= visible.length) {
     state.cursors[cat] = Math.max(0, visible.length - 1);

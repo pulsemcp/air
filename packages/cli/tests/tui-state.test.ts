@@ -893,3 +893,105 @@ describe("buildInitialState with installed artifacts", () => {
     expect(getSelectedIds(state).skills).toEqual(["picked-skill"]);
   });
 });
+
+describe("buildInitialState marks root defaults", () => {
+  const artifacts = makeArtifacts({
+    mcp: {
+      "default-server": { type: "stdio", command: "node", description: "d" },
+      "picked-server": { type: "stdio", command: "node", description: "p" },
+      "sub-server": { type: "stdio", command: "node", description: "s" },
+    },
+    skills: {
+      "default-skill": { description: "d", path: "/skills/default-skill" },
+      "picked-skill": { description: "p", path: "/skills/picked-skill" },
+    },
+    hooks: {
+      "default-hook": { description: "d", path: "/hooks/default-hook" },
+      "picked-hook": { description: "p", path: "/hooks/picked-hook" },
+    },
+    plugins: {
+      "default-plugin": { description: "d" },
+      "picked-plugin": { description: "p" },
+    },
+    roots: {
+      sub: { description: "sub", default_mcp_servers: ["sub-server"] },
+    },
+  });
+  const root = {
+    description: "r",
+    default_mcp_servers: ["default-server"],
+    default_skills: ["default-skill"],
+    default_hooks: ["default-hook"],
+    default_plugins: ["default-plugin"],
+    default_subagent_roots: ["sub"],
+  };
+  const installed = {
+    mcpServers: ["picked-server"],
+    skills: ["picked-skill"],
+    hooks: ["picked-hook"],
+    plugins: ["picked-plugin"],
+  };
+  const rows = (state: ReturnType<typeof buildInitialState>) =>
+    Object.fromEntries(
+      (["mcp", "skills", "hooks", "plugins"] as const).map((cat) => [
+        cat,
+        state.items[cat].map((i) => [i.id, { selected: i.selected, isDefault: i.isDefault }]),
+      ])
+    );
+
+  it("marks defaults in every category independently of an installed selection that differs", () => {
+    const state = buildInitialState(artifacts, root, "r", false, false, undefined, installed);
+    expect(rows(state)).toEqual({
+      mcp: [
+        ["default-server", { selected: false, isDefault: true }],
+        ["picked-server", { selected: true, isDefault: false }],
+        ["sub-server", { selected: false, isDefault: true }],
+      ],
+      skills: [
+        ["default-skill", { selected: false, isDefault: true }],
+        ["picked-skill", { selected: true, isDefault: false }],
+      ],
+      hooks: [
+        ["default-hook", { selected: false, isDefault: true }],
+        ["picked-hook", { selected: true, isDefault: false }],
+      ],
+      plugins: [
+        ["default-plugin", { selected: false, isDefault: true }],
+        ["picked-plugin", { selected: true, isDefault: false }],
+      ],
+    });
+  });
+
+  it("does not change what is selected or handed back", () => {
+    const withoutRoot = buildInitialState(artifacts, undefined, undefined, false, false, undefined, installed);
+    const withRoot = buildInitialState(artifacts, root, "r", false, false, undefined, installed);
+    expect(getSelectedIds(withRoot)).toEqual(getSelectedIds(withoutRoot));
+    expect(getSelectedIds(withRoot)).toEqual({
+      mcpServers: ["picked-server"],
+      skills: ["picked-skill"],
+      hooks: ["picked-hook"],
+      plugins: ["picked-plugin"],
+    });
+  });
+
+  it("marks exactly the preselected set on a first run", () => {
+    const state = buildInitialState(artifacts, root, "r");
+    for (const cat of ["mcp", "skills", "hooks", "plugins"] as const) {
+      for (const item of state.items[cat]) {
+        expect(item.isDefault).toBe(item.selected);
+      }
+    }
+  });
+
+  it("follows --no-subagent-merge: subagent defaults are not marked", () => {
+    const state = buildInitialState(artifacts, root, "r", false, true, undefined, installed);
+    expect(state.items.mcp.find((i) => i.id === "sub-server")?.isDefault).toBe(false);
+    expect(state.items.mcp.find((i) => i.id === "default-server")?.isDefault).toBe(true);
+  });
+
+  it("marks nothing without a root", () => {
+    const state = buildInitialState(artifacts);
+    const all = [...state.items.mcp, ...state.items.skills, ...state.items.hooks, ...state.items.plugins];
+    expect(all.some((i) => i.isDefault)).toBe(false);
+  });
+});

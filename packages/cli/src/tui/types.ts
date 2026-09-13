@@ -18,6 +18,12 @@ export interface ArtifactItem {
    * remove or move the directory in their repo.
    */
   readOnly?: boolean;
+  /**
+   * The active root recommends this item (it is in the root's defaults, merged
+   * with its subagent roots' unless merging is disabled). Display-only: it
+   * says nothing about whether the item is selected or installed.
+   */
+  isDefault?: boolean;
 }
 
 export interface TuiState {
@@ -128,14 +134,17 @@ export function buildInitialState(
 ): TuiState {
   const buildItems = (
     entries: Record<string, { description?: string; title?: string }>,
-    preselected?: string[]
+    preselected: string[] | undefined,
+    defaults: string[] | undefined
   ): ArtifactItem[] => {
     const preselectedSet = preselected ? new Set(preselected) : null;
+    const defaultSet = new Set(defaults ?? []);
     return Object.entries(entries)
       .map(([id, entry]) => ({
         id,
         description: entry.description || entry.title || "(no description)",
         selected: preselectedSet ? preselectedSet.has(id) : false,
+        isDefault: defaultSet.has(id),
       }))
       .sort((a, b) => a.id.localeCompare(b.id));
   };
@@ -155,15 +164,32 @@ export function buildInitialState(
   const hookDefaults = merged.hookIds.length > 0 ? merged.hookIds : root?.default_hooks;
   const pluginDefaults = merged.pluginIds.length > 0 ? merged.pluginIds : root?.default_plugins;
 
-  // What's already installed in the target wins over root defaults.
+  // What's already installed in the target wins over root defaults for
+  // preselection. Defaults are marked on their rows either way.
   const items: Record<ArtifactCategory, ArtifactItem[]> = {
-    mcp: buildItems(artifacts.mcp, installedSelection?.mcpServers ?? mcpDefaults),
+    mcp: buildItems(
+      artifacts.mcp,
+      installedSelection?.mcpServers ?? mcpDefaults,
+      mcpDefaults
+    ),
     skills: mergeLocalSkills(
-      buildItems(artifacts.skills, installedSelection?.skills ?? skillDefaults),
+      buildItems(
+        artifacts.skills,
+        installedSelection?.skills ?? skillDefaults,
+        skillDefaults
+      ),
       localArtifacts?.skills ?? []
     ),
-    hooks: buildItems(artifacts.hooks, installedSelection?.hooks ?? hookDefaults),
-    plugins: buildItems(artifacts.plugins, installedSelection?.plugins ?? pluginDefaults),
+    hooks: buildItems(
+      artifacts.hooks,
+      installedSelection?.hooks ?? hookDefaults,
+      hookDefaults
+    ),
+    plugins: buildItems(
+      artifacts.plugins,
+      installedSelection?.plugins ?? pluginDefaults,
+      pluginDefaults
+    ),
   };
 
   const tabs = (
