@@ -9,10 +9,12 @@ packages/extensions/adapter-claude/
 ├── src/
 │   ├── index.ts              # AirExtension default export + re-exports
 │   ├── claude-adapter.ts     # ClaudeAdapter class implementing AgentAdapter
+│   ├── mcp-ownership.ts      # Which MCP server keys AIR owns and may remove (#174)
 │   ├── scan-local-skills.ts  # Discovers user-managed skills in .claude/skills/
 │   └── skill-ownership.ts    # Which skill dirs AIR owns and may delete (#168)
 ├── tests/
 │   ├── claude-adapter.test.ts     # Translation, config generation, prepareSession tests
+│   ├── mcp-ownership.test.ts      # Pre-existing MCP server keys are never overwritten or removed
 │   ├── scan-local-skills.test.ts  # Local skill discovery tests
 │   └── skill-ownership.test.ts    # Pre-existing skill dirs are never claimed or deleted
 └── package.json
@@ -36,7 +38,7 @@ Claude Code expects:
 Callers should use `prepareSession()` rather than calling `translateMcpServers`, `generateConfig`, and writing files separately. The adapter owns the full "make this directory ready" contract.
 
 ### Local artifacts take priority
-If `.claude/skills/{name}/` or `.claude/hooks/{name}/` already exists in the target directory, the catalog version is not written. This allows repos to override catalog skills and hooks.
+If `.claude/skills/{name}/` or `.claude/hooks/{name}/` already exists in the target directory, the catalog version is not written. This allows repos to override catalog skills and hooks. The same goes for an MCP server key already in `.mcp.json` that AIR didn't write: a selected catalog server with that name is not written over it, and the key is never recorded in the manifest (#174).
 
 ## What NOT to Do
 

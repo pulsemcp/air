@@ -9,10 +9,12 @@ packages/extensions/adapter-codex/
 ├── src/
 │   ├── index.ts             # AirExtension default export + re-exports
 │   ├── codex-adapter.ts      # CodexAdapter class implementing AgentAdapter
+│   ├── mcp-ownership.ts      # Which MCP server keys AIR owns and may remove (#174)
 │   ├── scan-local-skills.ts  # Discovers user-managed skills in .agents/skills/
 │   └── skill-ownership.ts    # Which skill dirs AIR owns and may delete (#168)
 ├── tests/
 │   ├── codex-adapter.test.ts     # Translation, config generation, prepareSession tests
+│   ├── mcp-ownership.test.ts     # Pre-existing MCP server keys are never overwritten or removed
 │   ├── scan-local-skills.test.ts # Local skill discovery tests
 │   └── skill-ownership.test.ts   # Pre-existing skill dirs are never claimed or deleted
 └── package.json
@@ -53,7 +55,7 @@ Because of this, `prepareSession()` returns an **empty `configFiles` array** —
 Callers should use `prepareSession()` rather than calling `translateMcpServersByShort`, `generateConfig`, and writing files separately. The adapter owns the full "make this directory ready" contract.
 
 ### Local artifacts take priority
-If `.agents/skills/{name}/` or `.codex/hooks/{name}/` already exists in the target directory, the catalog version is not written. This allows repos to override catalog skills and hooks.
+If `.agents/skills/{name}/` or `.codex/hooks/{name}/` already exists in the target directory, the catalog version is not written. This allows repos to override catalog skills and hooks. The same goes for an MCP server key already in `.codex/config.toml` that AIR didn't write: a selected catalog server with that name is not written over it, and the key is never recorded in the manifest (#174).
 
 ### Reconcile, don't clobber
 `.codex/config.toml` may contain user-authored MCP servers, hooks, and top-level keys. The adapter replaces only AIR-owned keys (MCP servers it manages + hook entries tagged `_air_hook_id`), preserving everything else. A run that leaves the config empty deletes the file rather than leaving an empty stub.

@@ -16,6 +16,7 @@ import {
   getManifestPath,
   loadManifest,
   manifestSkillsAreAirOwned,
+  manifestMcpServersAreAirOwned,
   writeManifest,
   type Manifest,
 } from "../src/manifest.js";
@@ -298,15 +299,29 @@ describe("manifest", () => {
 
   describe("manifestSkillsAreAirOwned", () => {
     it("trusts the skills of manifests written from version 2 on", () => {
-      expect(MANIFEST_VERSION).toBe(2);
+      expect(MANIFEST_VERSION).toBe(3);
       const manifest = buildManifest(targetDir, { skills: ["a"] });
-      expect(manifest.version).toBe(2);
+      expect(manifest.version).toBe(3);
       expect(manifestSkillsAreAirOwned(manifest)).toBe(true);
+      expect(manifestSkillsAreAirOwned({ ...manifest, version: 2 })).toBe(true);
     });
 
     it("does not trust the skills of a version 1 manifest (#168)", () => {
       const manifest = { ...buildManifest(targetDir, { skills: ["a"] }), version: 1 };
       expect(manifestSkillsAreAirOwned(manifest)).toBe(false);
+    });
+  });
+
+  describe("manifestMcpServersAreAirOwned", () => {
+    it("trusts the MCP servers of manifests written from version 3 on", () => {
+      const manifest = buildManifest(targetDir, { mcpServers: ["a"] });
+      expect(manifest.version).toBe(3);
+      expect(manifestMcpServersAreAirOwned(manifest)).toBe(true);
+    });
+
+    it.each([1, 2])("does not trust the MCP servers of a version %i manifest (#174)", (version) => {
+      const manifest = { ...buildManifest(targetDir, { mcpServers: ["a"] }), version };
+      expect(manifestMcpServersAreAirOwned(manifest)).toBe(false);
     });
   });
 });

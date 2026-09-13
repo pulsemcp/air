@@ -136,7 +136,7 @@ describe("ClaudeAdapter skill ownership (#168)", () => {
       expect(userSkillContent("foo")).toBe(USER_CONTENT);
       expect(manifestSkills()).toEqual(["bar"]);
       expect(loadManifest(target)?.version).toBe(MANIFEST_VERSION);
-      expect(MANIFEST_VERSION).toBe(2);
+      expect(MANIFEST_VERSION).toBe(3);
 
       await select(artifacts, []);
       expect(userSkillContent("foo")).toBe(USER_CONTENT);
@@ -208,7 +208,7 @@ describe("ClaudeAdapter skill ownership (#168)", () => {
       await select(artifacts, ["bar"]);
       expect(userSkillContent("foo")).toBe(USER_CONTENT);
       expect(warnedAbout(warn, "foo")).toBe(true);
-      expect(loadManifest(target)?.version).toBe(2);
+      expect(loadManifest(target)?.version).toBe(MANIFEST_VERSION);
       expect(manifestSkills()).toEqual(["bar"]);
 
       await select(artifacts, []);

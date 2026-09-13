@@ -32,6 +32,7 @@ import {
   diffManifest,
   getManifestPath,
   loadManifest,
+  manifestMcpServersAreAirOwned,
   manifestSkillsAreAirOwned,
   writeManifest,
   parseQualifiedId,
@@ -43,6 +44,13 @@ import {
   relinquishedSkillMessage,
   unverifiedSkillsMessage,
 } from "./skill-ownership.js";
+import {
+  hasMcpServer,
+  previousMcpServerOwnership,
+  relinquishedMcpServerMessage,
+  unverifiedMcpServersMessage,
+  userMcpServerKeptMessage,
+} from "./mcp-ownership.js";
 
 /**
  * A single activated artifact: the qualified ID resolved from input, plus the
@@ -251,14 +259,36 @@ export class ClaudeAdapter implements AgentAdapter {
     // 3. Reconcile against prior manifest using shortnames — those are the keys
     //    used for filesystem materialization and stored in the manifest.
     //    A version 1 manifest may claim skill directories AIR never created
-    //    (#168); only the entries it can vouch for are carried forward.
+    //    (#168), and a manifest before version 3 may claim MCP server keys AIR
+    //    never wrote (#174); only the entries it can vouch for are carried
+    //    forward.
     const skillsDir = join(targetDir, ".claude", "skills");
     const prevSkills = previousSkillOwnership(prevManifest, skillsDir, artifacts);
     for (const id of prevSkills.relinquished) {
       console.warn(relinquishedSkillMessage(`.claude/skills/${id}`));
     }
-    const ownedPrevManifest =
-      prevManifest && { ...prevManifest, skills: [...prevSkills.owned] };
+    const mcpConfigPath = join(targetDir, ".mcp.json");
+    const existingMcpServers = this.readMcpServers(mcpConfigPath);
+    const prevMcpServers = previousMcpServerOwnership(
+      prevManifest,
+      existingMcpServers,
+      artifacts,
+      (short, server) =>
+        (this.translateMcpServersByShort({ [short]: server }).mcpServers as Record<
+          string,
+          unknown
+        >)[short],
+      // Secret transforms resolve `${VAR}` in `.mcp.json` in place.
+      { resolvedPlaceholders: true }
+    );
+    for (const id of prevMcpServers.relinquished) {
+      console.warn(relinquishedMcpServerMessage(".mcp.json", id));
+    }
+    const ownedPrevManifest = prevManifest && {
+      ...prevManifest,
+      skills: [...prevSkills.owned],
+      mcpServers: [...prevMcpServers.owned],
+    };
     const diff = diffManifest(ownedPrevManifest, {
       skills: skillShortIds,
       hooks: hookShortIds,
@@ -280,9 +310,20 @@ export class ClaudeAdapter implements AgentAdapter {
     }
 
     // 4. Write .mcp.json (${VAR} patterns are left as-is for transforms to resolve).
-    const mcpConfigPath = join(targetDir, ".mcp.json");
+    //    A selected server is written only into a free key or over one AIR
+    //    already owns. A key AIR didn't write is the user's: leave it, and keep
+    //    it out of the manifest so no later run removes it (#174).
+    const writtenMcpActs = mcpActs.filter((a) => {
+      if (!hasMcpServer(existingMcpServers, a.short) || prevMcpServers.owned.has(a.short)) {
+        return true;
+      }
+      if (!prevMcpServers.relinquished.includes(a.short)) {
+        console.warn(userMcpServerKeptMessage(".mcp.json", a.short, a.qualified));
+      }
+      return false;
+    });
     const translatedServers: Record<string, McpServerEntry> = {};
-    for (const a of mcpActs) translatedServers[a.short] = artifacts.mcp[a.qualified];
+    for (const a of writtenMcpActs) translatedServers[a.short] = artifacts.mcp[a.qualified];
     const mcpConfig = this.mergeMcpConfig(
       mcpConfigPath,
       this.translateMcpServersByShort(translatedServers),
@@ -368,14 +409,14 @@ export class ClaudeAdapter implements AgentAdapter {
     }
 
     // 8. Persist the updated manifest (shortnames — keyed by filesystem dir).
-    //    Only record skills/hooks that were actually materialized so the manifest
+    //    Only record skills/hooks/MCP servers actually written so the manifest
     //    does not claim ownership of artifacts AIR skipped (e.g. a missing source dir).
     writeManifest(
       buildManifest(targetDir, {
         adapter: this.name,
         skills: materializedSkillShortIds,
         hooks: registeredHookShortIds,
-        mcpServers: mcpShortIds,
+        mcpServers: writtenMcpActs.map((a) => a.short),
       })
     );
 
@@ -431,6 +472,8 @@ export class ClaudeAdapter implements AgentAdapter {
    * Skill entries in a version 1 manifest are the exception: that version
    * could claim a skill directory AIR never created (#168), so they are left
    * on disk and kept in the rewritten manifest instead of being removed.
+   * MCP server entries in a manifest before version 3 are kept the same way,
+   * since that version could claim a key the user wrote (#174).
    */
   async cleanSession(
     targetDir: string,
@@ -528,13 +571,22 @@ export class ClaudeAdapter implements AgentAdapter {
       }
     }
 
+    // A manifest before version 3 may list MCP server keys AIR never wrote
+    // (#174); with no catalog to check them against, they stay in place and
+    // in the manifest for the next prepareSession to check.
     const removedMcpServers: string[] = [];
+    const unverifiedMcpServers: string[] = [];
     let mcpConfigPath: string | null = null;
     if (cleanMcpServers && manifest.mcpServers.length > 0) {
       const candidate = join(targetDir, ".mcp.json");
       if (existsSync(candidate)) {
         const presentIds = this.mcpServerIdsPresent(candidate, manifest.mcpServers);
-        if (presentIds.length > 0) {
+        if (!manifestMcpServersAreAirOwned(manifest)) {
+          unverifiedMcpServers.push(...presentIds);
+          if (presentIds.length > 0) {
+            console.warn(unverifiedMcpServersMessage(".mcp.json", presentIds));
+          }
+        } else if (presentIds.length > 0) {
           if (!dryRun) {
             mcpConfigPath = this.pruneMcpServers(candidate, presentIds);
           } else {
@@ -546,7 +598,7 @@ export class ClaudeAdapter implements AgentAdapter {
     }
 
     let manifestRemoved = false;
-    if (fullClean && unverifiedSkills.length === 0) {
+    if (fullClean && unverifiedSkills.length === 0 && unverifiedMcpServers.length === 0) {
       // On a full clean the manifest is always removed (or would be, in
       // dry-run). Reporting `manifestRemoved: true` in dry-run keeps the
       // result shape honest for scripted consumers — they don't need to
@@ -565,10 +617,11 @@ export class ClaudeAdapter implements AgentAdapter {
           adapter: manifest.adapter ?? this.name,
           skills: cleanSkills ? unverifiedSkills : manifest.skills,
           hooks: cleanHooks ? [] : manifest.hooks,
-          mcpServers: cleanMcpServers ? [] : manifest.mcpServers,
+          mcpServers: cleanMcpServers ? unverifiedMcpServers : manifest.mcpServers,
         }),
         // Clean only drops entries, so the version still describes what is
-        // left — a version 1 manifest's skills still need checking.
+        // left — a version 1 manifest's skills, and an earlier manifest's MCP
+        // servers, still need checking.
         version: manifest.version,
       });
     }
@@ -583,6 +636,19 @@ export class ClaudeAdapter implements AgentAdapter {
       manifestExisted: true,
       manifestRemoved,
     };
+  }
+
+  /** The `mcpServers` map in `.mcp.json`, or `{}` when absent or unparseable. */
+  private readMcpServers(mcpConfigPath: string): Record<string, unknown> {
+    if (!existsSync(mcpConfigPath)) return {};
+    try {
+      const servers = JSON.parse(readFileSync(mcpConfigPath, "utf-8"))?.mcpServers;
+      return servers && typeof servers === "object" && !Array.isArray(servers)
+        ? (servers as Record<string, unknown>)
+        : {};
+    } catch {
+      return {};
+    }
   }
 
   /**
@@ -1003,7 +1069,8 @@ export class ClaudeAdapter implements AgentAdapter {
    * preserving user-authored keys. Keys listed in `staleIds` are deleted
    * (they were written by a prior AIR run and are no longer selected),
    * and keys from `translated.mcpServers` are set/replaced for the current
-   * selection. Other top-level fields in the existing file pass through.
+   * selection — the caller passes only keys that are free or AIR-owned, so a
+   * user's key is never replaced (#174). Other top-level fields pass through.
    */
   private mergeMcpConfig(
     mcpConfigPath: string,
