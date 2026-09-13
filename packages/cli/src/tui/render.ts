@@ -11,12 +11,49 @@ import {
 const HEADER_LINES = 5;
 /** Fixed footer lines: scroll indicator(1) + search bar(1) + separator(1) + legend blank(1) + legend(1) + trailing blank(1) = 6 */
 const FIXED_FOOTER_LINES = 6;
+/** Marks an item the active root recommends, independent of its selection */
+const DEFAULT_MARKER = "\u2605";
 
-export function getViewportHeight(tabCount: number): number {
+export function getViewportHeight(tabCount: number, noticeLines = 0): number {
   const rows = process.stdout.rows || 24;
   // Footer varies: 6 fixed lines + one summary line per tab
   const footerLines = FIXED_FOOTER_LINES + tabCount;
-  return Math.max(rows - HEADER_LINES - footerLines, 3);
+  // Notice lines (see getNoticeLines) sit between the tab bar and the list
+  return Math.max(rows - HEADER_LINES - noticeLines - footerLines, 3);
+}
+
+/**
+ * Hint lines shown above the active tab's item list, explaining the markers
+ * its rows carry.
+ */
+export function getNoticeLines(state: TuiState): string[] {
+  const activeCat = state.tabs[state.activeTab];
+  if (!activeCat) return [];
+  if (!OVERRIDABLE_CATEGORIES.has(activeCat)) {
+    return [chalk.dim("  (read-only \u2014 override not yet supported)")];
+  }
+
+  const notices: string[] = [];
+  // The lock hint follows the search results, as it did before the default
+  // legend existed.
+  const visibleItems = getVisibleItems(state);
+  if (activeCat === "skills" && visibleItems.some((it) => it.readOnly)) {
+    notices.push(
+      chalk.dim(
+        "  \ud83d\udd12 local skills are tracked in this repo \u2014 remove the directory to disable"
+      )
+    );
+  }
+  // Checked against the whole tab, not the search results, so the list
+  // doesn't jump when a search filters every default out.
+  if (state.items[activeCat].some((it) => it.isDefault)) {
+    notices.push(
+      `  ${chalk.yellow(DEFAULT_MARKER)}${chalk.dim(
+        " root default \u2014 recommended by the root, whether or not it is selected"
+      )}`
+    );
+  }
+  return notices;
 }
 
 export function render(state: TuiState, viewportHeight: number): string[] {
@@ -59,18 +96,7 @@ export function render(state: TuiState, viewportHeight: number): string[] {
   const cursor = activeCat ? state.cursors[activeCat] : 0;
   const scrollOffset = activeCat ? state.scrollOffsets[activeCat] : 0;
 
-  if (activeCat && !isOverridable) {
-    lines.push(chalk.dim("  (read-only \u2014 override not yet supported)"));
-  } else if (
-    activeCat === "skills" &&
-    visibleItems.some((it) => it.readOnly)
-  ) {
-    lines.push(
-      chalk.dim(
-        "  \ud83d\udd12 local skills are tracked in this repo \u2014 remove the directory to disable"
-      )
-    );
-  }
+  lines.push(...getNoticeLines(state));
 
   if (visibleItems.length === 0) {
     if (state.searchActive && state.searchQuery) {
@@ -202,8 +228,10 @@ function renderItem(
     desc = chalk.dim(` — ${truncate(item.description, 60)}`);
   }
 
+  const defaultTag = item.isDefault ? chalk.yellow(` ${DEFAULT_MARKER}`) : "";
+
   const prefix = isCursor ? chalk.cyan("> ") : "  ";
-  return `${prefix}${marker} ${id}${desc}`;
+  return `${prefix}${marker} ${id}${defaultTag}${desc}`;
 }
 
 function truncate(str: string, maxLen: number): string {
