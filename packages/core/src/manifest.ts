@@ -12,8 +12,12 @@ import { dirname, resolve } from "path";
  * Manifest schema version. Incrementing this is a breaking change to the
  * on-disk format; future versions should be tolerant of older manifests
  * (treat unrecognized shapes as empty, same as the corrupt-manifest path).
+ *
+ * - 1: the original format.
+ * - 2: same shape, stricter `skills` — see {@link manifestSkillsAreAirOwned}.
+ * - 3: same shape, stricter `mcpServers` — see {@link manifestMcpServersAreAirOwned}.
  */
-export const MANIFEST_VERSION = 1;
+export const MANIFEST_VERSION = 3;
 
 /**
  * The on-disk record of artifacts AIR has written to a single target
@@ -30,11 +34,17 @@ export interface Manifest {
    * field existed; new writes always include it.
    */
   adapter?: string;
-  /** Skill IDs whose `.claude/skills/<id>/` (or adapter equivalent) AIR owns. */
+  /**
+   * Skill IDs whose `.claude/skills/<id>/` (or adapter equivalent) AIR owns —
+   * i.e. created itself. Everything listed here is deleted once deselected.
+   */
   skills: string[];
   /** Hook IDs whose `.claude/hooks/<id>/` (or adapter equivalent) AIR owns. */
   hooks: string[];
-  /** MCP server IDs whose key in `.mcp.json` (or adapter equivalent) AIR owns. */
+  /**
+   * MCP server IDs whose key in `.mcp.json` (or adapter equivalent) AIR owns —
+   * i.e. wrote itself. Every key listed here is removed once deselected.
+   */
   mcpServers: string[];
 }
 
@@ -187,6 +197,13 @@ export function writeManifest(
 /**
  * Build a fresh manifest from the current target and selection.
  * Undefined category fields in the selection are normalized to `[]`.
+ *
+ * The result is stamped with {@link MANIFEST_VERSION}, which promises that
+ * `selection.skills` names only directories the caller created (see
+ * {@link manifestSkillsAreAirOwned}) and `selection.mcpServers` names only
+ * keys it wrote (see {@link manifestMcpServersAreAirOwned}). An adapter must
+ * never pass a skill directory that already existed when it got there, or an
+ * MCP server key it found already in the config and didn't own.
  */
 export function buildManifest(
   targetDir: string,
@@ -214,6 +231,32 @@ export function deleteManifest(
   if (!existsSync(path)) return false;
   rmSync(path, { force: true });
   return true;
+}
+
+/**
+ * Whether every entry in `manifest.skills` names a skill directory an adapter
+ * created itself, so the adapter may delete it once it is deselected.
+ *
+ * True from version 2. Version 1 manifests could also list a skill directory
+ * that already existed when the adapter reached it — typically a skill the
+ * user wrote and checked in (pulsemcp/air#168) — so an adapter must re-check
+ * each version 1 entry before it removes anything on the manifest's word.
+ */
+export function manifestSkillsAreAirOwned(manifest: Manifest): boolean {
+  return manifest.version >= 2;
+}
+
+/**
+ * Whether every entry in `manifest.mcpServers` names an MCP server key an
+ * adapter wrote itself, so the adapter may remove it once it is deselected.
+ *
+ * True from version 3. Earlier manifests could also list a key the user had
+ * written, which the adapter overwrote because a selected catalog server
+ * shared its name (pulsemcp/air#174), so an adapter must re-check each such
+ * entry before it removes anything on the manifest's word.
+ */
+export function manifestMcpServersAreAirOwned(manifest: Manifest): boolean {
+  return manifest.version >= 3;
 }
 
 /**

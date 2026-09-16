@@ -20,14 +20,13 @@
   "$defs": {
     "Plugin": {
       "type": "object",
-      "description": "A plugin — a named grouping of AIR primitives (skills, MCP servers, hooks) for bundling and distribution. All referenced artifacts must be defined in their respective index files.",
+      "description": "A plugin — a named grouping of AIR primitives (skills, MCP servers, hooks) for bundling and distribution. The body lives in a .plugin/plugin.json manifest referenced by `path`; the index entry carries description, path, and default_in_roots, plus any manifest field it wants to override inline. All referenced artifacts must be defined in their respective index files.",
       "properties": {
         "title": {
           "type": "string",
           "minLength": 1,
           "maxLength": 100,
-          "deprecated": true,
-          "description": "DEPRECATED (v0.13.0): declare in the .plugin/plugin.json manifest referenced by `path` instead. Inline plugin bodies are slated for removal — see https://github.com/pulsemcp/air/issues/157. Human-readable display name for the plugin."
+          "description": "Belongs in the `.plugin/plugin.json` manifest referenced by `path`. Declaring it here overrides the manifest's value for this field and therefore requires a sibling `path`: an entry with no `path` may not declare it, because inline plugin bodies were deprecated in v0.13.0 and removed (https://github.com/pulsemcp/air/issues/157). Human-readable display name for the plugin."
         },
         "description": {
           "type": "string",
@@ -38,49 +37,43 @@
         "version": {
           "type": "string",
           "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+([-+][a-zA-Z0-9._-]+)?$",
-          "deprecated": true,
-          "description": "DEPRECATED (v0.13.0): declare in the .plugin/plugin.json manifest referenced by `path` instead. Inline plugin bodies are slated for removal — see https://github.com/pulsemcp/air/issues/157. Semantic version of the plugin (e.g., '1.0.0')."
+          "description": "Belongs in the `.plugin/plugin.json` manifest referenced by `path`. Declaring it here overrides the manifest's value for this field and therefore requires a sibling `path`: an entry with no `path` may not declare it, because inline plugin bodies were deprecated in v0.13.0 and removed (https://github.com/pulsemcp/air/issues/157). Semantic version of the plugin (e.g., '1.0.0')."
         },
         "path": {
           "type": "string",
-          "description": "Path to the plugin directory containing a .plugin/plugin.json manifest. Either a relative path within the same catalog, or a remote URI handled by an installed catalog provider (e.g. github://owner/repo[@ref]/path). When set, the manifest supplies the plugin's bundled artifact references (skills, mcp_servers, hooks, plugins) and distribution metadata (author, version, homepage, repository, license, logo, keywords, title). Any of those fields declared inline on this entry take precedence over the manifest, letting the index stay a lightweight registry of name + description + path (+ default_in_roots)."
+          "description": "Path to the plugin directory containing a .plugin/plugin.json manifest. Either a relative path within the same catalog, or a remote URI handled by an installed catalog provider (e.g. github://owner/repo[@ref]/path). The manifest supplies the plugin's bundled artifact references (skills, mcp_servers, hooks, plugins) and distribution metadata (author, version, homepage, repository, license, logo, keywords, title), so the index entry stays a lightweight registry of name + description + path (+ default_in_roots). Any of those fields may still be declared inline on this entry to override the manifest field by field, but only alongside this `path` — declaring a plugin's body inline with no `path` was deprecated in v0.13.0 and is no longer accepted (https://github.com/pulsemcp/air/issues/157)."
         },
         "skills": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "deprecated": true,
-          "description": "DEPRECATED (v0.13.0): declare in the .plugin/plugin.json manifest referenced by `path` instead. Inline plugin bodies are slated for removal — see https://github.com/pulsemcp/air/issues/157. IDs of skills bundled by this plugin. Must reference skill IDs defined in skills.json indexes."
+          "description": "Belongs in the `.plugin/plugin.json` manifest referenced by `path`. Declaring it here overrides the manifest's value for this field and therefore requires a sibling `path`: an entry with no `path` may not declare it, because inline plugin bodies were deprecated in v0.13.0 and removed (https://github.com/pulsemcp/air/issues/157). IDs of skills bundled by this plugin. Must reference skill IDs defined in skills.json indexes."
         },
         "mcp_servers": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "deprecated": true,
-          "description": "DEPRECATED (v0.13.0): declare in the .plugin/plugin.json manifest referenced by `path` instead. Inline plugin bodies are slated for removal — see https://github.com/pulsemcp/air/issues/157. IDs of MCP servers bundled by this plugin. Must reference server IDs defined in mcp.json indexes."
+          "description": "Belongs in the `.plugin/plugin.json` manifest referenced by `path`. Declaring it here overrides the manifest's value for this field and therefore requires a sibling `path`: an entry with no `path` may not declare it, because inline plugin bodies were deprecated in v0.13.0 and removed (https://github.com/pulsemcp/air/issues/157). IDs of MCP servers bundled by this plugin. Must reference server IDs defined in mcp.json indexes."
         },
         "hooks": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "deprecated": true,
-          "description": "DEPRECATED (v0.13.0): declare in the .plugin/plugin.json manifest referenced by `path` instead. Inline plugin bodies are slated for removal — see https://github.com/pulsemcp/air/issues/157. IDs of hooks bundled by this plugin. Must reference hook IDs defined in hooks.json indexes."
+          "description": "Belongs in the `.plugin/plugin.json` manifest referenced by `path`. Declaring it here overrides the manifest's value for this field and therefore requires a sibling `path`: an entry with no `path` may not declare it, because inline plugin bodies were deprecated in v0.13.0 and removed (https://github.com/pulsemcp/air/issues/157). IDs of hooks bundled by this plugin. Must reference hook IDs defined in hooks.json indexes."
         },
         "plugins": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "deprecated": true,
-          "description": "DEPRECATED (v0.13.0): declare in the .plugin/plugin.json manifest referenced by `path` instead. Inline plugin bodies are slated for removal — see https://github.com/pulsemcp/air/issues/157. IDs of other plugins to compose into this plugin. Referenced plugins' primitives (skills, mcp_servers, hooks) are recursively expanded and merged with this plugin's direct declarations. Circular references are rejected at resolution time."
+          "description": "Belongs in the `.plugin/plugin.json` manifest referenced by `path`. Declaring it here overrides the manifest's value for this field and therefore requires a sibling `path`: an entry with no `path` may not declare it, because inline plugin bodies were deprecated in v0.13.0 and removed (https://github.com/pulsemcp/air/issues/157). IDs of other plugins to compose into this plugin. Referenced plugins' primitives (skills, mcp_servers, hooks) are recursively expanded and merged with this plugin's direct declarations. Circular references are rejected at resolution time."
         },
         "author": {
           "type": "object",
-          "deprecated": true,
-          "description": "DEPRECATED (v0.13.0): declare in the .plugin/plugin.json manifest referenced by `path` instead. Inline plugin bodies are slated for removal — see https://github.com/pulsemcp/air/issues/157. Plugin author information.",
+          "description": "Belongs in the `.plugin/plugin.json` manifest referenced by `path`. Declaring it here overrides the manifest's value for this field and therefore requires a sibling `path`: an entry with no `path` may not declare it, because inline plugin bodies were deprecated in v0.13.0 and removed (https://github.com/pulsemcp/air/issues/157). Plugin author information.",
           "properties": {
             "name": {
               "type": "string",
@@ -102,31 +95,26 @@
         "homepage": {
           "type": "string",
           "format": "uri",
-          "deprecated": true,
-          "description": "DEPRECATED (v0.13.0): declare in the .plugin/plugin.json manifest referenced by `path` instead. Inline plugin bodies are slated for removal — see https://github.com/pulsemcp/air/issues/157. URL to the plugin's homepage or documentation."
+          "description": "Belongs in the `.plugin/plugin.json` manifest referenced by `path`. Declaring it here overrides the manifest's value for this field and therefore requires a sibling `path`: an entry with no `path` may not declare it, because inline plugin bodies were deprecated in v0.13.0 and removed (https://github.com/pulsemcp/air/issues/157). URL to the plugin's homepage or documentation."
         },
         "repository": {
           "type": "string",
-          "deprecated": true,
-          "description": "DEPRECATED (v0.13.0): declare in the .plugin/plugin.json manifest referenced by `path` instead. Inline plugin bodies are slated for removal — see https://github.com/pulsemcp/air/issues/157. URL or identifier for the plugin's source repository."
+          "description": "Belongs in the `.plugin/plugin.json` manifest referenced by `path`. Declaring it here overrides the manifest's value for this field and therefore requires a sibling `path`: an entry with no `path` may not declare it, because inline plugin bodies were deprecated in v0.13.0 and removed (https://github.com/pulsemcp/air/issues/157). URL or identifier for the plugin's source repository."
         },
         "license": {
           "type": "string",
-          "deprecated": true,
-          "description": "DEPRECATED (v0.13.0): declare in the .plugin/plugin.json manifest referenced by `path` instead. Inline plugin bodies are slated for removal — see https://github.com/pulsemcp/air/issues/157. SPDX license identifier (e.g., 'MIT', 'Apache-2.0')."
+          "description": "Belongs in the `.plugin/plugin.json` manifest referenced by `path`. Declaring it here overrides the manifest's value for this field and therefore requires a sibling `path`: an entry with no `path` may not declare it, because inline plugin bodies were deprecated in v0.13.0 and removed (https://github.com/pulsemcp/air/issues/157). SPDX license identifier (e.g., 'MIT', 'Apache-2.0')."
         },
         "logo": {
           "type": "string",
-          "deprecated": true,
-          "description": "DEPRECATED (v0.13.0): declare in the .plugin/plugin.json manifest referenced by `path` instead. Inline plugin bodies are slated for removal — see https://github.com/pulsemcp/air/issues/157. Path or URL to the plugin's logo image."
+          "description": "Belongs in the `.plugin/plugin.json` manifest referenced by `path`. Declaring it here overrides the manifest's value for this field and therefore requires a sibling `path`: an entry with no `path` may not declare it, because inline plugin bodies were deprecated in v0.13.0 and removed (https://github.com/pulsemcp/air/issues/157). Path or URL to the plugin's logo image."
         },
         "keywords": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "deprecated": true,
-          "description": "DEPRECATED (v0.13.0): declare in the .plugin/plugin.json manifest referenced by `path` instead. Inline plugin bodies are slated for removal — see https://github.com/pulsemcp/air/issues/157. Keywords for discovery and categorization."
+          "description": "Belongs in the `.plugin/plugin.json` manifest referenced by `path`. Declaring it here overrides the manifest's value for this field and therefore requires a sibling `path`: an entry with no `path` may not declare it, because inline plugin bodies were deprecated in v0.13.0 and removed (https://github.com/pulsemcp/air/issues/157). Keywords for discovery and categorization."
         },
         "default_in_roots": {
           "type": "array",
@@ -137,7 +125,21 @@
         }
       },
       "required": ["description"],
-      "additionalProperties": true
+      "additionalProperties": true,
+      "dependencies": {
+        "title": ["path"],
+        "version": ["path"],
+        "skills": ["path"],
+        "mcp_servers": ["path"],
+        "hooks": ["path"],
+        "plugins": ["path"],
+        "author": ["path"],
+        "homepage": ["path"],
+        "repository": ["path"],
+        "license": ["path"],
+        "logo": ["path"],
+        "keywords": ["path"]
+      }
     }
   }
 }

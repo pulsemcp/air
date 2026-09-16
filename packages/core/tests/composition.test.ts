@@ -796,13 +796,17 @@ describe("composition", () => {
       "plugins.json": {
         child: {
           description: "Child plugin (will be excluded)",
-          skills: ["lint"],
+          path: "./child",
         },
         parent: {
           description: "Parent plugin that references the excluded child",
-          plugins: ["child"],
-          skills: ["deploy"],
+          path: "./parent",
         },
+      },
+      "child/.plugin/plugin.json": { skills: ["lint"] },
+      "parent/.plugin/plugin.json": {
+        plugins: ["child"],
+        skills: ["deploy"],
       },
     });
     cleanup = c;

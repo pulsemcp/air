@@ -14,6 +14,7 @@ import {
 import { findAdapter, listAvailableAdapters } from "./adapter-registry.js";
 import { loadExtensions } from "./extension-loader.js";
 import { checkProviderFreshness } from "./cache-freshness.js";
+import { excludeInstalledLocalArtifacts } from "./installed.js";
 
 export interface StartSessionOptions {
   /** Root to activate by name. */
@@ -46,6 +47,8 @@ export interface StartSessionResult {
   agentAvailable: boolean | undefined;
   /** The command to start the agent. */
   startCommand: StartCommand;
+  /** The agent adapter's name (`AgentAdapter.name`). */
+  adapterName: string;
   /** The agent adapter display name. */
   adapterDisplayName: string;
   /** Warnings from provider cache freshness checks (e.g., stale GitHub clones). */
@@ -54,7 +57,8 @@ export interface StartSessionResult {
    * Artifacts discovered in the target directory outside of AIR's
    * management (e.g. skills checked into `.claude/skills/`). Populated
    * when the adapter implements `listLocalArtifacts` and `localScanDir`
-   * is not set to `null`.
+   * is not set to `null`. Skills AIR installed on an earlier run (tracked
+   * in the target's manifest) are excluded — they are AIR-managed.
    */
   localArtifacts?: LocalArtifacts;
 }
@@ -154,7 +158,11 @@ export async function startSession(
   if (options?.localScanDir !== null && adapter.listLocalArtifacts) {
     const scanDir = options?.localScanDir ?? process.cwd();
     try {
-      localArtifacts = await adapter.listLocalArtifacts(scanDir);
+      localArtifacts = excludeInstalledLocalArtifacts(
+        await adapter.listLocalArtifacts(scanDir),
+        scanDir,
+        adapter.name
+      );
     } catch {
       // Best-effort scan — a failure here must not break session startup.
     }
@@ -166,6 +174,7 @@ export async function startSession(
     sessionConfig,
     agentAvailable,
     startCommand,
+    adapterName: adapter.name,
     adapterDisplayName: adapter.displayName,
     warnings: warnings.length > 0 ? warnings : undefined,
     localArtifacts,

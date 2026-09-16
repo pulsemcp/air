@@ -107,9 +107,10 @@ describe("listArtifacts", () => {
       "plugins.json": {
         "code-quality": {
           description: "Linting tools",
-          version: "1.0.0",
+          path: "./code-quality",
         },
       },
+      "code-quality/.plugin/plugin.json": { version: "1.0.0" },
     });
 
     const result = await listArtifacts("plugins", {

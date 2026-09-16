@@ -48,6 +48,54 @@ export async function promptYnd(question: string): Promise<YndResponse> {
 }
 
 /**
+ * Ask a single yes/no question on stdin.
+ *
+ * - Prints `question` to stderr, reads a line from stdin, maps the answer.
+ * - Empty input (a bare Enter) is `true` — the `[Y/n]` contract.
+ * - `y` / `yes` → true. **Everything else → false.**
+ *
+ * Note the asymmetry with {@link promptYnd} above, which falls back to "yes"
+ * on an unrecognised answer. That is right for auto-discovery, which is cheap
+ * and offered again next run. It is wrong here: this prompt gates an
+ * irreversible version bump, so `cancel`, `q`, `nope` or a stray keystroke
+ * must not install anything. Only an answer that clearly means yes does.
+ *
+ * Returns false outright when not on a TTY. Callers gate on
+ * {@link isInteractiveTTY} before ever reaching this, but a non-interactive
+ * caller that slipped through must get the safe answer, not a hang.
+ *
+ * @param question The full prompt line (include the trailing "? [Y/n] ").
+ */
+export async function promptYesNo(question: string): Promise<boolean> {
+  if (!isInteractiveTTY()) return false;
+
+  const rl = createInterface({ input: process.stdin, output: process.stderr });
+  try {
+    const answer: string = await new Promise((resolveP) => {
+      rl.question(question, (input: string) => resolveP(input));
+      // EOF (Ctrl-D) never fires `question`'s callback, so settle the promise
+      // here rather than hanging forever — and settle it as a decline.
+      rl.once("close", () => resolveP("n"));
+    });
+    return isAffirmative(answer);
+  } finally {
+    rl.close();
+  }
+}
+
+/**
+ * Map a raw `[Y/n]` answer to a decision. Empty (a bare Enter), `y` and `yes`
+ * mean yes; **everything else means no.**
+ *
+ * Split out from {@link promptYesNo} so the rule that guards an irreversible
+ * version bump can be tested without a terminal.
+ */
+export function isAffirmative(answer: string): boolean {
+  const normalized = answer.trim().toLowerCase();
+  return normalized === "" || normalized === "y" || normalized === "yes";
+}
+
+/**
  * True iff stdin + stdout are both attached to a terminal. When either is a
  * pipe or a file (CI runners, scripted wrappers), the caller should skip
  * interactive prompts.

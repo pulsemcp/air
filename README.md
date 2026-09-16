@@ -277,22 +277,31 @@ Three transport types are supported: `stdio` (local processes), `sse` (Server-Se
 
 Plugins are named groupings of AIR primitives (skills, MCP servers, hooks) — a compositional unit for bundling and distributing related capabilities. They provide a more tractable layer of abstraction for distribution and sharing; users who want finer-grained control can always "eject" and work directly at the more primitive skills/mcp/hooks layer. Both approaches are fully supported.
 
-A plugin entry in `plugins.json` declares which AIR artifacts it bundles by referencing their IDs. This enables the CLI to deduplicate — if you request both a skill and a plugin that already bundles that skill, only the plugin needs to be activated:
+A plugin entry in `plugins.json` is a thin registry record pointing at the plugin's body, a `.plugin/plugin.json` manifest that declares which AIR artifacts it bundles by referencing their IDs. This enables the CLI to deduplicate — if you request both a skill and a plugin that already bundles that skill, only the plugin needs to be activated:
 
 ```json
+// plugins.json
 {
   "code-quality": {
-    "id": "code-quality",
-    "title": "Code Quality Suite",
     "description": "Linting, formatting, and static analysis tools bundled with coding standards skills",
-    "version": "1.2.0",
-    "skills": ["lint-fix", "format-check"],
-    "mcp_servers": ["eslint-server"],
-    "hooks": ["lint-pre-commit"],
-    "author": { "name": "Acme Engineering" },
-    "license": "MIT",
-    "keywords": ["linting", "formatting", "eslint", "prettier"]
+    "path": "./code-quality",
+    "default_in_roots": ["web-app"]
   }
+}
+```
+
+```json
+// code-quality/.plugin/plugin.json
+{
+  "name": "code-quality",
+  "title": "Code Quality Suite",
+  "version": "1.2.0",
+  "skills": ["lint-fix", "format-check"],
+  "mcp_servers": ["eslint-server"],
+  "hooks": ["lint-pre-commit"],
+  "author": { "name": "Acme Engineering" },
+  "license": "MIT",
+  "keywords": ["linting", "formatting", "eslint", "prettier"]
 }
 ```
 

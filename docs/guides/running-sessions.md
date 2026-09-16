@@ -39,6 +39,18 @@ When run in a TTY, `air start` opens an interactive terminal UI where you can:
 
 The footer shows a cross-artifact selection summary so you can see what's selected across all types.
 
+The TUI opens on what is already installed in the current directory. On the first run in a directory, when AIR has installed nothing there yet, the TUI preselects the root's defaults. After that, it preselects what AIR installed on the previous run, as recorded in AIR's per-directory manifest by the same adapter, so pressing Enter without changing anything leaves the directory as it is:
+
+- Every skill, MCP server, and hook AIR installed there is preselected.
+- A default plugin is preselected when all of its skills, MCP servers, and hooks are installed. The skills, MCP servers, and hooks it provides are then left to the plugin, so deselecting the plugin removes them.
+- The manifest doesn't record plugins you added beyond the root's defaults. Their skills, MCP servers, and hooks show up selected individually instead.
+
+Root defaults only shape the first run. A default added to the root later isn't preselected automatically; select it in the TUI. The same applies to passing `--root`, including a different root than last time: the TUI still opens on what is installed.
+
+Items in the root's defaults carry a ★ after their ID on every tab, and a `★ root default` line above the list explains the marker. The ★ only says the root recommends the item. It doesn't select it, and it shows whether or not the item is selected. So a `○ … ★` row is a default that isn't selected now, and a `● …` row with no ★ is something installed that the root doesn't recommend. The defaults are the active root's, merged with its subagent roots' unless `--no-subagent-merge` is passed, the same set the first run preselects.
+
+Deselecting an item AIR installed removes it when you press Enter. The run reconciles the directory against AIR's manifest (see [Cleanup between runs](#cleanup-between-runs)): a deselected skill or hook directory is deleted, a deselected MCP server's key is removed from `.mcp.json`, and a deselected hook's entry is removed from `.claude/settings.json`. Deselecting a plugin removes the skills, MCP servers, and hooks it brought in, unless something still selected, on its own or through another plugin, provides them. The next time the TUI opens, the removed items are not preselected. 🔒 local skills can't be deselected. A skill or hook directory that AIR didn't create on an earlier run stays, even when a catalog item with the same name is deselected (a version 1 manifest is checked first; see [Cleanup between runs](#cleanup-between-runs)). User-added `.mcp.json` keys and settings hooks stay too. That includes a `.mcp.json` key with the same name as a catalog MCP server: selecting the server doesn't overwrite your entry, and deselecting it doesn't remove it (a manifest from an earlier AIR version is checked first; see [Cleanup between runs](#cleanup-between-runs)).
+
 Skills that are already checked into the working directory under `.claude/skills/` show up in the Skills tab with a 🔒 marker and cannot be toggled. They're always active (the adapter never overwrites them). To disable one, remove or move its directory in the repo. See [Local skills tracked in the repo](managing-skills.md#local-skills-tracked-in-the-repo) for details.
 
 When not in a TTY (e.g., in a CI pipeline) or when `--skip-confirmation` is passed, the TUI is skipped and the agent launches with root defaults.
@@ -142,9 +154,9 @@ If you have [roots](roots.md) configured, activate one to scope the session:
 air start claude --root web-app
 ```
 
-This activates only the MCP servers, skills, plugins, and hooks listed in the root's defaults. Without `--root`, `air start` auto-detects the root from the current directory's git context and pre-selects the root's defaults in the TUI.
+Without the TUI (`--skip-confirmation`, or no TTY), this activates only the MCP servers, skills, plugins, and hooks listed in the root's defaults. In the TUI, the root's defaults are preselected on the first run in a directory; after that the TUI preselects what is installed (see [Interactive TUI](#interactive-tui)). Without `--root`, `air start` auto-detects the root from the current directory's git context.
 
-When a root has subagent roots (other roots whose `default_in_roots` lists it), the TUI pre-selects MCP servers, skills, hooks, and plugins from both the parent and its subagents (union). The `--dry-run` output also reflects this merged view. Use `--no-subagent-merge` to disable this behavior.
+When a root has subagent roots (other roots whose `default_in_roots` lists it), the root defaults include MCP servers, skills, hooks, and plugins from both the parent and its subagents (union). The `--dry-run` output also reflects this merged view. Use `--no-subagent-merge` to disable this behavior.
 
 ## air prepare — programmatic sessions
 
@@ -163,7 +175,7 @@ The adapter argument is required — it specifies which agent adapter to use (e.
 3. Auto-detects the root from the target directory's git context (or uses `--root`)
 4. Calls the adapter's `prepareSession()`:
    - Loads the prior-run manifest (if any) and cleans up stale artifacts — see [Cleanup between runs](#cleanup-between-runs)
-   - Writes `.mcp.json` to the target directory (merges with existing user-added entries; replaces AIR-managed ones)
+   - Writes `.mcp.json` to the target directory (merges with existing user-added entries, never replacing one; replaces AIR-managed ones)
    - Prewarms the npx cache for any package two or more activated servers share, so those servers do not run concurrent installs into the same cache directory when the agent starts them — see [Servers that share one npx package](configuring-mcp-servers.md#servers-that-share-one-npx-package)
    - Copies skills into the agent's skill directory
    - Copies hook directories into the agent's hook directory
@@ -260,7 +272,13 @@ AIR records which artifact IDs it wrote to each target directory in a per-user m
 - **Hooks** — `.claude/hooks/<id>/` directories are deleted, and their entries in `.claude/settings.json` (identified by the `_airHookId` marker the adapter writes alongside each entry) are removed
 - **MCP servers** — the corresponding keys in `.mcp.json` are deleted; user-added keys and other top-level fields pass through unchanged
 
-Artifacts AIR didn't write are never touched. If you manually place a `.claude/skills/<id>/` or `.claude/hooks/<id>/` directory before the first `air prepare` run, AIR recognizes it as user-authored and leaves it alone — both the files and any `.claude/settings.json` hook registrations that reference it.
+Artifacts AIR didn't write are never touched. If a `.claude/skills/<id>/` or `.claude/hooks/<id>/` directory already exists when AIR goes to install a skill or hook with that ID, and AIR didn't create it on an earlier run, AIR treats it as user-authored and leaves it alone, even if you select the catalog version: it doesn't overwrite the files, register a hook directory in `.claude/settings.json`, or record the directory in the manifest, so later runs don't remove it. A manifest written by a different adapter (say, `air start codex` in a directory last prepared with `claude`) is ignored, since it describes that adapter's directories; the other adapter's copies stay on disk untracked.
+
+MCP server keys follow the same rule. If `.mcp.json` already has a key named like a selected catalog MCP server, and AIR didn't write that key on an earlier run, AIR leaves your entry exactly as it is and keeps the key out of the manifest, so deselecting the server later doesn't remove it. The catalog server is not written for that run, and AIR prints a warning naming it. Rename or delete your entry if you want AIR to manage the catalog server instead.
+
+Manifests written by AIR 0.13.1 and earlier (manifest `version: 1`) could record a pre-existing skill directory as AIR's ([#168](https://github.com/pulsemcp/air/issues/168)). The first `air prepare` or `air start` after upgrading checks each skill such a manifest lists. It keeps one only if its files are byte-for-byte what AIR installs for a catalog skill with that ID (so a copy you checked in that is identical to the catalog skill counts as AIR's; a catalog skill whose `path` is that directory itself never does). Any other listed directory is left in place, dropped from the manifest, and reported in a warning. That includes an AIR copy you edited, and one whose catalog skill has changed since it was installed — common with a `github://` catalog, since AIR never refreshes an installed skill. Those stay on disk as local skills; delete them by hand if you don't need them. The rewritten manifest's skills are trusted as-is from then on.
+
+Manifests written before AIR stopped overwriting user MCP server keys (manifest `version: 1` or `2`) could record a user's `.mcp.json` key as AIR's ([#174](https://github.com/pulsemcp/air/issues/174)). The first `air prepare` or `air start` after upgrading checks each MCP server such a manifest lists whose key is still in `.mcp.json`. It keeps one only if the entry is what AIR writes for a catalog MCP server with that ID, where a `${VAR}` placeholder may hold any value, since a secrets transform resolves placeholders in `.mcp.json` in place. Any other listed key is left in place, dropped from the manifest, and reported in a warning. That includes an entry AIR wrote that you have since edited, and one whose catalog server has changed since AIR wrote it. AIR no longer manages those entries: it won't overwrite or remove them, so delete one by hand to let AIR write the catalog server again. The rewritten manifest is `version: 3` and its MCP servers are trusted as-is from then on.
 
 If the manifest is missing or unreadable, the current run is treated as "no prior state" — nothing is cleaned up, and a fresh manifest is written at the end. You can point AIR at a different state directory for testing by setting `AIR_HOME` (defaults to `~/.air`).
 
@@ -288,6 +306,8 @@ Use it when you're done with a session and want to scrub everything AIR added �
    - **Hooks** — deletes `.claude/hooks/<id>/` directories and removes their entries from `.claude/settings.json` (identified by the `_airHookId` marker)
    - **MCP servers** — deletes the corresponding keys from `.mcp.json`; user-added keys are preserved. If `.mcp.json` would be left empty (no other top-level keys), the file is deleted entirely.
 3. Deletes the manifest on a full clean. If any `--keep-*` flag is set, the manifest is rewritten with the kept entries preserved so future `prepare` / `clean` cycles still track them.
+
+`air clean` has no catalog to check skills or MCP servers against, so it leaves the skills listed in a `version: 1` manifest, and the MCP server keys listed in a manifest older than `version: 3` (see [Cleanup between runs](#cleanup-between-runs)), where they are, keeps them in the manifest, and prints a warning. Run `air prepare` or `air start` in the directory once, then `air clean` again.
 
 Items listed in the manifest that no longer exist on disk are silently skipped (handles drift where files were removed manually). If no manifest exists for the target, `air clean` is a no-op and exits successfully.
 

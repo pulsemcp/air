@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { join } from "path";
 import { resolveArtifacts, CatalogConfigError } from "../src/config.js";
+import type { CatalogProvider } from "../src/types.js";
 import { createTempAirDir, exampleSkill, exampleMcpStdio } from "./helpers.js";
 
 let cleanup: (() => void) | undefined;
@@ -10,11 +11,14 @@ afterEach(() => {
   cleanup = undefined;
 });
 
-// A plugin entry may externalize its body into a `.plugin/plugin.json` manifest
-// referenced by `path`. The index entry then stays a lightweight registry
+// A plugin entry externalizes its body into a `.plugin/plugin.json` manifest
+// referenced by `path`. The index entry stays a lightweight registry
 // (description + path + default_in_roots), while bundled artifact references and
 // distribution metadata live with the plugin. These tests exercise that
-// hydration: merge precedence, scope qualification, and error surfaces.
+// hydration: merge precedence, scope qualification, and error surfaces —
+// including the inline-only body (body fields with no `path`) that was
+// deprecated in v0.13.0 and removed in
+// https://github.com/pulsemcp/air/issues/157.
 
 describe("plugin manifest hydration", () => {
   it("hydrates a thin index entry from its .plugin/plugin.json body", async () => {
@@ -135,8 +139,8 @@ describe("plugin manifest hydration", () => {
 
     const artifacts = await resolveArtifacts(join(dir, "air.json"));
 
-    // Membership folds into the root's computed default_plugins, exactly as it
-    // would for a fully-inline plugin entry.
+    // Membership folds into the root's computed default_plugins, from the thin
+    // index entry — it is never read out of the manifest.
     expect(artifacts.roots["@local/web"].default_plugins).toContain(
       "@local/dev-tools",
     );
@@ -170,10 +174,10 @@ describe("plugin manifest hydration", () => {
     ]);
   });
 
-  // A broken manifest must not abort resolution: during the inline→manifest
-  // migration window (issue #157) a half-migrated or malformed plugin should
-  // degrade to a warning and drop only that plugin, never fail `prepare` for
-  // sessions that don't even use it.
+  // A broken manifest must not abort resolution: a half-migrated or malformed
+  // plugin (path set before the manifest lands, or a manifest that won't parse)
+  // degrades to a warning and drops only that plugin, never failing `prepare`
+  // for sessions that don't even use it.
   it("warns and drops a plugin (does not throw) when its manifest is missing", async () => {
     const { dir, cleanup: c } = createTempAirDir({
       "air.json": { name: "test", plugins: ["./plugins.json"] },
@@ -255,30 +259,7 @@ describe("plugin manifest hydration", () => {
     ).toBeDefined();
   });
 
-  it("leaves fully-inline plugin entries (no path) untouched", async () => {
-    const { dir, cleanup: c } = createTempAirDir({
-      "air.json": {
-        name: "test",
-        skills: ["./skills.json"],
-        plugins: ["./plugins.json"],
-      },
-      "skills.json": { lint: exampleSkill("lint") },
-      "plugins.json": {
-        "dev-tools": {
-          description: "Developer tooling",
-          skills: ["lint"],
-        },
-      },
-    });
-    cleanup = c;
-
-    const artifacts = await resolveArtifacts(join(dir, "air.json"));
-    expect(artifacts.plugins["@local/dev-tools"].skills).toEqual([
-      "@local/lint",
-    ]);
-  });
-
-  it("warns when a plugin declares its body inline instead of via path", async () => {
+  it("hard-fails on a fully-inline plugin entry (no path), naming the plugin and the fields to move", async () => {
     const { dir, cleanup: c } = createTempAirDir({
       "air.json": {
         name: "test",
@@ -297,30 +278,163 @@ describe("plugin manifest hydration", () => {
     cleanup = c;
 
     const warnings: string[] = [];
-    // Resolution must SUCCEED during the deprecation window — the inline body
-    // is still honored, only warned about. (Regression guard for issue #157:
-    // a deprecated-but-supported format must never abort `prepare`.)
+    // Removed in #157: the inline body no longer resolves with a warning, it
+    // aborts resolution. Like an unregistered catalog scheme, this is an author
+    // mistake in a catalog that was explicitly listed — degrading it to a
+    // warning would silently drop the plugin from every session instead.
+    const err = await resolveArtifacts(join(dir, "air.json"), {
+      onWarning: (m) => warnings.push(m),
+    }).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(CatalogConfigError);
+    const message = (err as Error).message;
+    // The error names the plugin, every offending field, where they go, and the
+    // fields that stay behind on the index entry.
+    expect(message).toMatch(/Plugin "dev-tools"/);
+    expect(message).toMatch(/version/);
+    expect(message).toMatch(/skills/);
+    expect(message).toMatch(/\.plugin\/plugin\.json/);
+    expect(message).toMatch(/description, path, and default_in_roots/);
+    expect(message).toMatch(/issues\/157/);
+    // It threw rather than degrading to a warning of any kind.
+    expect(warnings).toEqual([]);
+  });
+
+  it("hard-fails an inline-only plugin even when other catalogs are healthy", async () => {
+    // Per-source isolation must not swallow this into a "Skipping plugins
+    // index" warning: a catalog the author explicitly listed would then vanish
+    // silently, which is the outcome the removal exists to make visible.
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        skills: ["./skills.json"],
+        plugins: ["./legacy/plugins.json", "./good/plugins.json"],
+      },
+      "skills.json": { lint: exampleSkill("lint") },
+      "legacy/plugins.json": {
+        "dev-tools": {
+          description: "Developer tooling",
+          skills: ["lint"],
+        },
+      },
+      "good/plugins.json": {
+        healthy: {
+          description: "Healthy plugin",
+          path: "./healthy",
+        },
+      },
+      "good/healthy/.plugin/plugin.json": { skills: ["lint"] },
+    });
+    cleanup = c;
+
+    const warnings: string[] = [];
+    await expect(
+      resolveArtifacts(join(dir, "air.json"), {
+        onWarning: (m) => warnings.push(m),
+      }),
+    ).rejects.toBeInstanceOf(CatalogConfigError);
+    expect(
+      warnings.find((w) => /Skipping plugins index/.test(w)),
+    ).toBeUndefined();
+  });
+
+  it("hard-fails an inline-only plugin that came from a remote catalog", async () => {
+    // A consumer composing someone else's un-migrated catalog hits the same
+    // hard error as its author would — deliberately, so the plugin cannot go
+    // missing from every session without anyone being told. The remedy is on
+    // the consumer's side: pin the catalog ref, fork it, or drop it from
+    // air.json until upstream migrates.
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        skills: ["./skills.json"],
+        plugins: ["github://acme/shared/plugins/plugins.json"],
+      },
+      "skills.json": { lint: exampleSkill("lint") },
+    });
+    cleanup = c;
+
+    const provider: CatalogProvider = {
+      scheme: "github",
+      async resolve(): Promise<Record<string, unknown>> {
+        return {
+          "dev-tools": { description: "Developer tooling", skills: ["lint"] },
+        };
+      },
+    };
+
+    const warnings: string[] = [];
+    const err = await resolveArtifacts(join(dir, "air.json"), {
+      providers: [provider],
+      onWarning: (m) => warnings.push(m),
+    }).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(CatalogConfigError);
+    expect((err as Error).message).toMatch(
+      /Plugin "dev-tools" \(from github:\/\/acme\/shared\/plugins\/plugins\.json\)/,
+    );
+    expect(warnings).toEqual([]);
+  });
+
+  it("warns and drops a plugin whose path is not a string, without blaming the removed inline form", async () => {
+    // A present-but-malformed `path` is one plugin's content problem, so it
+    // must not masquerade as "declares its body inline with no path" at an
+    // entry that visibly has one.
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": {
+        name: "test",
+        skills: ["./skills.json"],
+        plugins: ["./plugins.json"],
+      },
+      "skills.json": { lint: exampleSkill("lint") },
+      "plugins.json": {
+        "dev-tools": {
+          description: "Developer tooling",
+          path: 42,
+          skills: ["lint"],
+        },
+        healthy: { description: "Healthy plugin", path: "./healthy" },
+      },
+      "healthy/.plugin/plugin.json": { skills: ["lint"] },
+    });
+    cleanup = c;
+
+    const warnings: string[] = [];
     const artifacts = await resolveArtifacts(join(dir, "air.json"), {
       onWarning: (m) => warnings.push(m),
     });
 
-    const deprecation = warnings.find((w) =>
-      /Plugin "dev-tools".*deprecated as of v0\.13\.0/s.test(w),
-    );
-    expect(deprecation).toBeDefined();
-    // The warning names the offending inline fields and points at the issue.
-    expect(deprecation).toMatch(/version/);
-    expect(deprecation).toMatch(/skills/);
-    expect(deprecation).toMatch(/issues\/157/);
-    // The inline plugin is still resolved (warned, not dropped) and its inline
-    // body is honored.
-    expect(artifacts.plugins["@local/dev-tools"]).toBeDefined();
-    expect(artifacts.plugins["@local/dev-tools"].skills).toEqual([
-      "@local/lint",
-    ]);
+    expect(artifacts.plugins["@local/dev-tools"]).toBeUndefined();
+    expect(artifacts.plugins["@local/healthy"]).toBeDefined();
+    const warning = warnings.find((w) => /Plugin "dev-tools"/.test(w));
+    expect(warning).toMatch(/"path" must be a string/);
+    expect(warning).not.toMatch(/declares its body inline/);
   });
 
-  it("does not warn when a manifest-backed plugin overrides fields inline", async () => {
+  it("accepts a body-less entry with no path — there is no inline body to reject", async () => {
+    // The rule is about body fields without a `path`, not about `path` being
+    // mandatory on every entry. A registry entry that declares nothing to
+    // bundle still resolves (it simply contributes no artifacts).
+    const { dir, cleanup: c } = createTempAirDir({
+      "air.json": { name: "test", plugins: ["./plugins.json"] },
+      "plugins.json": {
+        placeholder: { description: "Bundles nothing yet" },
+      },
+    });
+    cleanup = c;
+
+    const warnings: string[] = [];
+    const artifacts = await resolveArtifacts(join(dir, "air.json"), {
+      onWarning: (m) => warnings.push(m),
+    });
+
+    expect(artifacts.plugins["@local/placeholder"].description).toBe(
+      "Bundles nothing yet",
+    );
+    expect(warnings).toEqual([]);
+  });
+
+  it("still resolves a manifest-backed plugin that overrides fields inline", async () => {
     const { dir, cleanup: c } = createTempAirDir({
       "air.json": {
         name: "test",
@@ -348,13 +462,16 @@ describe("plugin manifest hydration", () => {
     cleanup = c;
 
     const warnings: string[] = [];
-    await resolveArtifacts(join(dir, "air.json"), {
+    const artifacts = await resolveArtifacts(join(dir, "air.json"), {
       onWarning: (m) => warnings.push(m),
     });
 
-    expect(
-      warnings.find((w) => /deprecated as of v0\.13\.0/.test(w)),
-    ).toBeUndefined();
+    // Inline fields layered on top of a `path` are the sanctioned override
+    // path — they survived the removal of the inline-only form.
+    const plugin = artifacts.plugins["@local/dev-tools"];
+    expect(plugin.version).toBe("9.9.9");
+    expect(plugin.skills).toEqual(["@local/lint"]);
+    expect(warnings).toEqual([]);
   });
 
   it("expands plugin-to-plugin references sourced from a manifest", async () => {
@@ -371,12 +488,15 @@ describe("plugin manifest hydration", () => {
       "plugins.json": {
         base: {
           description: "Base plugin",
-          skills: ["lint"],
+          path: "./plugins/base",
         },
         extended: {
           description: "Extended plugin",
           path: "./plugins/extended",
         },
+      },
+      "plugins/base/.plugin/plugin.json": {
+        skills: ["lint"],
       },
       "plugins/extended/.plugin/plugin.json": {
         plugins: ["base"],
@@ -446,8 +566,11 @@ describe("plugin manifest hydration", () => {
       "good/plugins.json": {
         "dev-tools": {
           description: "Developer tooling",
-          skills: ["lint"],
+          path: "./dev-tools",
         },
+      },
+      "good/dev-tools/.plugin/plugin.json": {
+        skills: ["lint"],
       },
     });
     cleanup = c;

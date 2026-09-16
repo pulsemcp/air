@@ -39,6 +39,8 @@ export {
   buildManifest,
   diffManifest,
   deleteManifest,
+  manifestSkillsAreAirOwned,
+  manifestMcpServersAreAirOwned,
 } from "@pulsemcp/air-core";
 
 // Re-export core types
@@ -140,6 +142,12 @@ export type {
   MergedArtifactDefaults,
 } from "./prepare.js";
 
+export { getInstalledSelection } from "./installed.js";
+export type {
+  InstalledSelection,
+  GetInstalledSelectionOptions,
+} from "./installed.js";
+
 export { cleanSession } from "./clean.js";
 export type {
   CleanSessionOptions,
@@ -201,6 +209,21 @@ export type {
   UpdateProviderCachesOptions,
   UpdateProviderCachesResult,
 } from "./update.js";
+
+// `air update` (and its deprecated `air upgrade` alias) — cache refresh plus
+// the consent-gated CLI/extension version check
+export { runUpdate, AIR_CLI_PACKAGE } from "./run-update.js";
+export type {
+  RunUpdateOptions,
+  RunUpdateResult,
+  UpdatePlan,
+  VersionBump,
+  VersionBumpKind,
+  VersionCheckResult,
+  UpgradeDecision,
+  LatestVersionLookup,
+  NpmInstallGlobal,
+} from "./run-update.js";
 
 // Cache freshness checking
 export { checkProviderFreshness } from "./cache-freshness.js";

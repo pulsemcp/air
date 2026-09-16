@@ -75,14 +75,37 @@ export function exampleMcpHttp(
   };
 }
 
+/**
+ * A thin plugins.json index entry pointing at a `.plugin/plugin.json` manifest
+ * in a sibling `<id>/` directory. Inline plugin bodies (body fields with no
+ * `path`) were removed in https://github.com/pulsemcp/air/issues/157, so a
+ * fixture that goes through `resolveArtifacts` needs this entry *and* the
+ * manifest {@link examplePluginManifest} builds. Body fields passed as
+ * overrides here are inline overrides of that manifest, which stay supported.
+ */
 export function examplePlugin(
   id: string,
   overrides: Record<string, unknown> = {}
 ) {
   return {
-    title: `${id} Plugin`,
     description: `Description for ${id}`,
+    path: `./${id}`,
     ...overrides,
+  };
+}
+
+/**
+ * The manifest half of {@link examplePlugin} — write it to
+ * `<index-dir>/<id>/.plugin/plugin.json` in the same `createTempAirDir` map.
+ */
+export function examplePluginManifest(
+  id: string,
+  body: Record<string, unknown> = {}
+) {
+  return {
+    name: id,
+    title: `${id} Plugin`,
+    ...body,
   };
 }
 

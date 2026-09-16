@@ -174,7 +174,7 @@ When you run `air start` or `air prepare`, the adapter:
 1. Determines which skills to activate (from root defaults, overrides, or all skills)
 2. Copies each skill's directory into the agent workspace (e.g., `.claude/skills/{skill-id}/`)
 3. Copies any referenced documents into `references/` within the skill directory
-4. Skills already present in the workspace are not overwritten (local takes priority)
+4. Skills already present in the workspace are not overwritten, and AIR doesn't record them as its own, so it never removes them (local takes priority)
 5. Skills that AIR wrote on a prior run but are no longer in the selection are removed (the adapter tracks them in a per-target manifest). User-authored skills under `.claude/skills/` are never touched. See [Cleanup between runs](running-sessions.md#cleanup-between-runs) for details.
 
 If a selected skill's `path` resolves to a directory that does not exist on disk, `air prepare` / `air start` logs a warning naming the qualified ID and the unreachable path, then skips that skill (it is not materialized and not recorded in the manifest). The rest of the session continues so other artifacts still load. Fix the `path` in the catalog's index file, or drop the skill via `air.json#exclude`, to restore it.
@@ -186,6 +186,8 @@ If your repository already contains skills under `.claude/skills/` (for example,
 - **Always active.** Local skills are available to the agent regardless of AIR selection state — the adapter's "local wins" rule means they won't be overwritten by catalog entries.
 - **Read-only in the TUI.** You cannot toggle a local skill off from `air start`. Space, `a`, `n`, and `o` all skip read-only items.
 - **Disable by removing the directory.** To stop activating a local skill, delete or move its directory under `.claude/skills/`. A catalog version with the same ID can then be selected normally.
+
+Skills that AIR itself copied into `.claude/skills/` on an earlier `air start` or `air prepare` are not local skills. AIR tracks them in its per-directory manifest, so the TUI shows them as normal catalog entries, preselected because they are installed, and you can toggle them. Deselecting one and pressing Enter deletes its directory from `.claude/skills/`. A ★ after a skill's ID marks it as one of the root's default skills, whether or not it is selected (see [Interactive TUI](running-sessions.md#interactive-tui)).
 
 If a local skill's ID matches a catalog skill, the catalog entry is replaced in the TUI by the read-only local entry (since the adapter would not write the catalog version anyway).
 

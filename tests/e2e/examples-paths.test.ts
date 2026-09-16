@@ -7,11 +7,14 @@ const REPO_ROOT = resolve(__dirname, "../..");
 const EXAMPLES_DIR = resolve(REPO_ROOT, "examples");
 
 /**
- * Index files that declare per-entry `path` values. `mcp.json`, `plugins.json`,
- * and `roots.json` describe artifacts whose payload is fully captured by the
- * JSON entry itself (no on-disk source), so they have no `path` to verify.
+ * Index files that declare per-entry `path` values. `mcp.json` and `roots.json`
+ * describe artifacts whose payload is fully captured by the JSON entry itself
+ * (no on-disk source), so they have no `path` to verify. A `plugins.json` entry
+ * points at the directory holding its `.plugin/plugin.json` body, and a typo
+ * there only warns-and-drops the plugin at resolution time — so it is checked
+ * here, manifest included.
  */
-const PATHED_TYPES = new Set(["skills", "references", "hooks"]);
+const PATHED_TYPES = new Set(["skills", "references", "hooks", "plugins"]);
 
 interface PathedEntry {
   indexFile: string;
@@ -95,12 +98,25 @@ describe("examples/ artifact paths", () => {
         continue;
       }
       const stat = statSync(entry.resolvedPath);
-      const expectedDir = entry.artifactType === "skills" || entry.artifactType === "hooks";
+      const expectedDir =
+        entry.artifactType === "skills" ||
+        entry.artifactType === "hooks" ||
+        entry.artifactType === "plugins";
       if (expectedDir && !stat.isDirectory()) {
         broken.push(
           `${entry.artifactType} "${entry.shortname}" in ${entry.indexFile}: ` +
             `path "${entry.declaredPath}" → ${entry.resolvedPath} (expected directory, got file)`
         );
+        continue;
+      }
+      if (entry.artifactType === "plugins") {
+        const manifest = join(entry.resolvedPath, ".plugin", "plugin.json");
+        if (!existsSync(manifest)) {
+          broken.push(
+            `plugins "${entry.shortname}" in ${entry.indexFile}: ` +
+              `path "${entry.declaredPath}" has no manifest at ${manifest}`
+          );
+        }
       }
     }
 

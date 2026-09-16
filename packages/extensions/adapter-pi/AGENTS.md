@@ -11,10 +11,12 @@ packages/extensions/adapter-pi/
 ├── src/
 │   ├── index.ts             # AirExtension default export + re-exports
 │   ├── pi-adapter.ts         # PiAdapter class implementing AgentAdapter
-│   └── scan-local-skills.ts  # Discovers user-managed skills in .pi/skills/
+│   ├── scan-local-skills.ts  # Discovers user-managed skills in .pi/skills/
+│   └── skill-ownership.ts    # Which skill dirs AIR owns and may delete (#168)
 ├── tests/
 │   ├── pi-adapter.test.ts        # Skill translation, prepareSession, clean tests
-│   └── scan-local-skills.test.ts # Local skill discovery tests
+│   ├── scan-local-skills.test.ts # Local skill discovery tests
+│   └── skill-ownership.test.ts   # Pre-existing skill dirs are never claimed or deleted
 └── package.json
 ```
 

@@ -32,12 +32,26 @@ import {
   diffManifest,
   getManifestPath,
   loadManifest,
+  manifestMcpServersAreAirOwned,
+  manifestSkillsAreAirOwned,
   writeManifest,
   parseQualifiedId,
   resolveReference,
   prewarmSharedNpxCache,
 } from "@pulsemcp/air-core";
 import { scanLocalSkills } from "./scan-local-skills.js";
+import {
+  previousSkillOwnership,
+  relinquishedSkillMessage,
+  unverifiedSkillsMessage,
+} from "./skill-ownership.js";
+import {
+  hasMcpServer,
+  previousMcpServerOwnership,
+  relinquishedMcpServerMessage,
+  unverifiedMcpServersMessage,
+  userMcpServerKeptMessage,
+} from "./mcp-ownership.js";
 
 /**
  * A single activated artifact: the qualified ID resolved from input, plus the
@@ -210,7 +224,13 @@ export class CodexAdapter implements AgentAdapter {
     const skillPaths: string[] = [];
     const hookPaths: string[] = [];
 
-    const prevManifest = loadManifest(targetDir);
+    // A manifest another adapter wrote names that adapter's directories, not
+    // this one's: acting on it would claim or delete same-named entries here.
+    const loadedManifest = loadManifest(targetDir);
+    const prevManifest =
+      loadedManifest?.adapter !== undefined && loadedManifest.adapter !== this.name
+        ? null
+        : loadedManifest;
 
     // 1. Resolve which artifacts to activate (overrides take precedence over root defaults)
     let mcpServerIds: string[] | undefined =
@@ -264,7 +284,34 @@ export class CodexAdapter implements AgentAdapter {
 
     // 3. Reconcile against prior manifest using shortnames — those are the keys
     //    used for filesystem materialization and stored in the manifest.
-    const diff = diffManifest(prevManifest, {
+    //    A version 1 manifest may claim skill directories AIR never created
+    //    (#168), and a manifest before version 3 may claim MCP server keys AIR
+    //    never wrote (#174); only the entries it can vouch for are carried
+    //    forward.
+    const skillsDir = join(targetDir, ".agents", "skills");
+    const prevSkills = previousSkillOwnership(prevManifest, skillsDir, artifacts);
+    for (const id of prevSkills.relinquished) {
+      console.warn(relinquishedSkillMessage(`.agents/skills/${id}`));
+    }
+    const mcpConfigPath = join(targetDir, ".codex", "config.toml");
+    const existingMcpServers = this.readMcpServers(mcpConfigPath);
+    const prevMcpServers = previousMcpServerOwnership(
+      prevManifest,
+      existingMcpServers,
+      artifacts,
+      (short, server) => this.translateMcpServerQuietly(short, server),
+      // Nothing rewrites `.codex/config.toml` in place, so placeholders compare exactly.
+      { resolvedPlaceholders: false }
+    );
+    for (const id of prevMcpServers.relinquished) {
+      console.warn(relinquishedMcpServerMessage(".codex/config.toml", id));
+    }
+    const ownedPrevManifest = prevManifest && {
+      ...prevManifest,
+      skills: [...prevSkills.owned],
+      mcpServers: [...prevMcpServers.owned],
+    };
+    const diff = diffManifest(ownedPrevManifest, {
       skills: skillShortIds,
       hooks: hookShortIds,
       mcpServers: mcpShortIds,
@@ -292,7 +339,12 @@ export class CodexAdapter implements AgentAdapter {
       const skillTargetDir = join(targetDir, ".agents", "skills", a.short);
 
       if (existsSync(skillTargetDir)) {
-        materializedSkillShortIds.push(a.short);
+        // Re-claim only a directory an earlier run created. One AIR didn't
+        // create is the user's: leave it, and keep it out of the manifest so
+        // no later run deletes it (#168).
+        if (prevSkills.owned.has(a.short)) {
+          materializedSkillShortIds.push(a.short);
+        }
         continue;
       }
 
@@ -344,8 +396,20 @@ export class CodexAdapter implements AgentAdapter {
     // 6. Write `.codex/config.toml`: AIR-managed MCP servers and hook
     //    registrations, merged into any user-authored config (full replacement
     //    of AIR-owned keys; user keys preserved; stale AIR keys removed).
+    //    A selected server is written only into a free key or over one AIR
+    //    already owns. A key AIR didn't write is the user's: leave it, and keep
+    //    it out of the manifest so no later run removes it (#174).
+    const writtenMcpActs = mcpActs.filter((a) => {
+      if (!hasMcpServer(existingMcpServers, a.short) || prevMcpServers.owned.has(a.short)) {
+        return true;
+      }
+      if (!prevMcpServers.relinquished.includes(a.short)) {
+        console.warn(userMcpServerKeptMessage(".codex/config.toml", a.short, a.qualified));
+      }
+      return false;
+    });
     const translatedServers: Record<string, McpServerEntry> = {};
-    for (const a of mcpActs) translatedServers[a.short] = artifacts.mcp[a.qualified];
+    for (const a of writtenMcpActs) translatedServers[a.short] = artifacts.mcp[a.qualified];
 
     const managedHookIds = new Set<string>([
       ...diff.staleHooks,
@@ -376,14 +440,14 @@ export class CodexAdapter implements AgentAdapter {
     }
 
     // 7. Persist the updated manifest (shortnames — keyed by filesystem dir).
-    //    Only record skills/hooks that were actually materialized so the manifest
+    //    Only record skills/hooks/MCP servers actually written so the manifest
     //    does not claim ownership of artifacts AIR skipped (e.g. a missing source dir).
     writeManifest(
       buildManifest(targetDir, {
         adapter: this.name,
         skills: materializedSkillShortIds,
         hooks: registeredHookShortIds,
-        mcpServers: mcpShortIds,
+        mcpServers: writtenMcpActs.map((a) => a.short),
       })
     );
 
@@ -440,6 +504,12 @@ export class CodexAdapter implements AgentAdapter {
    *
    * Items in the manifest that no longer exist on disk are silently skipped
    * — the manifest can drift if a user removed files manually between runs.
+   *
+   * Skill entries in a version 1 manifest are the exception: that version
+   * could claim a skill directory AIR never created (#168), so they are left
+   * on disk and kept in the rewritten manifest instead of being removed.
+   * MCP server entries in a manifest before version 3 are kept the same way,
+   * since that version could claim a key the user wrote (#174).
    */
   async cleanSession(
     targetDir: string,
@@ -473,13 +543,27 @@ export class CodexAdapter implements AgentAdapter {
 
     const configPath = join(targetDir, ".codex", "config.toml");
 
+    // A version 1 manifest may list skill directories AIR never created
+    // (#168), and there is no catalog here to check them against, so they
+    // stay on disk and in the manifest for the next prepareSession to check.
     const removedSkills: string[] = [];
+    const unverifiedSkills: string[] = [];
     if (cleanSkills) {
+      const skillsTrusted = manifestSkillsAreAirOwned(manifest);
       for (const id of manifest.skills) {
         const dir = join(targetDir, ".agents", "skills", id);
         if (!existsSync(dir)) continue;
+        if (!skillsTrusted) {
+          unverifiedSkills.push(id);
+          continue;
+        }
         if (!dryRun) rmSync(dir, { recursive: true, force: true });
         removedSkills.push(id);
+      }
+      if (unverifiedSkills.length > 0) {
+        console.warn(
+          unverifiedSkillsMessage(unverifiedSkills.map((id) => `.agents/skills/${id}`))
+        );
       }
     }
 
@@ -495,7 +579,12 @@ export class CodexAdapter implements AgentAdapter {
 
     // Both MCP servers and hooks live in `.codex/config.toml`. Prune AIR-owned
     // entries in a single read/modify/write, preserving user-authored keys.
+    // A manifest before version 3 may list MCP server keys AIR never wrote
+    // (#174); with no catalog to check them against, they stay in place and
+    // in the manifest for the next prepareSession to check.
+    const mcpServersTrusted = manifestMcpServersAreAirOwned(manifest);
     const removedMcpServers: string[] = [];
+    const unverifiedMcpServers: string[] = [];
     let mcpConfigPath: string | null = null;
     if ((cleanMcpServers && manifest.mcpServers.length > 0) ||
         (cleanHooks && manifest.hooks.length > 0)) {
@@ -503,40 +592,49 @@ export class CodexAdapter implements AgentAdapter {
         const presentMcpIds = cleanMcpServers
           ? this.mcpServerIdsPresent(configPath, manifest.mcpServers)
           : [];
+        const removableMcpIds = mcpServersTrusted ? presentMcpIds : [];
+        if (!mcpServersTrusted) unverifiedMcpServers.push(...presentMcpIds);
         const willTouch =
-          presentMcpIds.length > 0 || (cleanHooks && manifest.hooks.length > 0);
+          removableMcpIds.length > 0 || (cleanHooks && manifest.hooks.length > 0);
         if (willTouch) {
           if (!dryRun) {
             mcpConfigPath = this.pruneCodexConfig(
               configPath,
-              cleanMcpServers ? presentMcpIds : [],
+              removableMcpIds,
               cleanHooks ? new Set(manifest.hooks) : new Set(),
-              cleanMcpServers
+              cleanMcpServers && unverifiedMcpServers.length === 0
             );
           } else {
             mcpConfigPath = configPath;
           }
-          for (const id of presentMcpIds) removedMcpServers.push(id);
+          for (const id of removableMcpIds) removedMcpServers.push(id);
         }
       }
     }
+    if (unverifiedMcpServers.length > 0) {
+      console.warn(unverifiedMcpServersMessage(".codex/config.toml", unverifiedMcpServers));
+    }
 
     let manifestRemoved = false;
-    if (fullClean) {
+    if (fullClean && unverifiedSkills.length === 0 && unverifiedMcpServers.length === 0) {
       if (!dryRun) {
         manifestRemoved = deleteManifest(targetDir);
       } else {
         manifestRemoved = manifestFileExists;
       }
     } else if (!dryRun) {
-      writeManifest(
-        buildManifest(targetDir, {
+      writeManifest({
+        ...buildManifest(targetDir, {
           adapter: manifest.adapter ?? this.name,
-          skills: cleanSkills ? [] : manifest.skills,
+          skills: cleanSkills ? unverifiedSkills : manifest.skills,
           hooks: cleanHooks ? [] : manifest.hooks,
-          mcpServers: cleanMcpServers ? [] : manifest.mcpServers,
-        })
-      );
+          mcpServers: cleanMcpServers ? unverifiedMcpServers : manifest.mcpServers,
+        }),
+        // Clean only drops entries, so the version still describes what is
+        // left — a version 1 manifest's skills, and an earlier manifest's MCP
+        // servers, still need checking.
+        version: manifest.version,
+      });
     }
 
     return {
@@ -552,6 +650,14 @@ export class CodexAdapter implements AgentAdapter {
       manifestExisted: true,
       manifestRemoved,
     };
+  }
+
+  /** The `[mcp_servers]` table in `.codex/config.toml`, or `{}` when absent or unparseable. */
+  private readMcpServers(configPath: string): Record<string, unknown> {
+    const servers = this.readToml(configPath).mcp_servers;
+    return servers && typeof servers === "object" && !Array.isArray(servers)
+      ? (servers as Record<string, unknown>)
+      : {};
   }
 
   /**
@@ -673,6 +779,22 @@ export class CodexAdapter implements AgentAdapter {
    * expression — remote servers have no launch process to wrap — so it stays
    * literal in `http_headers` and warns (`warnUnforwardableSecret`).
    */
+  /** Set while translating only to compare with the config; see translateMcpServerQuietly. */
+  private quietTranslation = false;
+
+  /**
+   * Translate one server without its warnings, to compare against what is
+   * already in `.codex/config.toml`. The run warns once, when it writes.
+   */
+  private translateMcpServerQuietly(short: string, server: McpServerEntry): unknown {
+    this.quietTranslation = true;
+    try {
+      return this.translateMcpServersByShort({ [short]: server })[short];
+    } finally {
+      this.quietTranslation = false;
+    }
+  }
+
   translateMcpServersByShort(
     servers: Record<string, McpServerEntry>
   ): Record<string, Record<string, unknown>> {
@@ -884,6 +1006,7 @@ export class CodexAdapter implements AgentAdapter {
    * variable references (e.g. `KEY = "${OTHER}"`).
    */
   private warnUnsafeEnvReference(serverName: string, key: string, value: string): void {
+    if (this.quietTranslation) return;
     console.warn(
       `[air-adapter-codex] MCP server "${serverName}" env["${key}"] = "${value}" ` +
         `cannot be forwarded: the env name or a \${VAR} reference is not a plain ` +
@@ -901,6 +1024,7 @@ export class CodexAdapter implements AgentAdapter {
    * (`command` is required by schema) and can't launch regardless.
    */
   private warnRebindWithoutCommand(serverName: string, rebindings: string[]): void {
+    if (this.quietTranslation) return;
     console.warn(
       `[air-adapter-codex] MCP server "${serverName}" has env references needing a ` +
         `launch shim (${rebindings.join(", ")}) but no command to wrap. The shim was ` +
@@ -916,6 +1040,7 @@ export class CodexAdapter implements AgentAdapter {
    * an author's auth flow break silently.
    */
   private warnUnmappableOAuthFields(serverName: string, fields: string[]): void {
+    if (this.quietTranslation) return;
     console.warn(
       `[air-adapter-codex] MCP server "${serverName}" oauth.${fields.join(", oauth.")} ` +
         `${fields.length === 1 ? "has" : "have"} no Codex equivalent and ` +
@@ -936,6 +1061,7 @@ export class CodexAdapter implements AgentAdapter {
    * renamed/partial env values are rebound via a `sh -c` shim instead.)
    */
   private warnUnforwardableSecret(serverName: string, field: string, value: string): void {
+    if (this.quietTranslation) return;
     console.warn(
       `[air-adapter-codex] MCP server "${serverName}" ${field} = "${value}" embeds a ` +
         `\${VAR} reference inside a larger header value that Codex cannot express. ` +
