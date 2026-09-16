@@ -238,6 +238,62 @@ Always pin exact versions for stdio servers to ensure reproducible sessions:
 
 Avoid unpinned versions like `@modelcontextprotocol/server-github` or `@latest` — different sessions could get different server versions with different behavior.
 
+## Servers that share one npx package
+
+It is common and legitimate for several servers to run the same package and
+differ only in configuration:
+
+```json
+{
+  "goodjobs-ro": {
+    "type": "stdio",
+    "command": "npx",
+    "args": ["-y", "cms-admin-mcp-server@1.4.0"],
+    "env": { "TOOL_GROUPS": "goodjobs_ro" }
+  },
+  "goodjobs-rw": {
+    "type": "stdio",
+    "command": "npx",
+    "args": ["-y", "cms-admin-mcp-server@1.4.0"],
+    "env": { "TOOL_GROUPS": "goodjobs_rw" }
+  }
+}
+```
+
+`npx` installs each package into a shared directory named from the package
+spec alone — `<npm cache>/_npx/<hash>` — so both servers above target the *same*
+directory regardless of their differing `env`. When an agent starts them
+concurrently against a cold cache, both run `npm install` into that directory
+at once and one can delete files the other is still writing:
+
+```
+npm error code ENOTEMPTY
+npm error syscall rmdir
+npm error path .../_npx/dbbb2997d8a4f060/node_modules/cms-admin-mcp-server/shared/admin-client
+```
+
+That corrupts the shared install for every server in the group, not just one.
+
+`air prepare` and `air start` prevent this: before writing the agent's config,
+AIR groups the activated stdio servers by the npx package spec they resolve to
+and installs each shared spec exactly once, serially. Every server then finds a
+satisfying install and downloads nothing when it launches.
+
+- Only packages used by **two or more** activated servers are prewarmed. A
+  package with a single consumer has nothing to race with.
+- A failed prewarm (offline, private registry, timeout) prints a warning and
+  preparation continues.
+- `uvx`, `docker`, and other non-npx commands are left alone.
+- Set `AIR_NPX_PREWARM=0` to disable it — for example in air-gapped builds where
+  `air prepare` must not reach the network.
+
+**Orchestrators: use one npm cache for both steps.** The prewarm writes to
+whatever `NPM_CONFIG_CACHE` the `air prepare` process is configured with. If you
+launch the agent with a *different* `NPM_CONFIG_CACHE` (a common pattern is a
+per-working-directory cache), AIR warms one directory and the agent reads
+another, and the prewarm has no effect. Pass the same `NPM_CONFIG_CACHE` to
+`air prepare` that the agent will run with.
+
 ## Best practices
 
 - **Write descriptions.** They help agents understand what each server provides and when to use it.
